@@ -658,14 +658,17 @@ public class SDLActivity extends Activity implements View.OnSystemUiVisibilityCh
         mDosKeyPanel.setBackgroundColor(0x90202020);
         mDosKeyPanel.setVisibility(View.GONE);
 
-        // Row 1: ESC + function keys
-        android.widget.LinearLayout row1 = newDosKeyRow();
-        addDosKey(row1, "ESC", 111, false, 1f);
-        for (int i=1;i<=12;i++) addDosKey(row1, "F"+i, 130+i, false, 1f); // F1=131..F12=142
-
+        // The main (typewriter) block sums to 15 weight units per row; a
+        // separator + 3-column navigation cluster (≈4.4 units) sits to its
+        // right on every row, so the typewriter keys compress left and the
+        // nav/arrow cluster lines up like a real full-size keyboard.
         {
-            // Standard staggered PC layout. Each row below sums to 15 weight
-            // units so the stagger lines up exactly like a real keyboard.
+            // Row 1: ESC + function keys (main subtotal 13 -> pad to 15)
+            android.widget.LinearLayout row1 = newDosKeyRow();
+            addDosKey(row1, "ESC", 111, false, 1f);
+            for (int i=1;i<=12;i++) addDosKey(row1, "F"+i, 130+i, false, 1f); // F1=131..F12=142
+            navCluster(row1, 13f, null, 0, null, 0, null, 0);
+
             android.widget.LinearLayout num = newDosKeyRow();
             addDosKey(num, "`", 68, false, 1f);
             int[] numKeys = {8,9,10,11,12,13,14,15,16,7};   // KEYCODE_1..9, 0
@@ -674,6 +677,7 @@ public class SDLActivity extends Activity implements View.OnSystemUiVisibilityCh
             addDosKey(num, "-", 69, false, 1f);
             addDosKey(num, "=", 70, false, 1f);
             addDosKey(num, "BKSP", 67, false, 2f);
+            navCluster(num, 15f, "INS", 124, "HOME", 122, "PGUP", 92);
 
             android.widget.LinearLayout top = newDosKeyRow();
             addDosKey(top, "TAB", 61, false, 1.5f);
@@ -683,6 +687,7 @@ public class SDLActivity extends Activity implements View.OnSystemUiVisibilityCh
             addDosKey(top, "[", 71, false, 1f);
             addDosKey(top, "]", 72, false, 1f);
             addDosKey(top, "\\", 73, false, 1.5f);
+            navCluster(top, 15f, "DEL", 112, "END", 123, "PGDN", 93);
 
             android.widget.LinearLayout home = newDosKeyRow();
             addDosKey(home, "CAPS", 115, false, 1.75f);
@@ -692,6 +697,7 @@ public class SDLActivity extends Activity implements View.OnSystemUiVisibilityCh
             addDosKey(home, ";", 74, false, 1f);
             addDosKey(home, "'", 75, false, 1f);
             addDosKey(home, "ENTER", 66, false, 2.25f);
+            navCluster(home, 15f, null, 0, null, 0, null, 0);
 
             android.widget.LinearLayout bot = newDosKeyRow();
             addDosKey(bot, "SHIFT", 59, true, 2.25f);   // latching modifier
@@ -702,15 +708,13 @@ public class SDLActivity extends Activity implements View.OnSystemUiVisibilityCh
             addDosKey(bot, ".", 56, false, 1f);
             addDosKey(bot, "/", 76, false, 1f);
             addDosKey(bot, "SHIFT", 60, true, 2.75f);   // latching modifier
+            navCluster(bot, 15f, null, 0, "↑", 19, null, 0);   // up arrow, centered
 
             android.widget.LinearLayout sp = newDosKeyRow();
             addDosKey(sp, "CTRL", 113, true, 1.5f);     // latching modifier
             addDosKey(sp, "ALT", 57, true, 1.5f);       // latching modifier
-            addDosKey(sp, "SPACE", 62, false, 7f);
-            addDosKey(sp, "←", 21, false, 1.25f);
-            addDosKey(sp, "↑", 19, false, 1.25f);
-            addDosKey(sp, "↓", 20, false, 1.25f);
-            addDosKey(sp, "→", 22, false, 1.25f);
+            addDosKey(sp, "SPACE", 62, false, 12f);
+            navCluster(sp, 15f, "←", 21, "↓", 20, "→", 22);   // inverted-T base
         }
 
         RelativeLayout.LayoutParams plp = new RelativeLayout.LayoutParams(
@@ -718,7 +722,7 @@ public class SDLActivity extends Activity implements View.OnSystemUiVisibilityCh
         plp.addRule(RelativeLayout.ALIGN_PARENT_BOTTOM);
         mLayout.addView(mDosKeyPanel, plp);
 
-        // Always-visible toggle button (top-right)
+        // Keyboard toggle — top-left.
         android.widget.Button toggle = new android.widget.Button(this);
         toggle.setText("⌨");           // keyboard glyph
         toggle.setTextColor(0xFFFFFFFF);
@@ -726,9 +730,8 @@ public class SDLActivity extends Activity implements View.OnSystemUiVisibilityCh
         toggle.setPadding(pad,pad,pad,pad);
         RelativeLayout.LayoutParams tlp = new RelativeLayout.LayoutParams(
             (int)(48*d), (int)(40*d));
-        // bottom-right so it never covers the DOSBox toolbar (top menu bar)
-        tlp.addRule(RelativeLayout.ALIGN_PARENT_BOTTOM);
-        tlp.addRule(RelativeLayout.ALIGN_PARENT_RIGHT);
+        tlp.addRule(RelativeLayout.ALIGN_PARENT_TOP);
+        tlp.addRule(RelativeLayout.ALIGN_PARENT_LEFT);
         toggle.setOnClickListener(new View.OnClickListener() {
             @Override public void onClick(View v) {
                 mDosKeyPanel.setVisibility(
@@ -737,53 +740,8 @@ public class SDLActivity extends Activity implements View.OnSystemUiVisibilityCh
         });
         mLayout.addView(toggle, tlp);
 
-        // FPS / real-time-speed overlay (top-center), toggled by an FPS button.
-        final android.widget.TextView fps = new android.widget.TextView(this);
-        fps.setTextColor(0xFF33FF33);
-        fps.setBackgroundColor(0x90000000);
-        fps.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, 12);
-        fps.setPadding((int)(8*d),(int)(2*d),(int)(8*d),(int)(2*d));
-        fps.setText("FPS --");
-        fps.setVisibility(View.GONE);
-        RelativeLayout.LayoutParams flp = new RelativeLayout.LayoutParams(
-            RelativeLayout.LayoutParams.WRAP_CONTENT, RelativeLayout.LayoutParams.WRAP_CONTENT);
-        // bottom-left so it never covers the DOSBox toolbar
-        flp.addRule(RelativeLayout.ALIGN_PARENT_BOTTOM);
-        flp.addRule(RelativeLayout.ALIGN_PARENT_LEFT);
-        mLayout.addView(fps, flp);
-
-        final android.os.Handler h = new android.os.Handler(android.os.Looper.getMainLooper());
-        h.postDelayed(new Runnable() {
-            @Override public void run() {
-                if (fps.getVisibility()==View.VISIBLE) {
-                    try {
-                        String s = com.dosboxx.app.DosStatus.getStatusLine();
-                        if (s != null && !s.isEmpty()) fps.setText(s);
-                    } catch (Throwable t) { /* ignore */ }
-                }
-                h.postDelayed(this, 500);
-            }
-        }, 500);
-
-        android.widget.Button fpsBtn = new android.widget.Button(this);
-        fpsBtn.setText("FPS");
-        fpsBtn.setTextColor(0xFFFFFFFF);
-        fpsBtn.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, 10);
-        fpsBtn.setAllCaps(false);
-        fpsBtn.setBackgroundColor(0xA0303030);
-        RelativeLayout.LayoutParams f2 = new RelativeLayout.LayoutParams((int)(52*d),(int)(40*d));
-        f2.addRule(RelativeLayout.ALIGN_PARENT_BOTTOM);
-        f2.addRule(RelativeLayout.ALIGN_PARENT_RIGHT);
-        f2.rightMargin = (int)(54*d);   // sit just left of the keyboard toggle (bottom-right)
-        fpsBtn.setOnClickListener(new View.OnClickListener() {
-            @Override public void onClick(View v) {
-                fps.setVisibility(fps.getVisibility()==View.VISIBLE ? View.GONE : View.VISIBLE);
-            }
-        });
-        mLayout.addView(fpsBtn, f2);
-
         // Disc picker (2+ discs mounted): the swap set is fixed at boot, but
-        // any disc in it can be put in the drive by name.
+        // any disc in it can be put in the drive by name. Top-right, left of ✕.
         if (sCdNames.size() >= 2) {
             android.widget.Button cdBtn = new android.widget.Button(this);
             cdBtn.setText("CD▾");
@@ -792,9 +750,9 @@ public class SDLActivity extends Activity implements View.OnSystemUiVisibilityCh
             cdBtn.setAllCaps(false);
             cdBtn.setBackgroundColor(0xA0303030);
             RelativeLayout.LayoutParams cb = new RelativeLayout.LayoutParams((int)(52*d),(int)(40*d));
-            cb.addRule(RelativeLayout.ALIGN_PARENT_BOTTOM);
+            cb.addRule(RelativeLayout.ALIGN_PARENT_TOP);
             cb.addRule(RelativeLayout.ALIGN_PARENT_RIGHT);
-            cb.rightMargin = (int)(162*d);   // left of ✕, FPS, keyboard buttons
+            cb.rightMargin = (int)(54*d);   // left of the ✕ button
             cdBtn.setOnClickListener(new View.OnClickListener() {
                 @Override public void onClick(View v) { showCdPicker(); }
             });
@@ -808,9 +766,8 @@ public class SDLActivity extends Activity implements View.OnSystemUiVisibilityCh
         exitBtn.setAllCaps(false);
         exitBtn.setBackgroundColor(0xA0303030);
         RelativeLayout.LayoutParams xb = new RelativeLayout.LayoutParams((int)(48*d),(int)(40*d));
-        xb.addRule(RelativeLayout.ALIGN_PARENT_BOTTOM);
+        xb.addRule(RelativeLayout.ALIGN_PARENT_TOP);
         xb.addRule(RelativeLayout.ALIGN_PARENT_RIGHT);
-        xb.rightMargin = (int)(108*d);   // left of FPS + keyboard buttons
         exitBtn.setOnClickListener(new View.OnClickListener() {
             @Override public void onClick(View v) {
                 if (sTrackpadMouse) {
@@ -844,6 +801,30 @@ public class SDLActivity extends Activity implements View.OnSystemUiVisibilityCh
             }
         });
         mLayout.addView(exitBtn, xb);
+    }
+
+    /** Append the right-hand nav cluster to a row: a spacer padding the main
+     *  block out to 15 units (so clusters line up across rows) + a separator,
+     *  then 3 columns that are each a key (label+code) or, if label==null, a
+     *  blank spacer of equal width. Keeps every row the same total width. */
+    private void navCluster(android.widget.LinearLayout row, float mainWeight,
+                            String l1, int c1, String l2, int c2, String l3, int c3) {
+        final float NW = 1.3f;
+        addDosGap(row, (15f - mainWeight) + 0.5f);   // fill to 15 + separator
+        navCell(row, l1, c1, NW);
+        navCell(row, l2, c2, NW);
+        navCell(row, l3, c3, NW);
+    }
+
+    private void navCell(android.widget.LinearLayout row, String label, int code, float w) {
+        if (label == null) addDosGap(row, w);
+        else                addDosKey(row, label, code, false, w);
+    }
+
+    private void addDosGap(android.widget.LinearLayout row, float weight) {
+        View s = new View(this);
+        s.setLayoutParams(new android.widget.LinearLayout.LayoutParams(0, 1, weight));
+        row.addView(s);
     }
 
     /** New full-width keyboard row appended to the panel. */

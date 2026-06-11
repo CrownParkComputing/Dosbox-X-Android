@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Adaptive icon: the logo fills the foreground edge-to-edge on a black
+     background, so the glowing DOSBox-X circle fills the whole icon under
+     any launcher mask. -->
+<adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
+    <background android:drawable="@android:color/black" />
+    <foreground android:drawable="@mipmap/ic_launcher_fg" />
+</adaptive-icon>

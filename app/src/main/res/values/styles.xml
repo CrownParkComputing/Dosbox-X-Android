@@ -4,4 +4,10 @@
     <style name="AppTheme" parent="android:Theme.NoTitleBar.Fullscreen">
         <!-- Customize your theme here. -->
     </style>
+
+    <!-- Splash theme (pre-API-31 / cold-start window background): the full
+         DOSBox-X Android logo centered on black until the launcher draws. -->
+    <style name="SplashTheme" parent="android:Theme.NoTitleBar.Fullscreen">
+        <item name="android:windowBackground">@drawable/splash</item>
+    </style>
 </resources>

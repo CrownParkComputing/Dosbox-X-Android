@@ -48,11 +48,13 @@ public class GameLauncherActivity extends Activity {
 
     private File gamesDir;
     private File cdsDir;     // CD library: discs not currently in any changer
+    private File importDir;  // drop folder for .zip/.7z game archives
     private File confFile;
     private TextView pathLabel;
     private ListView list;
-    private Button dosTabBtn, winTabBtn;
-    private boolean win98Tab = false;                 // false = MS-DOS, true = Windows 98
+    private static final int TAB_DOS = 0, TAB_WIN98 = 1, TAB_IMPORT = 2;
+    private Button[] tabBtns = new Button[3];
+    private int tab = TAB_DOS;
     private final List<Runnable> rowTap = new ArrayList<>();
     private final List<Runnable> rowHold = new ArrayList<>();
 
@@ -65,8 +67,27 @@ public class GameLauncherActivity extends Activity {
         if (!gamesDir.exists()) gamesDir.mkdirs();
         cdsDir = new File(ext, "cds");
         if (!cdsDir.exists()) cdsDir.mkdirs();
+        importDir = new File(ext, "import");
+        if (!importDir.exists()) importDir.mkdirs();
         confFile = new File(ext, "dosbox-x.conf");
 
+        // Brief branded splash on cold start, then the launcher. (On Android
+        // 12+ the system also shows the icon splash first; this keeps the full
+        // logo visible a moment longer and covers older versions.)
+        if (savedInstanceState == null) {
+            android.widget.ImageView splash = new android.widget.ImageView(this);
+            splash.setBackgroundColor(0xFF000000);
+            splash.setImageResource(R.drawable.splash_logo);
+            splash.setScaleType(android.widget.ImageView.ScaleType.FIT_CENTER);
+            setContentView(splash);
+            new android.os.Handler(android.os.Looper.getMainLooper())
+                .postDelayed(this::buildUi, 1100);
+        } else {
+            buildUi();
+        }
+    }
+
+    private void buildUi() {
         LinearLayout root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
         root.setBackgroundColor(0xFF101418);
@@ -79,18 +100,20 @@ public class GameLauncherActivity extends Activity {
         title.setTextSize(22);
         root.addView(title);
 
-        // MS-DOS | Windows 98 tabs
+        // MS-DOS | Windows 98 | Import tabs
         LinearLayout tabs = new LinearLayout(this);
         tabs.setOrientation(LinearLayout.HORIZONTAL);
-        dosTabBtn = new Button(this);
-        dosTabBtn.setText("MS-DOS");
-        winTabBtn = new Button(this);
-        winTabBtn.setText("WINDOWS 98");
-        LinearLayout.LayoutParams tl = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
-        dosTabBtn.setOnClickListener(v -> { win98Tab = false; rescan(); });
-        winTabBtn.setOnClickListener(v -> { win98Tab = true; rescan(); });
-        tabs.addView(dosTabBtn, tl);
-        tabs.addView(winTabBtn, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+        String[] tabLabels = {"MS-DOS", "WINDOWS 98", "IMPORT"};
+        for (int i = 0; i < 3; i++) {
+            final int which = i;
+            Button b = new Button(this);
+            b.setAllCaps(false);
+            b.setTextSize(13);
+            b.setText(tabLabels[i]);
+            b.setOnClickListener(v -> { tab = which; rescan(); });
+            tabBtns[i] = b;
+            tabs.addView(b, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+        }
         root.addView(tabs);
 
         pathLabel = new TextView(this);
@@ -119,12 +142,13 @@ public class GameLauncherActivity extends Activity {
         rowTap.clear();
         rowHold.clear();
         List<String> labels = new ArrayList<>();
-        dosTabBtn.setBackgroundColor(win98Tab ? 0xFF2A3138 : 0xFF3D6B8E);
-        dosTabBtn.setTextColor(0xFFFFFFFF);
-        winTabBtn.setBackgroundColor(win98Tab ? 0xFF3D6B8E : 0xFF2A3138);
-        winTabBtn.setTextColor(0xFFFFFFFF);
-        if (win98Tab) buildWin98Rows(labels);
-        else          buildDosRows(labels);
+        for (int i = 0; i < 3; i++) {
+            tabBtns[i].setBackgroundColor(tab == i ? 0xFF3D6B8E : 0xFF2A3138);
+            tabBtns[i].setTextColor(0xFFFFFFFF);
+        }
+        if (tab == TAB_WIN98)       buildWin98Rows(labels);
+        else if (tab == TAB_IMPORT) buildImportRows(labels);
+        else                        buildDosRows(labels);
         ArrayAdapter<String> ad = new ArrayAdapter<String>(this,
                 android.R.layout.simple_list_item_1, labels) {
             @Override public View getView(int pos, View cv, ViewGroup parent) {
@@ -292,6 +316,95 @@ public class GameLauncherActivity extends Activity {
         String n = f.getName();
         int dot = n.lastIndexOf('.');
         return dot > 0 ? n.substring(0, dot) : n;
+    }
+
+    /** Import tab: lists .zip/.7z archives dropped in import/. Tapping one
+     *  installs it — as a DOS game (-> games/<name>/) or a CD-ROM image
+     *  (-> the CD library), auto-detected from the archive contents. */
+    private void buildImportRows(List<String> labels) {
+        pathLabel.setText("Drop game archives (.zip / .7z) in:\n" + importDir.getAbsolutePath()
+            + "\nTap one to install it as a DOS game or a CD.");
+        File[] kids = importDir.listFiles();
+        List<File> archives = new ArrayList<>();
+        if (kids != null) {
+            Arrays.sort(kids, NAME);
+            for (File f : kids) if (!f.isDirectory() && ArchiveExtractor.isArchive(f.getName())) archives.add(f);
+        }
+        if (archives.isEmpty()) {
+            labels.add("(no .zip/.7z archives in the import folder)");
+            rowTap.add(null);
+            rowHold.add(null);
+            return;
+        }
+        for (File a : archives) {
+            final File archive = a;
+            long mb = a.length() / (1024 * 1024);
+            labels.add("📦 " + a.getName() + "  (" + mb + " MB)");
+            rowTap.add(() -> importDialog(archive));
+            rowHold.add(() -> confirmDeleteArchive(archive));
+        }
+    }
+
+    /** Ask how to install an archive (DOS game vs CD), defaulting to the
+     *  auto-detected kind, then extract on a background thread. */
+    private void importDialog(final File archive) {
+        new Thread(() -> {
+            final ArchiveExtractor.Kind kind = ArchiveExtractor.classify(archive);
+            runOnUiThread(() -> {
+                // Order the choices so the detected kind is the first/default.
+                final boolean cdFirst = kind.hasDiscImage || !kind.hasDosProgram;
+                final String cd = "CD-ROM image → CD library";
+                final String dos = "DOS game → games folder";
+                final String[] items = cdFirst ? new String[]{cd, dos} : new String[]{dos, cd};
+                new AlertDialog.Builder(this)
+                    .setTitle("Install " + archive.getName())
+                    .setItems(items, (d, w) -> {
+                        boolean asCd = items[w].equals(cd);
+                        extractArchive(archive, asCd);
+                    })
+                    .show();
+            });
+        }).start();
+    }
+
+    private void extractArchive(final File archive, final boolean asCd) {
+        final AlertDialog dlg = new AlertDialog.Builder(this)
+            .setTitle(archive.getName())
+            .setMessage(asCd ? "Extracting the CD image…" : "Installing the DOS game…")
+            .setCancelable(false)
+            .show();
+        new Thread(() -> {
+            final boolean ok;
+            final String dest;
+            if (asCd) {
+                ok = ArchiveExtractor.extractDiscImages(archive, cdsDir, null);
+                dest = "CD library";
+            } else {
+                String name = archive.getName().replaceFirst("(?i)\\.(zip|7z)$", "");
+                File gameDir = new File(gamesDir, name);
+                ok = ArchiveExtractor.extractGame(archive, gameDir, null);
+                dest = "MS-DOS games";
+            }
+            runOnUiThread(() -> {
+                dlg.dismiss();
+                if (ok) {
+                    Toast.makeText(this, archive.getName() + " installed to " + dest + ".", Toast.LENGTH_LONG).show();
+                    tab = asCd ? TAB_WIN98 : TAB_DOS;
+                    rescan();
+                } else {
+                    Toast.makeText(this, "Couldn't extract " + archive.getName() + ".", Toast.LENGTH_LONG).show();
+                }
+            });
+        }).start();
+    }
+
+    private void confirmDeleteArchive(final File archive) {
+        new AlertDialog.Builder(this)
+            .setTitle(archive.getName())
+            .setMessage("Delete this archive from the import folder?")
+            .setPositiveButton("Delete", (d, w) -> { archive.delete(); rescan(); })
+            .setNegativeButton("Cancel", null)
+            .show();
     }
 
     private void onPick(File entry) {
@@ -811,14 +924,13 @@ public class GameLauncherActivity extends Activity {
             .show();
     }
 
-    /** Move a CD image between two folders — for cue sheets, the data file
-     *  the cue references (.bin/.img, any name) moves along with it. */
+    /** Move a CD image between two folders — for cue sheets, EVERY data file
+     *  the cue references (multi-track .bin/.img sets) moves along with it. */
     private boolean moveCd(File cd, File destDir) {
         File dest = new File(destDir, cd.getName());
         if (!cd.renameTo(dest)) return false;
         if (cd.getName().toLowerCase().endsWith(".cue")) {
-            String dataName = cueDataName(dest);
-            if (dataName != null) {
+            for (String dataName : cueDataNames(dest)) {
                 File data = new File(cd.getParentFile(), dataName);
                 if (data.isFile()) data.renameTo(new File(destDir, dataName));
             }
@@ -826,8 +938,9 @@ public class GameLauncherActivity extends Activity {
         return true;
     }
 
-    /** File name from the cue sheet's first FILE line, or null. */
-    private static String cueDataName(File cue) {
+    /** All file names referenced by the cue sheet's FILE lines (multi-track). */
+    private static List<String> cueDataNames(File cue) {
+        List<String> names = new ArrayList<>();
         try {
             BufferedReader br = new BufferedReader(new FileReader(cue));
             try {
@@ -836,15 +949,21 @@ public class GameLauncherActivity extends Activity {
                     String t = line.trim();
                     if (!t.toUpperCase(Locale.US).startsWith("FILE")) continue;
                     int q1 = t.indexOf('"'), q2 = t.lastIndexOf('"');
-                    return (q1 >= 0 && q2 > q1)
+                    names.add((q1 >= 0 && q2 > q1)
                         ? t.substring(q1 + 1, q2)
-                        : t.substring(4).trim().split("\\s+")[0];
+                        : t.substring(4).trim().split("\\s+")[0]);
                 }
             } finally {
                 br.close();
             }
         } catch (IOException ignored) { }
-        return null;
+        return names;
+    }
+
+    /** First data file a cue references, or null (used by the zip importer). */
+    private static String cueDataName(File cue) {
+        List<String> n = cueDataNames(cue);
+        return n.isEmpty() ? null : n.get(0);
     }
 
     /** cue+img/bin pairs are CD images — never boot/data HDD candidates. */
