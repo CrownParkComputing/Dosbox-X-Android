@@ -368,21 +368,52 @@ public class GameLauncherActivity extends Activity {
     }
 
     private void extractArchive(final File archive, final boolean asCd) {
+        // Progress dialog with a percentage + MB readout and a determinate bar.
+        final int pad = dp(20);
+        LinearLayout box = new LinearLayout(this);
+        box.setOrientation(LinearLayout.VERTICAL);
+        box.setPadding(pad, pad, pad, pad);
+        final TextView msg = new TextView(this);
+        msg.setText(asCd ? "Extracting the CD image…" : "Installing the DOS game…");
+        msg.setTextColor(0xFFE0E0E0);
+        box.addView(msg);
+        final android.widget.ProgressBar bar = new android.widget.ProgressBar(
+            this, null, android.R.attr.progressBarStyleHorizontal);
+        bar.setIndeterminate(true);
+        bar.setMax(1000);
+        LinearLayout.LayoutParams blp = new LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        blp.topMargin = dp(12);
+        box.addView(bar, blp);
         final AlertDialog dlg = new AlertDialog.Builder(this)
             .setTitle(archive.getName())
-            .setMessage(asCd ? "Extracting the CD image…" : "Installing the DOS game…")
+            .setView(box)
             .setCancelable(false)
-            .show();
+            .create();
+        dlg.show();
+
+        final ArchiveExtractor.Progress progress = (done, total) -> runOnUiThread(() -> {
+            if (total > 0) {
+                int permille = (int) (done * 1000 / total);
+                bar.setIndeterminate(false);
+                bar.setProgress(permille);
+                msg.setText(String.format(java.util.Locale.US, "%d%%   (%d / %d MB)",
+                    permille / 10, done >> 20, total >> 20));
+            } else {
+                msg.setText((done >> 20) + " MB extracted…");
+            }
+        });
+
         new Thread(() -> {
             final boolean ok;
             final String dest;
             if (asCd) {
-                ok = ArchiveExtractor.extractDiscImages(archive, cdsDir, null);
+                ok = ArchiveExtractor.extractDiscImages(archive, cdsDir, progress);
                 dest = "CD library";
             } else {
                 String name = archive.getName().replaceFirst("(?i)\\.(zip|7z)$", "");
                 File gameDir = new File(gamesDir, name);
-                ok = ArchiveExtractor.extractGame(archive, gameDir, null);
+                ok = ArchiveExtractor.extractGame(archive, gameDir, progress);
                 dest = "MS-DOS games";
             }
             runOnUiThread(() -> {

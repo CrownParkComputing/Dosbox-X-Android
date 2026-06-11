@@ -28,8 +28,8 @@ import java.util.zip.ZipFile;
  */
 final class ArchiveExtractor {
 
-    /** Progress callback (entry names as they are written); may be null. */
-    interface Progress { void onEntry(String name); }
+    /** Progress callback (cumulative bytes written / total, total<0 = unknown). */
+    interface Progress { void onProgress(long done, long total); }
 
     static boolean isArchive(String name) {
         String n = name.toLowerCase(Locale.US);
@@ -98,12 +98,50 @@ final class ArchiveExtractor {
      */
     static boolean extractGame(File archive, File destDir, Progress p) {
         String strip = commonTopDir(archive);
-        return extract(archive, destDir, false, strip, p);
+        return extract(archive, destDir, false, strip, totalBytes(archive, false), p);
     }
 
     /** Extract only the disc-image files (flat, basename only) into destDir. */
     static boolean extractDiscImages(File archive, File destDir, Progress p) {
-        return extract(archive, destDir, true, null, p);
+        return extract(archive, destDir, true, null, totalBytes(archive, true), p);
+    }
+
+    /** Sum of the uncompressed sizes of the entries we will write (-1 if unknown). */
+    private static long totalBytes(File archive, boolean discOnly) {
+        long total = 0;
+        try {
+            if (archive.getName().toLowerCase(Locale.US).endsWith(".7z")) {
+                SevenZFile z = new SevenZFile(archive);
+                try {
+                    SevenZArchiveEntry e;
+                    while ((e = z.getNextEntry()) != null) {
+                        if (e.isDirectory()) continue;
+                        if (discOnly && !isDiscImage(e.getName())) continue;
+                        if (e.getSize() < 0) return -1;
+                        total += e.getSize();
+                    }
+                } finally {
+                    z.close();
+                }
+            } else {
+                ZipFile z = new ZipFile(archive);
+                try {
+                    Enumeration<? extends ZipEntry> en = z.entries();
+                    while (en.hasMoreElements()) {
+                        ZipEntry e = en.nextElement();
+                        if (e.isDirectory()) continue;
+                        if (discOnly && !isDiscImage(e.getName())) continue;
+                        if (e.getSize() < 0) return -1;
+                        total += e.getSize();
+                    }
+                } finally {
+                    z.close();
+                }
+            }
+        } catch (IOException e) {
+            return -1;
+        }
+        return total;
     }
 
     /** Single common top-level folder shared by every entry, or null. */
@@ -125,8 +163,10 @@ final class ArchiveExtractor {
     }
 
     private static boolean extract(File archive, File destDir, boolean discOnly,
-                                   String stripTop, Progress p) {
+                                   String stripTop, long total, Progress p) {
         if (!destDir.exists()) destDir.mkdirs();
+        long[] done = {0};
+        long[] lastReport = {-1};
         try {
             if (archive.getName().toLowerCase(Locale.US).endsWith(".7z")) {
                 SevenZFile z = new SevenZFile(archive);
@@ -136,8 +176,7 @@ final class ArchiveExtractor {
                         if (e.isDirectory()) continue;
                         File out = target(e.getName(), destDir, discOnly, stripTop);
                         if (out == null) continue;
-                        if (p != null) p.onEntry(out.getName());
-                        writeEntry(z, out);
+                        writeEntry(z, out, total, done, lastReport, p);
                     }
                 } finally {
                     z.close();
@@ -151,17 +190,27 @@ final class ArchiveExtractor {
                         if (e.isDirectory()) continue;
                         File out = target(e.getName(), destDir, discOnly, stripTop);
                         if (out == null) continue;
-                        if (p != null) p.onEntry(out.getName());
                         InputStream in = z.getInputStream(e);
-                        try { writeStream(in, out); } finally { in.close(); }
+                        try { writeStream(in, out, total, done, lastReport, p); }
+                        finally { in.close(); }
                     }
                 } finally {
                     z.close();
                 }
             }
+            if (p != null) p.onProgress(done[0], total);
             return true;
         } catch (IOException e) {
             return false;
+        }
+    }
+
+    /** Report progress at most once per ~2MB to avoid flooding the UI thread. */
+    private static void report(long total, long[] done, long[] lastReport, int n, Progress p) {
+        done[0] += n;
+        if (p != null && (done[0] - lastReport[0] >= (2L << 20) || lastReport[0] < 0)) {
+            lastReport[0] = done[0];
+            p.onProgress(done[0], total);
         }
     }
 
@@ -185,23 +234,25 @@ final class ArchiveExtractor {
         return out;
     }
 
-    private static void writeEntry(SevenZFile z, File out) throws IOException {
+    private static void writeEntry(SevenZFile z, File out, long total,
+                                   long[] done, long[] lastReport, Progress p) throws IOException {
         OutputStream o = new FileOutputStream(out);
         try {
             byte[] buf = new byte[1 << 16];
             int n;
-            while ((n = z.read(buf)) > 0) o.write(buf, 0, n);
+            while ((n = z.read(buf)) > 0) { o.write(buf, 0, n); report(total, done, lastReport, n, p); }
         } finally {
             o.close();
         }
     }
 
-    private static void writeStream(InputStream in, File out) throws IOException {
+    private static void writeStream(InputStream in, File out, long total,
+                                    long[] done, long[] lastReport, Progress p) throws IOException {
         OutputStream o = new FileOutputStream(out);
         try {
             byte[] buf = new byte[1 << 16];
             int n;
-            while ((n = in.read(buf)) > 0) o.write(buf, 0, n);
+            while ((n = in.read(buf)) > 0) { o.write(buf, 0, n); report(total, done, lastReport, n, p); }
         } finally {
             o.close();
         }
