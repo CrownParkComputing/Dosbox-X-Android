@@ -210,7 +210,8 @@ public class GameLauncherActivity extends Activity {
      *  CD-library discs are listed too — a disc is directly playable as a
      *  DOS CD game here AND insertable into Windows from the other tab. */
     private void buildDosRows(List<String> labels) {
-        pathLabel.setText("DOS games (folders or .img/.iso/.cue) live in:\n" + gamesDir.getAbsolutePath());
+        pathLabel.setText("DOS games (folders or .img/.iso/.cue) in:\n" + gamesDir.getAbsolutePath()
+            + "\n💾 = a game installed on the Windows D: drive — tap to copy it here and play.");
         File[] kids = gamesDir.listFiles();
         if (kids != null) {
             Arrays.sort(kids, NAME);
@@ -243,11 +244,50 @@ public class GameLauncherActivity extends Activity {
                 rowHold.add(() -> onLongPick(entry));
             }
         }
+        // Games installed on the Windows data disk (D:) auto-appear here — tap
+        // to copy one out and play it in DOS. Lets you install in Windows, then
+        // run natively in DOS (and at full disk speed) without the extra steps.
+        List<File> disks = new ArrayList<>();
+        collectGamesDisks(gamesDir, 2, disks);
+        for (File disk : disks) {
+            final File gd = disk;
+            for (String dn : Fat32Reader.listTopDirs(disk)) {
+                if (new File(gamesDir, dn).exists()) continue;   // already copied out
+                final String name = dn;
+                labels.add("💾 " + name + "   (on Windows D:)");
+                rowTap.add(() -> copyFromGamesDisk(gd, name, true));
+                rowHold.add(() -> copyFromGamesDisk(gd, name, false));
+            }
+        }
         if (labels.isEmpty()) {
             labels.add("(no DOS games found)");
             rowTap.add(null);
             rowHold.add(null);
         }
+    }
+
+    /** Copy a game folder out of a Windows data disk into MS-DOS games; if
+     *  {@code play} also launch it once copied. */
+    private void copyFromGamesDisk(final File disk, final String name, final boolean play) {
+        final File dest = new File(gamesDir, name);
+        if (dest.exists()) { onPick(dest); return; }
+        final AlertDialog dlg = new AlertDialog.Builder(this)
+            .setTitle(name).setMessage("Copying from Windows D: to MS-DOS games…")
+            .setCancelable(false).show();
+        new Thread(() -> {
+            final boolean ok = Fat32Reader.extractTopDir(disk, name, dest);
+            runOnUiThread(() -> {
+                dlg.dismiss();
+                if (ok) {
+                    Toast.makeText(this, name + " copied to MS-DOS games.", Toast.LENGTH_SHORT).show();
+                    rescan();
+                    if (play) onPick(dest);
+                } else {
+                    deleteContents(dest); dest.delete();
+                    Toast.makeText(this, "Couldn't copy " + name + ".", Toast.LENGTH_LONG).show();
+                }
+            });
+        }).start();
     }
 
     /** Windows 98 tab: a Boot row per OS image, its changer discs (tap =
@@ -297,7 +337,7 @@ public class GameLauncherActivity extends Activity {
                 });
             }
         }
-        labels.add("─── CD library (tap to insert) ───");
+        labels.add("─── CD library (tap = insert, long-press = delete) ───");
         rowTap.add(null);
         rowHold.add(null);
         int before = labels.size();
@@ -323,7 +363,7 @@ public class GameLauncherActivity extends Activity {
                         Toast.makeText(this, "Couldn't insert " + discName(disc) + ".", Toast.LENGTH_LONG).show();
                     }
                 });
-                rowHold.add(null);
+                rowHold.add(() -> confirmDeleteDisc(disc));
             }
         }
         if (labels.size() == before) {
@@ -331,6 +371,43 @@ public class GameLauncherActivity extends Activity {
             rowTap.add(null);
             rowHold.add(null);
         }
+    }
+
+    /** Delete a game folder (and its per-game keymap + persistent C: drive). */
+    private void confirmDeleteGame(final File folder) {
+        new AlertDialog.Builder(this)
+            .setTitle(folder.getName())
+            .setMessage("Delete this game and its saves from the device? This can't be undone.")
+            .setPositiveButton("Delete", (d, w) -> {
+                deleteContents(folder); folder.delete();
+                File cDir = new File(gamesDir, ".c/" + KeyMapStore.safeName(folder.getName()));
+                if (cDir.isDirectory()) { deleteContents(cDir); cDir.delete(); }
+                Toast.makeText(this, folder.getName() + " deleted.", Toast.LENGTH_SHORT).show();
+                rescan();
+            })
+            .setNegativeButton("Cancel", null)
+            .show();
+    }
+
+    /** Delete a disc from the library: the .cue plus every data file it
+     *  references (multi-track sets), or the .iso/.zip on its own. */
+    private void confirmDeleteDisc(final File disc) {
+        new AlertDialog.Builder(this)
+            .setTitle(discName(disc))
+            .setMessage("Delete this disc from the device? This can't be undone.")
+            .setPositiveButton("Delete", (d, w) -> {
+                if (disc.getName().toLowerCase().endsWith(".cue")) {
+                    for (String dn : cueDataNames(disc)) {
+                        File data = new File(disc.getParentFile(), dn);
+                        if (data.isFile()) data.delete();
+                    }
+                }
+                disc.delete();
+                Toast.makeText(this, discName(disc) + " deleted.", Toast.LENGTH_SHORT).show();
+                rescan();
+            })
+            .setNegativeButton("Cancel", null)
+            .show();
     }
 
     /** Cache: does this disc carry DOS-runnable programs? (Windows-only CDs
@@ -981,6 +1058,7 @@ public class GameLauncherActivity extends Activity {
         // (it gets the trackpad mouse + the real gameport joystick instead).
         if (!bootable) menu.add("Edit controls...");
         menu.add(joyItem);
+        if (!bootable) menu.add(isFolder ? "Delete game..." : "Delete disc...");
         final String[] items = menu.toArray(new String[0]);
         new AlertDialog.Builder(this)
             .setTitle(gameName)
@@ -1002,6 +1080,8 @@ public class GameLauncherActivity extends Activity {
                 else if (it.startsWith("Create games disk")) createGamesDiskDialog(folder);
                 else if (it.startsWith("Copy game from D:")) copyFromGamesDiskDialog(folder);
                 else if (it.startsWith("Edit controls")) openKeymapEditor(gameName);
+                else if (it.startsWith("Delete game"))   confirmDeleteGame(folder);
+                else if (it.startsWith("Delete disc"))   confirmDeleteDisc(entry);
                 else                                     toggleJoystickMode(gameName, !joy);
             })
             .show();
