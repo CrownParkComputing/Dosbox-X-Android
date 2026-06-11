@@ -1,0 +1,25 @@
+# Gradle / build
+.gradle/
+build/
+app/build/
+*.apk
+*.ap_
+*.aab
+
+# Android Studio / IntelliJ
+.idea/
+*.iml
+captures/
+.externalNativeBuild/
+.cxx/
+
+# Local config (machine-specific SDK path)
+local.properties
+
+# Claude Code local settings
+.claude/settings.local.json
+
+# OS
+.DS_Store
+Thumbs.db
+*~

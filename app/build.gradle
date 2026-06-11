@@ -1,0 +1,41 @@
+plugins {
+    id 'com.android.application'
+}
+
+android {
+    namespace 'com.dosboxx.app'
+    compileSdk 35
+
+    defaultConfig {
+        applicationId 'com.dosboxx.app'
+        minSdk 28
+        targetSdk 35
+        versionCode 1
+        versionName '1.0'
+        ndk {
+            abiFilters 'arm64-v8a', 'x86_64'
+        }
+    }
+
+    buildTypes {
+        debug {
+            minifyEnabled false
+        }
+        release {
+            minifyEnabled false
+        }
+    }
+
+    // Native libs are prebuilt and dropped into src/main/jniLibs/<abi>/.
+    // Keep them extracted on disk so dlopen/SDL_LoadObject can find them by path.
+    packaging {
+        jniLibs {
+            useLegacyPackaging true
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+}

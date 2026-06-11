@@ -1,0 +1,4 @@
+<resources>
+    <string name="app_name">DOSBox-X</string>
+    <string name="keymap_editor_title">Game controls</string>
+</resources>
