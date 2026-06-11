@@ -254,7 +254,9 @@ public class GameLauncherActivity extends Activity {
      *  eject, long-press = put in drive), then the CD library (tap = insert). */
     private void buildWin98Rows(List<String> labels) {
         pathLabel.setText("Tap a library disc to insert it; tap a changer disc to eject it.\n"
-            + "Long-press a changer disc to put it in the drive for the next boot.");
+            + "Long-press a changer disc to put it in the drive for the next boot.\n"
+            + "Note: a CD in the drive forces Windows' slow disk mode — eject all "
+            + "discs for full hard-disk speed (install games to D:, then run CD-free).");
         List<File> boots = new ArrayList<>();
         File[] kids = gamesDir.listFiles();
         if (kids != null) {
