@@ -65,9 +65,18 @@ Put content under the app's external files dir
 
 ## Native core
 
-`libmain.so` is built from DOSBox-X (2026.06) for `arm64-v8a` and `x86_64`. It is checked
-in as a binary so the app builds without a native toolchain. To rebuild it, compile
-DOSBox-X for Android against SDL2 and replace the libs under `app/src/main/jniLibs/`.
+`libmain.so` is **DOSBox-X** compiled for `arm64-v8a` and `x86_64`, checked in under
+`app/src/main/jniLibs/` so the app builds without a native toolchain.
+
+Upstream DOSBox-X is tracked as a git submodule in [`native/`](native/), pinned to the
+release tag matching the shipped binary (`dosbox-x-v2026.06.02`). Our changes go on top
+as patch files in `native/patches/` (currently none), and `native/build-android.sh`
+drives the NDK cross-build. See [`native/README.md`](native/README.md) for the
+update / patch / rebuild workflow.
+
+```sh
+git clone --recurse-submodules <repo>      # or: git submodule update --init
+```
 
 ## Credits
 

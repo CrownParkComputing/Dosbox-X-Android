@@ -23,3 +23,7 @@ local.properties
 .DS_Store
 Thumbs.db
 *~
+# Build artifacts from the native cross-build
+native/build/
+native/toolchain/
+native/*.log

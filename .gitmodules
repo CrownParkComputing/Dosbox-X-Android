@@ -1,0 +1,5 @@
+[submodule "native/dosbox-x"]
+	path = native/dosbox-x
+	url = https://github.com/joncampbell123/dosbox-x.git
+	shallow = true
+	branch = master
