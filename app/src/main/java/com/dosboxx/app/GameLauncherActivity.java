@@ -52,11 +52,12 @@ public class GameLauncherActivity extends Activity {
     private File confFile;
     private TextView pathLabel;
     private ListView list;
-    private static final int TAB_DOS = 0, TAB_WIN98 = 1, TAB_IMPORT = 2;
-    private Button[] tabBtns = new Button[3];
-    private int tab = TAB_DOS;
+    private static final int TAB_GAMES = 0, TAB_IMPORT = 1;
+    private Button[] tabBtns = new Button[2];
+    private int tab = TAB_GAMES;
     private final List<Runnable> rowTap = new ArrayList<>();
     private final List<Runnable> rowHold = new ArrayList<>();
+    private File mPendingBootDisc;   // the one CD to mount for the next Win98 boot (or null)
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -135,11 +136,11 @@ public class GameLauncherActivity extends Activity {
         title.setTextSize(22);
         root.addView(title);
 
-        // MS-DOS | Windows 98 | Import tabs
+        // Games | Import tabs
         LinearLayout tabs = new LinearLayout(this);
         tabs.setOrientation(LinearLayout.HORIZONTAL);
-        String[] tabLabels = {"MS-DOS", "WINDOWS 98", "IMPORT"};
-        for (int i = 0; i < 3; i++) {
+        String[] tabLabels = {"GAMES", "IMPORT"};
+        for (int i = 0; i < tabLabels.length; i++) {
             final int which = i;
             Button b = new Button(this);
             b.setAllCaps(false);
@@ -177,13 +178,12 @@ public class GameLauncherActivity extends Activity {
         rowTap.clear();
         rowHold.clear();
         List<String> labels = new ArrayList<>();
-        for (int i = 0; i < 3; i++) {
+        for (int i = 0; i < tabBtns.length; i++) {
             tabBtns[i].setBackgroundColor(tab == i ? 0xFF3D6B8E : 0xFF2A3138);
             tabBtns[i].setTextColor(0xFFFFFFFF);
         }
-        if (tab == TAB_WIN98)       buildWin98Rows(labels);
-        else if (tab == TAB_IMPORT) buildImportRows(labels);
-        else                        buildDosRows(labels);
+        if (tab == TAB_IMPORT) buildImportRows(labels);
+        else                   buildGamesList(labels);
         ArrayAdapter<String> ad = new ArrayAdapter<String>(this,
                 android.R.layout.simple_list_item_1, labels) {
             @Override public View getView(int pos, View cv, ViewGroup parent) {
@@ -209,25 +209,34 @@ public class GameLauncherActivity extends Activity {
     /** MS-DOS tab: game folders (without an OS boot image) + disk images.
      *  CD-library discs are listed too — a disc is directly playable as a
      *  DOS CD game here AND insertable into Windows from the other tab. */
-    private void buildDosRows(List<String> labels) {
-        pathLabel.setText("DOS games (folders or .img/.iso/.cue) in:\n" + gamesDir.getAbsolutePath()
-            + "\n💾 = a game installed on the Windows D: drive — tap to copy it here and play.");
+    /** Unified games list: every game once, tagged [DOS]/[WIN98] and [CD]/[rip].
+     *  Tap to play; long-press to change type / CD / delete. */
+    private void buildGamesList(List<String> labels) {
+        pathLabel.setText("Tap to play · long-press to set DOS/Windows 98, CD/rip, or delete.\n"
+            + "[CD] = needs its disc inserted (slower Win98 disk) · [rip] = runs without the CD.");
+        final File boot = findBootFolder();
+
+        // Windows 98 desktop (boot the OS with no CD — full disk speed).
+        if (boot != null) {
+            labels.add("▶  Windows 98 desktop");
+            rowTap.add(() -> bootWin98(boot, null));
+            rowHold.add(() -> onLongPick(boot));
+        }
+
+        // All game folders (minus the Win98 OS) and disc images, each once.
+        List<File> entries = new ArrayList<>();
         File[] kids = gamesDir.listFiles();
         if (kids != null) {
             Arrays.sort(kids, NAME);
             for (File f : kids) {
-                if (f.getName().startsWith(".")) continue;   // .c = per-ISO C: drives
-                boolean game;
-                if (f.isDirectory()) game = findBootImage(f) == null;
-                else {
+                if (f.getName().startsWith(".")) continue;       // .c = per-ISO C: drives
+                if (f.isDirectory()) {
+                    if (findBootImage(f) != null) continue;       // the Win98 OS (desktop above)
+                    entries.add(f);
+                } else {
                     String n = f.getName().toLowerCase();
-                    game = n.endsWith(".img") || n.endsWith(".iso") || n.endsWith(".cue");
+                    if (n.endsWith(".img") || n.endsWith(".iso") || n.endsWith(".cue")) entries.add(f);
                 }
-                if (!game) continue;
-                final File entry = f;
-                labels.add((f.isDirectory() ? "📁 " : "💿 ") + f.getName());
-                rowTap.add(() -> onPick(entry));
-                rowHold.add(() -> onLongPick(entry));
             }
         }
         File[] discs = cdsDir.listFiles();
@@ -236,34 +245,84 @@ public class GameLauncherActivity extends Activity {
             for (File f : discs) {
                 if (f.isDirectory()) continue;
                 String n = f.getName().toLowerCase();
-                if (!n.endsWith(".iso") && !n.endsWith(".cue")) continue;
-                if (!isDosDisc(f)) continue;   // Windows-only discs live on the Win98 tab
-                final File entry = f;
-                labels.add("💿 " + f.getName());
-                rowTap.add(() -> onPick(entry));
-                rowHold.add(() -> onLongPick(entry));
+                if (n.endsWith(".iso") || n.endsWith(".cue")) entries.add(f);
             }
         }
-        // Games installed on the Windows data disk (D:) auto-appear here — tap
-        // to copy one out and play it in DOS. Lets you install in Windows, then
-        // run natively in DOS (and at full disk speed) without the extra steps.
+        Collections.sort(entries, new Comparator<File>() {
+            @Override public int compare(File a, File b) {
+                return gameName(a).compareToIgnoreCase(gameName(b));
+            }
+        });
+        for (File e : entries) addGameRow(labels, e, boot);
+
+        // Games installed on the Windows D: drive that aren't copied out yet.
         List<File> disks = new ArrayList<>();
         collectGamesDisks(gamesDir, 2, disks);
         for (File disk : disks) {
             final File gd = disk;
             for (String dn : Fat32Reader.listTopDirs(disk)) {
-                if (new File(gamesDir, dn).exists()) continue;   // already copied out
+                if (new File(gamesDir, dn).exists()) continue;
                 final String name = dn;
-                labels.add("💾 " + name + "   (on Windows D:)");
-                rowTap.add(() -> copyFromGamesDisk(gd, name, true));
-                rowHold.add(() -> copyFromGamesDisk(gd, name, false));
+                labels.add("💾 " + name + "   [WIN98] [on D:]");
+                rowTap.add(() -> bootWin98(boot, null));        // it's on D:, boot Windows
+                rowHold.add(() -> copyFromGamesDisk(gd, name, false));   // or copy to DOS
             }
         }
         if (labels.isEmpty()) {
-            labels.add("(no DOS games found)");
+            labels.add("(no games yet — add some on the Import tab)");
             rowTap.add(null);
             rowHold.add(null);
         }
+    }
+
+    /** Game display name (folder name, or disc basename). */
+    private static String gameName(File f) {
+        return f.isDirectory() ? f.getName() : discName(f);
+    }
+
+    /** Add one game row with its [DOS]/[WIN98] + [CD]/[rip] tags. */
+    private void addGameRow(List<String> labels, final File entry, final File boot) {
+        final String name = gameName(entry);
+        final boolean isDisc = !entry.isDirectory()
+            && (entry.getName().toLowerCase().endsWith(".iso") || entry.getName().toLowerCase().endsWith(".cue"));
+        // auto defaults: discs -> DOS if they hold DOS programs else WIN98; folders/.img -> DOS
+        String autoPlat = (isDisc && !isDosDisc(entry)) ? GameMeta.WIN98 : GameMeta.DOS;
+        final String plat = GameMeta.platform(this, name, autoPlat);
+        final boolean needsCd = GameMeta.needsCd(this, name, plat.equals(GameMeta.WIN98));
+        String tag = "   [" + (plat.equals(GameMeta.WIN98) ? "WIN98" : "DOS") + "] ["
+            + (needsCd ? "CD" : "rip") + "]";
+        labels.add((entry.isDirectory() ? "📁 " : "💿 ") + name + tag);
+        rowTap.add(() -> {
+            if (plat.equals(GameMeta.WIN98)) {
+                bootWin98(boot, needsCd && isDisc ? entry : null);
+            } else {
+                onPick(entry);
+            }
+        });
+        rowHold.add(() -> onLongPick(entry));
+    }
+
+    /** The folder holding the bootable Windows image, or null. */
+    private File findBootFolder() {
+        File[] kids = gamesDir.listFiles();
+        if (kids != null) {
+            Arrays.sort(kids, NAME);
+            for (File f : kids) {
+                if (f.isDirectory() && !f.getName().startsWith(".") && findBootImage(f) != null) return f;
+            }
+        }
+        return null;
+    }
+
+    /** Boot Windows 98 with exactly `disc` in the drive (or none, for full disk
+     *  speed). The disc stays in the CD library; it's mounted by absolute path. */
+    private void bootWin98(File boot, File disc) {
+        if (boot == null) {
+            Toast.makeText(this, "No Windows 98 image found in the games folder.", Toast.LENGTH_LONG).show();
+            return;
+        }
+        mPendingBootDisc = disc;
+        onPick(boot);
     }
 
     /** Copy a game folder out of a Windows data disk into MS-DOS games; if
@@ -290,89 +349,6 @@ public class GameLauncherActivity extends Activity {
         }).start();
     }
 
-    /** Windows 98 tab: a Boot row per OS image, its changer discs (tap =
-     *  eject, long-press = put in drive), then the CD library (tap = insert). */
-    private void buildWin98Rows(List<String> labels) {
-        pathLabel.setText("Tap a library disc to insert it; tap a changer disc to eject it.\n"
-            + "Long-press a changer disc to put it in the drive for the next boot.\n"
-            + "Note: a CD in the drive forces Windows' slow disk mode — eject all "
-            + "discs for full hard-disk speed (install games to D:, then run CD-free).");
-        List<File> boots = new ArrayList<>();
-        File[] kids = gamesDir.listFiles();
-        if (kids != null) {
-            Arrays.sort(kids, NAME);
-            for (File f : kids) {
-                if (f.isDirectory() && !f.getName().startsWith(".") && findBootImage(f) != null) boots.add(f);
-            }
-        }
-        if (boots.isEmpty()) {
-            labels.add("(no bootable Windows image found in " + gamesDir.getAbsolutePath() + ")");
-            rowTap.add(null);
-            rowHold.add(null);
-            return;
-        }
-        final File target = boots.get(0);   // insertion target (first OS folder)
-        for (File bf : boots) {
-            final File boot = bf;
-            labels.add("▶  Boot " + bf.getName());
-            rowTap.add(() -> onPick(boot));
-            rowHold.add(() -> onLongPick(boot));
-            List<File> inDrive = new ArrayList<>();
-            collectCds(bf, 3, inDrive);
-            for (int i = 0; i < inDrive.size(); i++) {
-                final File disc = inDrive.get(i);
-                labels.add("      💿 " + discName(disc) + (i == 0 ? "   ◀ in drive" : ""));
-                rowTap.add(() -> {
-                    if (moveCd(disc, cdsDir)) {
-                        Toast.makeText(this, discName(disc) + " ejected to the CD library.", Toast.LENGTH_SHORT).show();
-                    } else {
-                        Toast.makeText(this, "Couldn't eject " + discName(disc) + ".", Toast.LENGTH_LONG).show();
-                    }
-                    rescan();
-                });
-                rowHold.add(() -> {
-                    markFirstCd(boot, disc.getName());
-                    Toast.makeText(this, discName(disc) + " is in the drive for the next boot.", Toast.LENGTH_SHORT).show();
-                    rescan();
-                });
-            }
-        }
-        labels.add("─── CD library (tap = insert, long-press = delete) ───");
-        rowTap.add(null);
-        rowHold.add(null);
-        int before = labels.size();
-        for (File dir : new File[]{cdsDir, gamesDir}) {
-            File[] items = dir.listFiles();
-            if (items == null) continue;
-            Arrays.sort(items, NAME);
-            for (File f : items) {
-                if (f.isDirectory()) continue;
-                String n = f.getName().toLowerCase();
-                boolean zip = n.endsWith(".zip");
-                if (!zip && !n.endsWith(".iso") && !n.endsWith(".cue")) continue;
-                final File disc = f;
-                labels.add("      " + (zip ? "🗜 " : "○ ") + discName(f));
-                rowTap.add(() -> {
-                    if (disc.getName().toLowerCase().endsWith(".zip")) {
-                        insertZipAsCd(disc, target);
-                    } else if (moveCd(disc, target)) {
-                        markFirstCd(target, disc.getName());
-                        Toast.makeText(this, discName(disc) + " is in the drive.", Toast.LENGTH_SHORT).show();
-                        rescan();
-                    } else {
-                        Toast.makeText(this, "Couldn't insert " + discName(disc) + ".", Toast.LENGTH_LONG).show();
-                    }
-                });
-                rowHold.add(() -> confirmDeleteDisc(disc));
-            }
-        }
-        if (labels.size() == before) {
-            labels.add("      (library is empty — put .iso/.cue+bin/.zip in " + cdsDir.getAbsolutePath() + ")");
-            rowTap.add(null);
-            rowHold.add(null);
-        }
-    }
-
     /** Delete a game folder (and its per-game keymap + persistent C: drive). */
     private void confirmDeleteGame(final File folder) {
         new AlertDialog.Builder(this)
@@ -382,6 +358,7 @@ public class GameLauncherActivity extends Activity {
                 deleteContents(folder); folder.delete();
                 File cDir = new File(gamesDir, ".c/" + KeyMapStore.safeName(folder.getName()));
                 if (cDir.isDirectory()) { deleteContents(cDir); cDir.delete(); }
+                GameMeta.clear(this, folder.getName());
                 Toast.makeText(this, folder.getName() + " deleted.", Toast.LENGTH_SHORT).show();
                 rescan();
             })
@@ -403,6 +380,7 @@ public class GameLauncherActivity extends Activity {
                     }
                 }
                 disc.delete();
+                GameMeta.clear(this, discName(disc));
                 Toast.makeText(this, discName(disc) + " deleted.", Toast.LENGTH_SHORT).show();
                 rescan();
             })
@@ -541,7 +519,7 @@ public class GameLauncherActivity extends Activity {
                 dlg.dismiss();
                 if (ok) {
                     Toast.makeText(this, archive.getName() + " installed to " + dest + ".", Toast.LENGTH_LONG).show();
-                    tab = asCd ? TAB_WIN98 : TAB_DOS;
+                    tab = TAB_GAMES;
                     rescan();
                     if (fWinVer >= 5) {
                         new AlertDialog.Builder(this)
@@ -719,18 +697,14 @@ public class GameLauncherActivity extends Activity {
                 + "\" -size 512,63,255," + cyl + " -t hdd -fs none");
             driveNo++;
         }
-        // CDs on IDE secondary master (classic PC layout). The guest reads
-        // them through the injected real-mode driver chain (CD1.SYS scans all
-        // IDE channels; MSCDEX pins the CD at E: so installs never re-letter).
-        // All CD images in the folder are one swap set — the CD⇄ overlay
-        // button (Ctrl+F4) cycles them while the guest runs.
-        List<File> cds = new ArrayList<>();
-        collectCds(folder, 3, cds);
-        if (!cds.isEmpty()) {
-            StringBuilder im = new StringBuilder("imgmount d");
-            for (File cd : cds) im.append(" \"").append(cd.getAbsolutePath()).append("\"");
-            im.append(" -t iso -ide 2m");
-            lines.add(im.toString());
+        // Exactly one CD this boot (or none) — mounted by absolute path from
+        // the library, IDE secondary master. The guest reads it via the
+        // injected real-mode chain (CD1.SYS scans channels; MSCDEX pins E:).
+        // No CD = the disk stays in fast 32-bit mode; a CD forces compat mode.
+        File disc = mPendingBootDisc;
+        mPendingBootDisc = null;
+        if (disc != null && disc.isFile()) {
+            lines.add("imgmount d \"" + disc.getAbsolutePath() + "\" -t iso -ide 2m");
         }
         lines.add("boot c:");
 
@@ -1054,6 +1028,15 @@ public class GameLauncherActivity extends Activity {
             if (disks.isEmpty()) menu.add("Create games disk (D:)...");
             else menu.add("Copy game from D: to MS-DOS...");
         }
+        // Per-game type (DOS / Windows 98) + CD (rip / needs CD) assignment.
+        final String metaName = gameName(entry);
+        final String autoPlat = (isCdImage && !isDosDisc(entry)) ? GameMeta.WIN98 : GameMeta.DOS;
+        final String plat = GameMeta.platform(this, metaName, autoPlat);
+        final boolean needsCd = GameMeta.needsCd(this, metaName, plat.equals(GameMeta.WIN98));
+        if (!bootable) {
+            menu.add(plat.equals(GameMeta.WIN98) ? "Set type → MS-DOS" : "Set type → Windows 98");
+            menu.add(needsCd ? "CD: needs disc (tap = mark as rip)" : "CD: rip / no disc (tap = needs CD)");
+        }
         // Gamepad→key mapping is meaningless for a booted Windows guest
         // (it gets the trackpad mouse + the real gameport joystick instead).
         if (!bootable) menu.add("Edit controls...");
@@ -1079,6 +1062,13 @@ public class GameLauncherActivity extends Activity {
                 else if (it.startsWith("Eject CD"))     ejectCdDialog(folder);
                 else if (it.startsWith("Create games disk")) createGamesDiskDialog(folder);
                 else if (it.startsWith("Copy game from D:")) copyFromGamesDiskDialog(folder);
+                else if (it.startsWith("Set type")) {
+                    String np = plat.equals(GameMeta.WIN98) ? GameMeta.DOS : GameMeta.WIN98;
+                    GameMeta.setPlatform(this, metaName, np);
+                    GameMeta.setNeedsCd(this, metaName, np.equals(GameMeta.WIN98));
+                    rescan();
+                }
+                else if (it.startsWith("CD:")) { GameMeta.setNeedsCd(this, metaName, !needsCd); rescan(); }
                 else if (it.startsWith("Edit controls")) openKeymapEditor(gameName);
                 else if (it.startsWith("Delete game"))   confirmDeleteGame(folder);
                 else if (it.startsWith("Delete disc"))   confirmDeleteDisc(entry);
@@ -1143,7 +1133,7 @@ public class GameLauncherActivity extends Activity {
                 if (ok) {
                     Toast.makeText(this, name + " added to MS-DOS games — you can delete the disc now.",
                         Toast.LENGTH_LONG).show();
-                    tab = TAB_DOS;
+                    tab = TAB_GAMES;
                     rescan();
                 } else {
                     deleteContents(dest); dest.delete();
@@ -1508,7 +1498,7 @@ public class GameLauncherActivity extends Activity {
                         dlg.dismiss();
                         if (ok) {
                             Toast.makeText(this, name + " copied to MS-DOS games.", Toast.LENGTH_LONG).show();
-                            tab = TAB_DOS;
+                            tab = TAB_GAMES;
                             rescan();
                         } else {
                             deleteContents(dest); dest.delete();
