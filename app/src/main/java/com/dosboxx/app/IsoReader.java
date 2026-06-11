@@ -34,6 +34,10 @@ final class IsoReader implements AutoCloseable {
     static final class Scan {
         final List<String> programs = new ArrayList<>();   // "DIR\\RUN.EXE" style paths
         boolean sawWindowsExe = false;
+        /** Highest PE "major subsystem version" across the Windows exes — the
+         *  minimum Windows it targets. 4 = Win9x/NT4; >=5 = Win2000/XP+ (won't
+         *  run on Windows 98). 0 if no PE exe was inspected. */
+        int maxWinSubsystem = 0;
     }
 
     private final RandomAccessFile raf;
@@ -205,8 +209,13 @@ final class IsoReader implements AutoCloseable {
                             if (lower.endsWith(".bat") || lower.endsWith(".com")) {
                                 scan.programs.add(prefix + name);
                             } else if (lower.endsWith(".exe")) {
-                                if (isWindowsExe(extLba, extLen)) scan.sawWindowsExe = true;
-                                else scan.programs.add(prefix + name);
+                                if (isWindowsExe(extLba, extLen)) {
+                                    scan.sawWindowsExe = true;
+                                    int sub = peMajorSubsystem(extLba, extLen);
+                                    if (sub > scan.maxWinSubsystem) scan.maxWinSubsystem = sub;
+                                } else {
+                                    scan.programs.add(prefix + name);
+                                }
                             }
                         }
                     }
@@ -230,6 +239,28 @@ final class IsoReader implements AutoCloseable {
             return (sig[0] == 'P' && sig[1] == 'E') || (sig[0] == 'N' && sig[1] == 'E');
         } catch (IOException e) {
             return false;
+        }
+    }
+
+    /** PE "MajorSubsystemVersion" of a Windows exe (the min Windows it needs):
+     *  4 = Win9x/NT4, 5 = Win2000/XP, 6 = Vista+. 0 if not a PE32(+). */
+    private int peMajorSubsystem(long lba, long size) {
+        try {
+            if (size < 0x40) return 0;
+            byte[] hdr = new byte[64];
+            readAt(lba, 0, hdr, 64);
+            if (hdr[0] != 'M' || hdr[1] != 'Z') return 0;
+            long e = u32le(hdr, 0x3c);                    // e_lfanew → PE header
+            if (e <= 0 || e + 74 > size) return 0;
+            byte[] sig = new byte[4];
+            readAt(lba, e, sig, 4);
+            if (!(sig[0] == 'P' && sig[1] == 'E' && sig[2] == 0 && sig[3] == 0)) return 0;
+            // Optional header begins at e+24; MajorSubsystemVersion is at +48.
+            byte[] v = new byte[2];
+            readAt(lba, e + 24 + 48, v, 2);
+            return (v[0] & 0xff) | ((v[1] & 0xff) << 8);
+        } catch (IOException ex) {
+            return 0;
         }
     }
 

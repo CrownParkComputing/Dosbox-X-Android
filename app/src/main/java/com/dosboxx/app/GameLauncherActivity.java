@@ -442,8 +442,14 @@ public class GameLauncherActivity extends Activity {
         new Thread(() -> {
             final boolean ok;
             final String dest;
+            int winVer = 0;
             if (asCd) {
+                java.util.Set<String> before = listNamesIn(cdsDir);
                 ok = ArchiveExtractor.extractDiscImages(archive, cdsDir, progress);
+                if (ok) {
+                    File disc = newDisc(cdsDir, before);
+                    if (disc != null) winVer = IsoReader.scan(disc, 4).maxWinSubsystem;
+                }
                 dest = "CD library";
             } else {
                 String name = archive.getName().replaceFirst("(?i)\\.(zip|7z)$", "");
@@ -451,17 +457,43 @@ public class GameLauncherActivity extends Activity {
                 ok = ArchiveExtractor.extractGame(archive, gameDir, progress);
                 dest = "MS-DOS games";
             }
+            final int fWinVer = winVer;
             runOnUiThread(() -> {
                 dlg.dismiss();
                 if (ok) {
                     Toast.makeText(this, archive.getName() + " installed to " + dest + ".", Toast.LENGTH_LONG).show();
                     tab = asCd ? TAB_WIN98 : TAB_DOS;
                     rescan();
+                    if (fWinVer >= 5) {
+                        new AlertDialog.Builder(this)
+                            .setTitle("May not run in Windows 98")
+                            .setMessage("This CD's program needs Windows 2000/XP (build " + fWinVer
+                                + ".x) and probably won't run in the Windows 98 guest.")
+                            .setPositiveButton("OK", null)
+                            .show();
+                    }
                 } else {
                     Toast.makeText(this, "Couldn't extract " + archive.getName() + ".", Toast.LENGTH_LONG).show();
                 }
             });
         }).start();
+    }
+
+    private static java.util.Set<String> listNamesIn(File dir) {
+        java.util.Set<String> s = new java.util.HashSet<>();
+        File[] k = dir.listFiles();
+        if (k != null) for (File f : k) s.add(f.getName());
+        return s;
+    }
+
+    /** A newly-appeared .cue/.iso in dir (the disc just extracted), or null. */
+    private static File newDisc(File dir, java.util.Set<String> before) {
+        File[] k = dir.listFiles();
+        if (k != null) for (File f : k) {
+            String n = f.getName().toLowerCase();
+            if ((n.endsWith(".cue") || n.endsWith(".iso")) && !before.contains(f.getName())) return f;
+        }
+        return null;
     }
 
     private void confirmDeleteArchive(final File archive) {
@@ -483,7 +515,14 @@ public class GameLauncherActivity extends Activity {
                 return;
             }
             File launcher = autoPickLauncher(entry);
-            launchGame(entry, launcher);
+            // Ambiguous folder (several runnable programs, no known/single
+            // launcher — typical of a game copied in from Windows or a CD):
+            // prompt for which exe to run instead of guessing.
+            if (launcher != null && shouldPromptForExe(entry)) {
+                showLauncherPicker(entry);
+            } else {
+                launchGame(entry, launcher);
+            }
         } else {
             String n = entry.getName().toLowerCase();
             if (n.endsWith(".img")) {
@@ -934,6 +973,7 @@ public class GameLauncherActivity extends Activity {
             List<File> disks = new ArrayList<>();
             collectGamesDisks(folder, 2, disks);
             if (disks.isEmpty()) menu.add("Create games disk (D:)...");
+            else menu.add("Copy game from D: to MS-DOS...");
         }
         // Gamepad→key mapping is meaningless for a booted Windows guest
         // (it gets the trackpad mouse + the real gameport joystick instead).
@@ -958,6 +998,7 @@ public class GameLauncherActivity extends Activity {
                 else if (it.startsWith("Insert CD"))    insertCdDialog(folder);
                 else if (it.startsWith("Eject CD"))     ejectCdDialog(folder);
                 else if (it.startsWith("Create games disk")) createGamesDiskDialog(folder);
+                else if (it.startsWith("Copy game from D:")) copyFromGamesDiskDialog(folder);
                 else if (it.startsWith("Edit controls")) openKeymapEditor(gameName);
                 else                                     toggleJoystickMode(gameName, !joy);
             })
@@ -1350,6 +1391,53 @@ public class GameLauncherActivity extends Activity {
         } catch (IOException ignored) { }
     }
 
+    /** List the game folders installed on the Windows data disk (D:) and copy
+     *  a chosen one out to a host games/<name>/ folder (an MS-DOS menu entry). */
+    private void copyFromGamesDiskDialog(File folder) {
+        List<File> disks = new ArrayList<>();
+        collectGamesDisks(folder, 2, disks);
+        if (disks.isEmpty()) {
+            Toast.makeText(this, "No games disk (D:) in this folder.", Toast.LENGTH_LONG).show();
+            return;
+        }
+        final File disk = disks.get(0);
+        final List<String> dirs = Fat32Reader.listTopDirs(disk);
+        if (dirs.isEmpty()) {
+            Toast.makeText(this, "No game folders found on D: — install a game in Windows first.",
+                Toast.LENGTH_LONG).show();
+            return;
+        }
+        final String[] names = dirs.toArray(new String[0]);
+        new AlertDialog.Builder(this)
+            .setTitle("Copy which game from D:?")
+            .setItems(names, (d, w) -> {
+                final String name = names[w];
+                final File dest = new File(gamesDir, name);
+                if (dest.exists()) {
+                    Toast.makeText(this, "\"" + name + "\" is already in MS-DOS games.", Toast.LENGTH_LONG).show();
+                    return;
+                }
+                final AlertDialog dlg = new AlertDialog.Builder(this)
+                    .setTitle(name).setMessage("Copying from D: to MS-DOS games…")
+                    .setCancelable(false).show();
+                new Thread(() -> {
+                    final boolean ok = Fat32Reader.extractTopDir(disk, name, dest);
+                    runOnUiThread(() -> {
+                        dlg.dismiss();
+                        if (ok) {
+                            Toast.makeText(this, name + " copied to MS-DOS games.", Toast.LENGTH_LONG).show();
+                            tab = TAB_DOS;
+                            rescan();
+                        } else {
+                            deleteContents(dest); dest.delete();
+                            Toast.makeText(this, "Couldn't copy " + name + ".", Toast.LENGTH_LONG).show();
+                        }
+                    });
+                }).start();
+            })
+            .show();
+    }
+
     /** Data-disk images (gamesdisk*.img) under dir, sorted by name. */
     private void collectGamesDisks(File dir, int depth, List<File> out) {
         File[] kids = dir.listFiles();
@@ -1481,6 +1569,19 @@ public class GameLauncherActivity extends Activity {
         if (filtered.isEmpty()) return null;            // drop to C: prompt
         if (filtered.size() == 1) return filtered.get(0);
         return filtered.get(0);                          // .bat wins, then alphabetical first
+    }
+
+    /** True when tapping a folder should prompt for the exe rather than auto-
+     *  run: more than one runnable program and no known-title / single pick. */
+    private boolean shouldPromptForExe(File folder) {
+        String g = folder.getName().toLowerCase();
+        if (preferredExes(folder.getName()) != null) return false;   // known title
+        if (g.contains("screamer") || g.contains("whiplash")) return false;
+        List<File> launchers = findLaunchers(folder, 3);
+        List<File> filtered = new ArrayList<>();
+        for (File f : launchers) if (!isFilteredName(f.getName().toLowerCase())) filtered.add(f);
+        if (filtered.isEmpty()) filtered = launchers;
+        return filtered.size() > 1;
     }
 
     /** Always show the launcher picker (long-press "Pick program..."). */
