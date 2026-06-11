@@ -736,9 +736,11 @@ public class SDLActivity extends Activity implements View.OnSystemUiVisibilityCh
             @Override public void onClick(View v) {
                 mDosKeyPanel.setVisibility(
                     mDosKeyPanel.getVisibility()==View.VISIBLE ? View.GONE : View.VISIBLE);
+                showOverlayButtons();
             }
         });
         mLayout.addView(toggle, tlp);
+        mOverlayButtons.add(toggle);
 
         // Disc picker (2+ discs mounted): the swap set is fixed at boot, but
         // any disc in it can be put in the drive by name. Top-right, left of ✕.
@@ -757,6 +759,7 @@ public class SDLActivity extends Activity implements View.OnSystemUiVisibilityCh
                 @Override public void onClick(View v) { showCdPicker(); }
             });
             mLayout.addView(cdBtn, cb);
+            mOverlayButtons.add(cdBtn);
         }
 
         // Exit: confirm, then back to the games list (kills this :emu process).
@@ -801,6 +804,47 @@ public class SDLActivity extends Activity implements View.OnSystemUiVisibilityCh
             }
         });
         mLayout.addView(exitBtn, xb);
+        mOverlayButtons.add(exitBtn);
+
+        showOverlayButtons();   // visible on launch, then auto-hide after 2s
+    }
+
+    // ---- auto-hiding overlay buttons (⌨ / CD▾ / ✕) for a clean "cursor only"
+    //      view: they fade out 2s after a touch and reappear on the next touch.
+    private final java.util.List<View> mOverlayButtons = new java.util.ArrayList<>();
+    private final android.os.Handler mOverlayHandler =
+        new android.os.Handler(android.os.Looper.getMainLooper());
+    private final Runnable mHideOverlays = new Runnable() {
+        @Override public void run() {
+            // Keep them up while the on-screen keyboard is open.
+            if (mDosKeyPanel != null && mDosKeyPanel.getVisibility() == View.VISIBLE) {
+                showOverlayButtons();
+                return;
+            }
+            for (View b : mOverlayButtons) {
+                b.animate().alpha(0f).setDuration(250).withEndAction(() -> b.setVisibility(View.GONE));
+            }
+        }
+    };
+
+    /** Reveal the overlay buttons and (re)start the 2-second hide timer. */
+    private void showOverlayButtons() {
+        for (View b : mOverlayButtons) {
+            b.animate().cancel();
+            b.setVisibility(View.VISIBLE);
+            b.setAlpha(1f);
+        }
+        mOverlayHandler.removeCallbacks(mHideOverlays);
+        mOverlayHandler.postDelayed(mHideOverlays, 2000);
+    }
+
+    @Override
+    public boolean dispatchTouchEvent(android.view.MotionEvent ev) {
+        if (ev.getActionMasked() == android.view.MotionEvent.ACTION_DOWN
+                && !mOverlayButtons.isEmpty()) {
+            showOverlayButtons();   // reveal on touch; event still passes through
+        }
+        return super.dispatchTouchEvent(ev);
     }
 
     /** Append the right-hand nav cluster to a row: a spacer padding the main
