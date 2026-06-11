@@ -920,6 +920,7 @@ public class GameLauncherActivity extends Activity {
         List<String> menu = new ArrayList<>();
         if ((isFolder && !bootable) || isCdImage) menu.add("Pick program...");
         if (isCdImage) menu.add("Install to C: (copy the CD)...");
+        if (isCdImage && isDosDisc(entry)) menu.add("Copy to MS-DOS games...");
         if (setup != null && !bootable) menu.add("Run setup... (" + relpath(folder, setup) + ")");
         if (isFolder) {
             // CD changer for any folder game (booted OS or plain DOS): all
@@ -952,6 +953,7 @@ public class GameLauncherActivity extends Activity {
                     if (!cDir.exists()) cDir.mkdirs();
                     copyCdToCThenLaunch(entry, cDir);
                 }
+                else if (it.startsWith("Copy to MS-DOS games")) copyIsoToDosGames(entry);
                 else if (it.startsWith("Run setup"))    launchGame(folder, setup);
                 else if (it.startsWith("Insert CD"))    insertCdDialog(folder);
                 else if (it.startsWith("Eject CD"))     ejectCdDialog(folder);
@@ -990,6 +992,72 @@ public class GameLauncherActivity extends Activity {
                 }
             })
             .show();
+    }
+
+    /** Copy a DOS-game CD into a visible games/<name>/ folder so it becomes a
+     *  normal MS-DOS menu entry. If the game was already installed onto its
+     *  per-ISO C: drive (ran an installer), copy that install; otherwise copy
+     *  the CD contents straight out. Afterwards the ISO can be deleted. */
+    private void copyIsoToDosGames(final File iso) {
+        final String name = discName(iso);
+        final File dest = new File(gamesDir, name);
+        if (dest.exists()) {
+            Toast.makeText(this, "A game folder named \"" + name + "\" already exists.", Toast.LENGTH_LONG).show();
+            return;
+        }
+        final File cDir = new File(gamesDir, ".c/" + KeyMapStore.safeName(iso.getName()));
+        final boolean fromInstall = cDir.isDirectory() && autoPickLauncher(cDir) != null;
+        final AlertDialog dlg = new AlertDialog.Builder(this)
+            .setTitle(name)
+            .setMessage(fromInstall ? "Copying the installed game to MS-DOS games…"
+                                    : "Copying the CD to MS-DOS games…")
+            .setCancelable(false)
+            .show();
+        new Thread(() -> {
+            final boolean ok = fromInstall ? copyDir(cDir, dest) : IsoReader.extractTo(iso, dest);
+            runOnUiThread(() -> {
+                dlg.dismiss();
+                if (ok) {
+                    Toast.makeText(this, name + " added to MS-DOS games — you can delete the disc now.",
+                        Toast.LENGTH_LONG).show();
+                    tab = TAB_DOS;
+                    rescan();
+                } else {
+                    deleteContents(dest); dest.delete();
+                    Toast.makeText(this, "Couldn't copy " + name + ".", Toast.LENGTH_LONG).show();
+                }
+            });
+        }).start();
+    }
+
+    /** Recursive directory copy. */
+    private static boolean copyDir(File src, File dst) {
+        if (!dst.exists() && !dst.mkdirs()) return false;
+        File[] kids = src.listFiles();
+        if (kids == null) return true;
+        for (File f : kids) {
+            File out = new File(dst, f.getName());
+            if (f.isDirectory()) { if (!copyDir(f, out)) return false; }
+            else if (!copyFile(f, out)) return false;
+        }
+        return true;
+    }
+
+    private static boolean copyFile(File src, File dst) {
+        try {
+            FileInputStream in = new FileInputStream(src);
+            try {
+                FileOutputStream o = new FileOutputStream(dst);
+                try {
+                    byte[] buf = new byte[65536];
+                    int n;
+                    while ((n = in.read(buf)) > 0) o.write(buf, 0, n);
+                } finally { o.close(); }
+            } finally { in.close(); }
+            return true;
+        } catch (IOException e) {
+            return false;
+        }
     }
 
     /** Move a CD image between two folders — for cue sheets, EVERY data file

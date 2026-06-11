@@ -40,6 +40,7 @@ final class IsoReader implements AutoCloseable {
     private int sectorSize;   // bytes per raw sector in the file
     private int dataOffset;   // offset of the 2048-byte payload within a sector
     private long rootLba, rootLen;
+    private boolean joliet;   // names are UCS-2 (long filenames), not 8.3 ASCII
 
     /** List DOS programs on the image. Unreadable / non-9660 → empty result. */
     static Scan scan(File isoOrCue, int maxDepth) {
@@ -126,11 +127,39 @@ final class IsoReader implements AutoCloseable {
                 // Root directory record lives at offset 156 of the PVD.
                 rootLba = u32le(pvd, 156 + 2);
                 rootLen = u32le(pvd, 156 + 10);
+                // Prefer the Joliet Supplementary Volume Descriptor if present
+                // — it carries the real long filenames (UCS-2). Without it we
+                // only see the mangled 8.3 ISO9660 names (e.g. NEEDFO~1.EXE).
+                findJoliet();
                 return;
             }
         }
         raf.close();
         throw new IOException("no ISO9660 volume descriptor");
+    }
+
+    /** Scan the volume-descriptor set for a Joliet SVD; if found, switch the
+     *  reader to its directory tree and UCS-2 name decoding. */
+    private void findJoliet() {
+        byte[] vd = new byte[SECTOR_DATA];
+        for (long s = 17; s < 33; s++) {
+            try {
+                readAt(s, 0, vd, SECTOR_DATA);
+            } catch (IOException e) {
+                return;
+            }
+            int type = vd[0] & 0xff;
+            if (type == 255) return;                       // descriptor-set terminator
+            if (vd[1] != 'C' || vd[2] != 'D' || vd[3] != '0' || vd[4] != '0' || vd[5] != '1') return;
+            // Type 2 = SVD; Joliet escape sequence "%/@", "%/C" or "%/E" at off 88.
+            if (type == 2 && (vd[88] & 0xff) == 0x25 && (vd[89] & 0xff) == 0x2F
+                    && (vd[90] == 0x40 || vd[90] == 0x43 || vd[90] == 0x45)) {
+                rootLba = u32le(vd, 156 + 2);
+                rootLen = u32le(vd, 156 + 10);
+                joliet = true;
+                return;
+            }
+        }
     }
 
     /** Walk a directory extent: collect programs into scan and/or extract into destDir. */
@@ -151,7 +180,9 @@ final class IsoReader implements AutoCloseable {
                 // Skip the self (0x00) and parent (0x01) entries.
                 boolean special = nameLen == 1 && (buf[pos + 33] == 0 || buf[pos + 33] == 1);
                 if (!special && nameLen > 0 && pos + 33 + nameLen <= SECTOR_DATA) {
-                    String name = new String(buf, pos + 33, nameLen, "US-ASCII");
+                    // Joliet names are big-endian UCS-2; plain ISO9660 is ASCII.
+                    String name = new String(buf, pos + 33, nameLen,
+                        joliet ? "UTF-16BE" : "US-ASCII");
                     int semi = name.indexOf(';');   // strip the ";1" version suffix
                     if (semi >= 0) name = name.substring(0, semi);
                     if (name.endsWith(".")) name = name.substring(0, name.length() - 1);
