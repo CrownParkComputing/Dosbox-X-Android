@@ -63,14 +63,9 @@ public class GameLauncherActivity extends Activity {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
 
-        File ext = getExternalFilesDir(null);
-        gamesDir = new File(ext, "games");
-        if (!gamesDir.exists()) gamesDir.mkdirs();
-        cdsDir = new File(ext, "cds");
-        if (!cdsDir.exists()) cdsDir.mkdirs();
-        importDir = new File(ext, "import");
-        if (!importDir.exists()) importDir.mkdirs();
-        confFile = new File(ext, "dosbox-x.conf");
+        initDirs();
+        // The conf is always read by the emulator from the app's own dir.
+        confFile = new File(getExternalFilesDir(null), "dosbox-x.conf");
 
         // A game/Windows session is still running (app was minimized, not
         // exited) → resume it instead of showing the launcher; skip the splash.
@@ -123,6 +118,154 @@ public class GameLauncherActivity extends Activity {
         return false;
     }
 
+    // ---- storage setup wizard ----
+
+    /** Choose where the games / cds / import folders live. */
+    private void storageWizard() {
+        File base = AppConfig.baseDir(this);
+        new AlertDialog.Builder(this)
+            .setTitle("Storage location")
+            .setMessage("Games, CDs and imports are stored under:\n" + base.getAbsolutePath()
+                + "\n\nKeep them in the app folder, or choose any folder on your device "
+                + "(easier to reach from a file manager).")
+            .setPositiveButton("Choose a folder…", (d, w) -> chooseFolder())
+            .setNeutralButton("Use app folder", (d, w) -> applyNewBase(AppConfig.defaultBase(this)))
+            .setNegativeButton("Close", null)
+            .show();
+    }
+
+    private void chooseFolder() {
+        if (android.os.Build.VERSION.SDK_INT >= 30 && !android.os.Environment.isExternalStorageManager()) {
+            new AlertDialog.Builder(this)
+                .setTitle("Permission needed")
+                .setMessage("To store games outside the app folder, DOSBox-X needs \"All files access\". "
+                    + "Grant it on the next screen, then tap Storage… again.")
+                .setPositiveButton("Open settings", (d, w) -> {
+                    try {
+                        startActivity(new android.content.Intent(
+                            android.provider.Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION,
+                            android.net.Uri.parse("package:" + getPackageName())));
+                    } catch (Exception e) {
+                        startActivity(new android.content.Intent(
+                            android.provider.Settings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION));
+                    }
+                })
+                .setNegativeButton("Cancel", null)
+                .show();
+            return;
+        }
+        File start = android.os.Environment.getExternalStorageDirectory();   // /storage/emulated/0
+        pickDirectory(start, dir -> applyNewBase(new File(dir, "DOSBox-X")));
+    }
+
+    /** Simple directory browser yielding a real filesystem path. */
+    private void pickDirectory(final File dir, final java.util.function.Consumer<File> onPick) {
+        File[] kids = dir.listFiles();
+        final List<File> subs = new ArrayList<>();
+        if (kids != null) {
+            Arrays.sort(kids, NAME);
+            for (File f : kids) if (f.isDirectory() && !f.getName().startsWith(".")) subs.add(f);
+        }
+        final File parent = dir.getParentFile();
+        final List<String> items = new ArrayList<>();
+        if (parent != null) items.add("⬆  ..");
+        for (File s : subs) items.add("📁  " + s.getName());
+        new AlertDialog.Builder(this)
+            .setTitle(dir.getAbsolutePath())
+            .setItems(items.toArray(new String[0]), (d, w) -> {
+                if (parent != null && w == 0) pickDirectory(parent, onPick);
+                else pickDirectory(subs.get(parent != null ? w - 1 : w), onPick);
+            })
+            .setPositiveButton("Use this folder", (d, w) -> onPick.accept(dir))
+            .setNegativeButton("Cancel", null)
+            .show();
+    }
+
+    private void applyNewBase(final File newBase) {
+        final File oldBase = AppConfig.baseDir(this);
+        if (newBase.getAbsolutePath().equals(oldBase.getAbsolutePath())) {
+            Toast.makeText(this, "Already storing games there.", Toast.LENGTH_SHORT).show();
+            return;
+        }
+        newBase.mkdirs();
+        if (hasLibrary(oldBase)) {
+            new AlertDialog.Builder(this)
+                .setTitle("Move existing games?")
+                .setMessage("Move your current games, CDs and imports to\n" + newBase.getAbsolutePath() + " ?")
+                .setPositiveButton("Move", (d, w) -> migrateThenSet(oldBase, newBase))
+                .setNeutralButton("Switch (leave old files)", (d, w) -> setBase(newBase, "Storage set."))
+                .setNegativeButton("Cancel", null)
+                .show();
+        } else {
+            setBase(newBase, "Games will be stored in " + newBase.getAbsolutePath());
+        }
+    }
+
+    private void setBase(File newBase, String msg) {
+        if (newBase.getAbsolutePath().equals(AppConfig.defaultBase(this).getAbsolutePath())) AppConfig.useDefault(this);
+        else AppConfig.setBaseDir(this, newBase);
+        initDirs();
+        rescan();
+        Toast.makeText(this, msg, Toast.LENGTH_LONG).show();
+    }
+
+    private boolean hasLibrary(File base) {
+        for (String s : new String[]{"games", "cds", "import"}) {
+            File[] k = new File(base, s).listFiles();
+            if (k != null && k.length > 0) return true;
+        }
+        return false;
+    }
+
+    private void migrateThenSet(final File oldBase, final File newBase) {
+        final AlertDialog dlg = new AlertDialog.Builder(this)
+            .setMessage("Moving games to the new folder…").setCancelable(false).show();
+        new Thread(() -> {
+            boolean ok = true;
+            for (String s : new String[]{"games", "cds", "import"}) {
+                ok &= moveTree(new File(oldBase, s), new File(newBase, s));
+            }
+            final boolean fOk = ok;
+            runOnUiThread(() -> {
+                dlg.dismiss();
+                setBase(newBase, fOk ? "Games moved." : "Moved (some files couldn't be moved).");
+            });
+        }).start();
+    }
+
+    /** Move a directory tree (fast rename when possible, else copy+delete). */
+    private boolean moveTree(File src, File dst) {
+        if (!src.exists()) return true;
+        if (!dst.exists() && src.renameTo(dst)) return true;
+        if (!dst.exists() && !dst.mkdirs()) return false;
+        File[] kids = src.listFiles();
+        if (kids != null) for (File f : kids) {
+            File out = new File(dst, f.getName());
+            boolean moved = f.renameTo(out)
+                || (f.isDirectory() ? (copyDir(f, out) && deleteTree(f)) : (copyFile(f, out) && f.delete()));
+            if (!moved) return false;
+        }
+        src.delete();
+        return true;
+    }
+
+    private static boolean deleteTree(File d) {
+        File[] k = d.listFiles();
+        if (k != null) for (File f : k) { if (f.isDirectory()) deleteTree(f); else f.delete(); }
+        return d.delete();
+    }
+
+    /** Point games/cds/import at the configured base folder (app dir by default). */
+    private void initDirs() {
+        File base = AppConfig.baseDir(this);
+        gamesDir = new File(base, "games");
+        if (!gamesDir.exists()) gamesDir.mkdirs();
+        cdsDir = new File(base, "cds");
+        if (!cdsDir.exists()) cdsDir.mkdirs();
+        importDir = new File(base, "import");
+        if (!importDir.exists()) importDir.mkdirs();
+    }
+
     private void buildUi() {
         LinearLayout root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
@@ -163,15 +306,26 @@ public class GameLauncherActivity extends Activity {
             ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f);
         root.addView(list, llp);
 
+        LinearLayout buttons = new LinearLayout(this);
+        buttons.setOrientation(LinearLayout.HORIZONTAL);
+        Button storage = new Button(this);
+        storage.setText("Storage…");
+        storage.setOnClickListener(v -> storageWizard());
+        buttons.addView(storage, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
         Button refresh = new Button(this);
         refresh.setText("Refresh");
-        refresh.setOnClickListener(new View.OnClickListener() {
-            @Override public void onClick(View v) { rescan(); }
-        });
-        root.addView(refresh);
+        refresh.setOnClickListener(v -> rescan());
+        buttons.addView(refresh, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+        root.addView(buttons);
 
         setContentView(root);
         rescan();
+
+        // First run: offer to choose where games live (instead of the app dir).
+        if (!AppConfig.setupDone(this)) {
+            AppConfig.markSetupDone(this);
+            storageWizard();
+        }
     }
 
     private void rescan() {
