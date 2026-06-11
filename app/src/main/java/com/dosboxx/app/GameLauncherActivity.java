@@ -71,10 +71,14 @@ public class GameLauncherActivity extends Activity {
         if (!importDir.exists()) importDir.mkdirs();
         confFile = new File(ext, "dosbox-x.conf");
 
+        // A game/Windows session is still running (app was minimized, not
+        // exited) → resume it instead of showing the launcher; skip the splash.
+        boolean emuAlive = emulatorRunning();
+
         // Brief branded splash on cold start, then the launcher. (On Android
         // 12+ the system also shows the icon splash first; this keeps the full
         // logo visible a moment longer and covers older versions.)
-        if (savedInstanceState == null) {
+        if (savedInstanceState == null && !emuAlive) {
             android.widget.ImageView splash = new android.widget.ImageView(this);
             splash.setBackgroundColor(0xFF000000);
             splash.setImageResource(R.drawable.splash_logo);
@@ -85,6 +89,37 @@ public class GameLauncherActivity extends Activity {
         } else {
             buildUi();
         }
+    }
+
+    @Override
+    protected void onResume() {
+        super.onResume();
+        // If a game/Windows session is still alive, bring it back to the front
+        // (resumes the guest where it left off) rather than sitting on the list.
+        if (emulatorRunning()) {
+            Intent i = new Intent(this, org.libsdl.app.SDLActivity.class);
+            i.addFlags(Intent.FLAG_ACTIVITY_REORDER_TO_FRONT | Intent.FLAG_ACTIVITY_SINGLE_TOP);
+            startActivity(i);
+        }
+    }
+
+    /** True if an emulator session is running in the :emu process (marker file
+     *  present AND the process actually alive — a stale marker is cleaned up). */
+    private boolean emulatorRunning() {
+        File marker = new File(getExternalFilesDir(null), ".emu_running");
+        if (!marker.isFile()) return false;
+        try {
+            android.app.ActivityManager am =
+                (android.app.ActivityManager) getSystemService(ACTIVITY_SERVICE);
+            List<android.app.ActivityManager.RunningAppProcessInfo> procs = am.getRunningAppProcesses();
+            if (procs != null) {
+                for (android.app.ActivityManager.RunningAppProcessInfo p : procs) {
+                    if (p.processName != null && p.processName.endsWith(":emu")) return true;
+                }
+            }
+        } catch (Exception ignored) { }
+        marker.delete();   // process gone — stale marker
+        return false;
     }
 
     private void buildUi() {

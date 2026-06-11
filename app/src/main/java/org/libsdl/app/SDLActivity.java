@@ -425,6 +425,12 @@ public class SDLActivity extends Activity implements View.OnSystemUiVisibilityCh
 
         setContentView(mLayout);
 
+        /* DosBoxX: mark an emulator session as running, so the launcher
+         * forwards back here (resuming the guest) instead of showing the
+         * games list when the app is re-opened after being minimized. */
+        try { new java.io.File(getExternalFilesDir(null), ".emu_running").createNewFile(); }
+        catch (Exception ignored) { }
+
         /* DosBoxX: the launcher sets sTrackpadMouse before starting us, but
          * that static dies with the process (e.g. relaunch from recents).
          * Re-derive it from the conf we are about to run: a `boot` line means
@@ -627,6 +633,10 @@ public class SDLActivity extends Activity implements View.OnSystemUiVisibilityCh
      *  event, so a watchdog thread guarantees the :emu process dies — the
      *  launcher lives in the main process and survives untouched. */
     private void exitToLauncher() {
+        // Clear the session marker first so the launcher doesn't forward back
+        // here while this process is being torn down.
+        try { new java.io.File(getExternalFilesDir(null), ".emu_running").delete(); }
+        catch (Exception ignored) { }
         new Thread(new Runnable() {
             @Override public void run() {
                 try { Thread.sleep(400); } catch (InterruptedException ignored) { }
