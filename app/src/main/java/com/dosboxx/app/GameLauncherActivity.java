@@ -640,12 +640,14 @@ public class GameLauncherActivity extends Activity {
         sb.append("[mixer]\nnosound=false\nrate=44100\nblocksize=1024\nprebuffer=25\n\n");
         sb.append("[sblaster]\nsbtype=sb16\nsbbase=220\nirq=7\ndma=1\nhdma=5\noplmode=auto\n\n");
         sb.append("[dos]\nxms=false\nems=false\numb=false\n\n");
-        // int13fakeio + int13fakev86io are required for Win9x 32-bit disk
-        // access to work with DOSBox-X's IDE (per the dosbox-x source). Without
-        // them the guest can only ever use slow real-mode INT 13h disk access.
-        String ideFlags = "enable=true\nint13fakeio=true\nint13fakev86io=true\n\n";
-        sb.append("[ide, primary]\n").append(ideFlags).append("[ide, secondary]\n").append(ideFlags);
-        sb.append("[ide, tertiary]\n").append(ideFlags).append("[ide, quaternary]\n").append(ideFlags);
+        // int13fakeio/int13fakev86io only help once the guest reaches 32-bit
+        // protected-mode disk access. While the real-mode CD driver (cd1.sys)
+        // forces MS-DOS Compatibility Mode, those flags just add v86 I/O-trap
+        // overhead to every real-mode INT 13h call — i.e. they make the disk
+        // slower. So leave them off until the guest's IDE controller is bound
+        // to a protected-mode driver (and cd1.sys removed).
+        sb.append("[ide, primary]\nenable=true\n\n[ide, secondary]\nenable=true\n\n");
+        sb.append("[ide, tertiary]\nenable=true\n\n[ide, quaternary]\nenable=true\n\n");
         // Emulated Voodoo1 PCI card for Glide games inside the guest — the
         // guest needs the 3dfx reference drivers installed (staged at
         // C:\DRIVERS\VOODOO1 in the WinBox image).
