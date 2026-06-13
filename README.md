@@ -57,16 +57,19 @@ For Windows 98 CD setup, the launcher boots with:
 This avoids installers failing because they expect the CD in `D:`. Install the
 game into `C:\...` unless the game installer explicitly asks otherwise.
 
-## Building
+## Release Bundle
 
-Requires Android SDK and JDK 17. Android Studio's bundled JBR is known to work:
+Signed Android App Bundles are produced by the GitHub Actions workflow
+`Build signed Android App Bundle`.
 
-```sh
-./gradlew -Dorg.gradle.java.home=/opt/android-studio/jbr assembleDebug
-adb install -r app/build/outputs/apk/debug/app-debug.apk
-```
+Repository secrets required by the workflow:
 
-`local.properties` is intentionally ignored.
+- `ANDROID_KEYSTORE_BASE64`
+- `ANDROID_KEYSTORE_PASSWORD`
+- `ANDROID_KEY_ALIAS`
+- `ANDROID_KEY_PASSWORD`
+
+The workflow uploads `app-release.aab` as a run artifact.
 
 ## Project Layout
 
