@@ -6,11 +6,9 @@ import android.content.SharedPreferences;
 import java.io.File;
 
 /**
- * App settings. The one setting so far is the base folder that holds the
- * games / cds / import subfolders. By default that's the app's own external
- * files dir (no permission needed), but the setup wizard can point it at any
- * folder on shared storage (e.g. /storage/emulated/0/DOSBox-X) so the library
- * is easy to manage from a file manager — that needs All-files access.
+ * App settings. The base folder holds the games / cds / import subfolders.
+ * It stays under one of Android's app-specific external file directories, so
+ * the native emulator gets real filesystem paths without broad storage access.
  */
 final class AppConfig {
 
@@ -25,8 +23,6 @@ final class AppConfig {
             File f = new File(p);
             if (f.isDirectory() || f.mkdirs()) return f;
         }
-        File external = autoExternalBase();
-        if (external != null) return external;
         return defaultBase(c);
     }
 
@@ -61,26 +57,6 @@ final class AppConfig {
 
     static File defaultBase(Context c) {
         return c.getExternalFilesDir(null);
-    }
-
-    private static File autoExternalBase() {
-        File storage = new File("/storage");
-        File[] vols = storage.listFiles();
-        if (vols == null) return null;
-        for (File v : vols) {
-            String name = v.getName();
-            if ("emulated".equals(name) || "self".equals(name)) continue;
-            File d = new File(v, "Alarms/DOSBox-X");
-            if (isDosBoxBase(d)) return d;
-        }
-        return null;
-    }
-
-    private static boolean isDosBoxBase(File d) {
-        if (d == null || !d.isDirectory()) return false;
-        return new File(d, "WinBox98").isDirectory()
-            || new File(d, "cds").isDirectory()
-            || new File(d, "games").isDirectory();
     }
 
     private static SharedPreferences prefs(Context c) {

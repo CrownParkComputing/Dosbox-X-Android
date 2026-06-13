@@ -35,14 +35,10 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.Comparator;
-import java.util.Enumeration;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
-import java.util.zip.ZipEntry;
-import java.util.zip.ZipFile;
-import java.util.zip.ZipOutputStream;
 
 /**
  * Simple on-device game launcher for DOSBox-X.
@@ -56,7 +52,7 @@ public class GameLauncherActivity extends Activity {
 
     private File gamesDir;
     private File cdsDir;     // CD library: discs not currently in any changer
-    private File importDir;  // drop folder for .zip/.7z game archives
+    private File importDir;  // drop folder for .zip game archives
     private File confFile;
     private LinearLayout importActions;
     private Button addGameBtn;
@@ -206,8 +202,8 @@ public class GameLauncherActivity extends Activity {
         final AlertDialog[] dialog = new AlertDialog[1];
         addStorageButton(box, "Set storage folder...", dialog, () -> chooseFolder());
         addStorageButton(box, "Use app folder", dialog, () -> applyNewBase(AppConfig.defaultBase(this)));
-        addStorageButton(box, "CD ZIP/7Z sources", dialog,
-            () -> manageStorageFolder("CD ZIP/7Z sources", getCdArchivesDir(), true));
+        addStorageButton(box, "CD ZIP sources", dialog,
+            () -> manageStorageFolder("CD ZIP sources", getCdArchivesDir(), true));
         addStorageButton(box, "Kept extracted CDs", dialog,
             () -> manageStorageFolder("Kept extracted CDs", getKeptExtractedCdsDir(), true));
         addStorageButton(box, "Temporary extracted CD", dialog,
@@ -412,19 +408,19 @@ public class GameLauncherActivity extends Activity {
     private void promptSetWin98DownloadUrl(String current) {
         final EditText input = new EditText(this);
         input.setSingleLine(true);
-        input.setHint("https://example.com/windows98.7z");
+        input.setHint("https://example.com/windows98.zip");
         input.setText(current);
         input.setSelectAllOnFocus(true);
         int pad = dp(20);
         input.setPadding(pad, pad / 2, pad, pad / 2);
         new AlertDialog.Builder(this)
             .setTitle("Windows 98 image URL")
-            .setMessage("Paste an HTTPS URL for a .zip, .7z, or raw .img that you are allowed to use.")
+            .setMessage("Paste an HTTPS URL for a .zip or raw .img that you are allowed to use.")
             .setView(input)
             .setPositiveButton("Save", (d, w) -> {
                 String url = input.getText().toString().trim();
                 if (!isSupportedWin98DownloadUrl(url)) {
-                    Toast.makeText(this, "Use an HTTPS .zip, .7z, or .img URL.", Toast.LENGTH_LONG).show();
+                    Toast.makeText(this, "Use an HTTPS .zip or .img URL.", Toast.LENGTH_LONG).show();
                     return;
                 }
                 AppConfig.setWin98ImageUrl(this, url);
@@ -456,7 +452,7 @@ public class GameLauncherActivity extends Activity {
         String u = url.trim().toLowerCase(Locale.US);
         String path = downloadUrlPath(u);
         return u.startsWith("https://")
-            && (path.endsWith(".zip") || path.endsWith(".7z") || path.endsWith(".img"));
+            && (path.endsWith(".zip") || path.endsWith(".img"));
     }
 
     private static String downloadUrlPath(String url) {
@@ -495,12 +491,12 @@ public class GameLauncherActivity extends Activity {
             File finalBootDir = new File(AppConfig.baseDir(this), "WinBox98");
             try {
                 if (!isSupportedWin98DownloadUrl(url)) {
-                    throw new IOException("Use an HTTPS .zip, .7z, or .img URL.");
+                    throw new IOException("Use an HTTPS .zip or .img URL.");
                 }
                 staging = uniqueDir(new File(importDir, ".win98-download"));
                 if (!staging.mkdirs()) throw new IOException("Couldn't create download folder.");
                 String lower = downloadUrlPath(url);
-                String ext = lower.endsWith(".7z") ? ".7z" : (lower.endsWith(".zip") ? ".zip" : ".img");
+                String ext = lower.endsWith(".zip") ? ".zip" : ".img";
                 File payload = new File(staging, "download" + ext);
                 downloadFile(url, payload, (done, total) -> updateWin98DownloadProgress(
                     msg, bar, "Downloading", done, total));
@@ -590,50 +586,41 @@ public class GameLauncherActivity extends Activity {
     }
 
     private void chooseFolder() {
-        if (android.os.Build.VERSION.SDK_INT >= 30 && !android.os.Environment.isExternalStorageManager()) {
-            new AlertDialog.Builder(this)
-                .setTitle("Permission needed")
-                .setMessage("To store games outside the app folder, DOSBox-X needs \"All files access\". "
-                    + "Grant it on the next screen, then tap Storage… again.")
-                .setPositiveButton("Open settings", (d, w) -> {
-                    try {
-                        startActivity(new android.content.Intent(
-                            android.provider.Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION,
-                            android.net.Uri.parse("package:" + getPackageName())));
-                    } catch (Exception e) {
-                        startActivity(new android.content.Intent(
-                            android.provider.Settings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION));
+        final List<File> roots = new ArrayList<>();
+        File[] dirs = getExternalFilesDirs(null);
+        if (dirs != null) {
+            for (File d : dirs) {
+                if (d == null) continue;
+                if (!d.exists()) d.mkdirs();
+                if (!d.isDirectory()) continue;
+                boolean seen = false;
+                for (File r : roots) {
+                    if (sameFile(r, d)) {
+                        seen = true;
+                        break;
                     }
-                })
-                .setNegativeButton("Cancel", null)
-                .show();
-            return;
+                }
+                if (!seen) roots.add(d);
+            }
         }
-        File start = android.os.Environment.getExternalStorageDirectory();   // /storage/emulated/0
-        pickDirectory(start, dir -> applyNewBase(new File(dir, "DOSBox-X")));
-    }
+        if (roots.isEmpty()) roots.add(AppConfig.defaultBase(this));
 
-    /** Simple directory browser yielding a real filesystem path. */
-    private void pickDirectory(final File dir, final java.util.function.Consumer<File> onPick) {
-        File[] kids = dir.listFiles();
-        final List<File> subs = new ArrayList<>();
-        if (kids != null) {
-            Arrays.sort(kids, NAME);
-            for (File f : kids) if (f.isDirectory() && !f.getName().startsWith(".")) subs.add(f);
+        final List<String> labels = new ArrayList<>();
+        for (int i = 0; i < roots.size(); i++) {
+            File d = roots.get(i);
+            labels.add(storageLabel(d, i) + "\n" + d.getAbsolutePath());
         }
-        final File parent = dir.getParentFile();
-        final List<String> items = new ArrayList<>();
-        if (parent != null) items.add("⬆  ..");
-        for (File s : subs) items.add("📁  " + s.getName());
         new AlertDialog.Builder(this)
-            .setTitle(dir.getAbsolutePath())
-            .setItems(items.toArray(new String[0]), (d, w) -> {
-                if (parent != null && w == 0) pickDirectory(parent, onPick);
-                else pickDirectory(subs.get(parent != null ? w - 1 : w), onPick);
-            })
-            .setPositiveButton("Use this folder", (d, w) -> onPick.accept(dir))
+            .setTitle("Storage location")
+            .setItems(labels.toArray(new String[0]), (d, w) -> applyNewBase(roots.get(w)))
             .setNegativeButton("Cancel", null)
             .show();
+    }
+
+    private String storageLabel(File dir, int index) {
+        String path = dir.getAbsolutePath();
+        if (path.startsWith("/storage/emulated/")) return "Device storage";
+        return index == 0 ? "App storage" : "Removable storage";
     }
 
     private void applyNewBase(final File newBase) {
@@ -739,7 +726,7 @@ public class GameLauncherActivity extends Activity {
         return d;
     }
 
-    /** Hidden collection of reusable ZIP/7Z CD source packages. */
+    /** Hidden collection of reusable ZIP CD source packages. */
     public File getCdArchivesDir() {
         File d = new File(cdsDir, ".archives");
         if (!d.exists()) d.mkdirs();
@@ -811,7 +798,7 @@ public class GameLauncherActivity extends Activity {
         new Thread(() -> {
             final File preparedDir = keepExtracted
                 ? uniqueDir(new File(getKeptExtractedCdsDir(),
-                    archive.getName().replaceFirst("(?i)\\.(zip|7z)$", "")))
+                    archive.getName().replaceFirst("(?i)\\.zip$", "")))
                 : newPreparedCdRunDir();
             final String mountedName = importArchiveCd(archive, preparedDir, progress);
             runOnUiThread(() -> {
@@ -833,7 +820,7 @@ public class GameLauncherActivity extends Activity {
 
     private void keepExtractedArchiveCd(final File archive) {
         final File outDir = uniqueDir(new File(getKeptExtractedCdsDir(),
-            archive.getName().replaceFirst("(?i)\\.(zip|7z)$", "")));
+            archive.getName().replaceFirst("(?i)\\.zip$", "")));
         final int pad = dp(20);
         LinearLayout box = new LinearLayout(this);
         box.setOrientation(LinearLayout.VERTICAL);
@@ -952,7 +939,7 @@ public class GameLauncherActivity extends Activity {
                     readyFolder = null;
                 }
             } else {
-                String name = archive.getName().replaceFirst("(?i)\\.(zip|7z)$", "");
+                String name = archive.getName().replaceFirst("(?i)\\.zip$", "");
                 File gameDir = new File(gamesDir, name);
                 if (gameDir.exists()) deleteContents(gameDir);
                 ok = ArchiveExtractor.extractGame(archive, gameDir, progress);
@@ -1149,7 +1136,7 @@ public class GameLauncherActivity extends Activity {
         }
         for (File f : cdArchiveSources()) {
             sources.add(f);
-            labels.add(f.getName() + "  [zip/7z]");
+            labels.add(f.getName() + "  [zip]");
         }
         if (sources.isEmpty()) {
             GameImporter.startSafPicker(this, GameImporter.REQ_PICK_CD_GAME);
@@ -1202,7 +1189,7 @@ public class GameLauncherActivity extends Activity {
         }
         new AlertDialog.Builder(this)
             .setTitle(target.getName())
-            .setMessage("Delete this " + (target.isDirectory() ? "extracted CD copy" : "ZIP/7Z source") + "?")
+            .setMessage("Delete this " + (target.isDirectory() ? "extracted CD copy" : "ZIP source") + "?")
             .setPositiveButton("Delete", (d, w) -> {
                 if (target.isDirectory()) deleteTree(target);
                 else target.delete();
@@ -2035,7 +2022,7 @@ public class GameLauncherActivity extends Activity {
     private static boolean isArchiveCdFile(File f) {
         if (f == null || f.isDirectory()) return false;
         String n = f.getName().toLowerCase(Locale.US);
-        return n.endsWith(".zip") || n.endsWith(".7z");
+        return n.endsWith(".zip");
     }
 
     private static boolean isIsoCueOrBin(File f) {
@@ -2044,7 +2031,7 @@ public class GameLauncherActivity extends Activity {
         return n.endsWith(".iso") || n.endsWith(".cue") || n.endsWith(".bin");
     }
 
-    /** Import tab: lists .zip/.7z archives dropped in import/. Tapping one
+    /** Import tab: lists .zip archives dropped in import/. Tapping one
      *  installs it — as a DOS game (-> games/<name>/) or a CD-ROM image
      *  (-> the CD library), auto-detected from the archive contents. */
     private void buildImportRows(List<String> labels) {
@@ -2057,7 +2044,7 @@ public class GameLauncherActivity extends Activity {
             for (File f : kids) if (!f.isDirectory() && ArchiveExtractor.isArchive(f.getName())) archives.add(f);
         }
         if (archives.isEmpty()) {
-            labels.add("(no .zip/.7z archives in the import folder)");
+            labels.add("(no .zip archives in the import folder)");
             rowTap.add(null);
             rowHold.add(null);
             rowHasMenu.add(false);
@@ -2337,7 +2324,7 @@ public class GameLauncherActivity extends Activity {
                 }
                 dest = "CD library";
             } else {
-                String name = archive.getName().replaceFirst("(?i)\\.(zip|7z)$", "");
+                String name = archive.getName().replaceFirst("(?i)\\.zip$", "");
                 File gameDir = new File(gamesDir, name);
                 ok = ArchiveExtractor.extractGame(archive, gameDir, progress);
                 dest = "MS-DOS games";
@@ -3329,7 +3316,7 @@ public class GameLauncherActivity extends Activity {
             }
         }
         if (cds.isEmpty()) {
-            Toast.makeText(this, "No .iso/.cue/.zip/.7z images found. Put discs in:\n"
+            Toast.makeText(this, "No .iso/.cue/.zip images found. Put discs in:\n"
                 + cdsDir.getAbsolutePath(), Toast.LENGTH_LONG).show();
             return;
         }
@@ -3394,10 +3381,6 @@ public class GameLauncherActivity extends Activity {
             String disc = importPackedDiscImages(archive, folder, progress);
             return disc != null ? disc : importZipFolderAsIso(archive, folder);
         }
-        if (n.endsWith(".7z")) {
-            String disc = importPackedDiscImages(archive, folder, progress);
-            return disc != null ? disc : importPackedCdFolderAsIso(archive, folder, progress);
-        }
         return null;
     }
 
@@ -3415,112 +3398,7 @@ public class GameLauncherActivity extends Activity {
         return disc != null ? disc.getName() : null;
     }
 
-    /** Fallback for .7z CD archives that contain loose CD files instead of an
-     *  image: extract to cache, wrap that folder in a temporary zip, then reuse
-     *  the existing zip-to-ISO builder. */
-    private String importPackedCdFolderAsIso(File archive, File folder) {
-        return importPackedCdFolderAsIso(archive, folder, null);
-    }
-
-    private String importPackedCdFolderAsIso(File archive, File folder, ArchiveExtractor.Progress progress) {
-        String base = archive.getName().replaceFirst("(?i)\\.7z$", "");
-        File tmpDir = new File(getCacheDir(), "cd7z_" + System.currentTimeMillis());
-        File tmpZip = new File(getCacheDir(), tmpDir.getName() + ".zip");
-        File out = new File(folder, base + ".iso");
-        try {
-            if (!ArchiveExtractor.extractGame(archive, tmpDir, progress)) return null;
-            if (!zipFolder(tmpDir, tmpZip)) return null;
-            return ZipToIso.convert(tmpZip, out) ? out.getName() : null;
-        } finally {
-            if (tmpDir.exists()) deleteTree(tmpDir);
-            tmpZip.delete();
-        }
-    }
-
     private String importZipFolderAsIso(File zip, File folder) {
-        String n = zip.getName();
-        File out = new File(folder, n.substring(0, n.length() - 4) + ".iso");
-        return ZipToIso.convert(zip, out) ? out.getName() : null;
-    }
-
-    private static boolean zipFolder(File root, File zip) {
-        ZipOutputStream out = null;
-        try {
-            out = new ZipOutputStream(new FileOutputStream(zip));
-            zipFolderInner(root, root, out);
-            return true;
-        } catch (Exception e) {
-            zip.delete();
-            return false;
-        } finally {
-            if (out != null) try { out.close(); } catch (IOException ignored) { }
-        }
-    }
-
-    private static void zipFolderInner(File root, File at, ZipOutputStream out) throws IOException {
-        File[] kids = at.listFiles();
-        if (kids == null) return;
-        Arrays.sort(kids, NAME);
-        for (File f : kids) {
-            if (f.isDirectory()) {
-                zipFolderInner(root, f, out);
-                continue;
-            }
-            String rel = root.toURI().relativize(f.toURI()).getPath();
-            if (rel == null || rel.isEmpty()) continue;
-            ZipEntry e = new ZipEntry(rel);
-            e.setTime(f.lastModified());
-            out.putNextEntry(e);
-            FileInputStream in = new FileInputStream(f);
-            try {
-                byte[] buf = new byte[65536];
-                int n;
-                while ((n = in.read(buf)) > 0) out.write(buf, 0, n);
-            } finally {
-                in.close();
-            }
-            out.closeEntry();
-        }
-    }
-
-    /** Worker for ZIP-backed CD media: returns the inserted disc's name, or null. */
-    private String importZipCd(File zip, File folder) {
-        try {
-            ZipFile zf = new ZipFile(zip);
-            try {
-                ZipEntry cue = null, iso = null, img = null;
-                for (Enumeration<? extends ZipEntry> en = zf.entries(); en.hasMoreElements(); ) {
-                    ZipEntry e = en.nextElement();
-                    if (e.isDirectory()) continue;
-                    String n = e.getName().toLowerCase(Locale.US);
-                    if (n.endsWith(".cue") && cue == null) cue = e;
-                    else if (n.endsWith(".iso") && iso == null) iso = e;
-                    else if ((n.endsWith(".img") || n.endsWith(".bin")) && img == null) img = e;
-                }
-                if (cue != null) {
-                    File cueOut = extractZipEntry(zf, cue, folder);
-                    String dataName = cueDataName(cueOut);
-                    ZipEntry data = dataName != null ? findZipEntryByName(zf, dataName) : null;
-                    if (data == null) { cueOut.delete(); return null; }   // cue without its data file
-                    extractZipEntry(zf, data, folder);
-                    return cueOut.getName();
-                }
-                if (iso != null) {
-                    return extractZipEntry(zf, iso, folder).getName();
-                }
-                if (img != null) {
-                    // orphan raw rip — write a cue for it (sector size sniffed)
-                    File imgOut = extractZipEntry(zf, img, folder);
-                    File cueOut = writeCueFor(imgOut);
-                    return cueOut != null ? cueOut.getName() : null;
-                }
-            } finally {
-                zf.close();
-            }
-        } catch (Exception e) {
-            return null;
-        }
-        // no disc image inside — press the zip's files onto a new ISO
         String n = zip.getName();
         File out = new File(folder, n.substring(0, n.length() - 4) + ".iso");
         return ZipToIso.convert(zip, out) ? out.getName() : null;
@@ -3545,39 +3423,6 @@ public class GameLauncherActivity extends Activity {
                 File cue = writeCueFor(f);
                 return cue != null ? cue : f;
             }
-        }
-        return null;
-    }
-
-    /** Extract one zip entry into destDir (basename only), overwriting. */
-    private static File extractZipEntry(ZipFile zf, ZipEntry e, File destDir) throws IOException {
-        String name = e.getName();
-        int slash = name.lastIndexOf('/');
-        File out = new File(destDir, slash >= 0 ? name.substring(slash + 1) : name);
-        InputStream in = zf.getInputStream(e);
-        try {
-            FileOutputStream fo = new FileOutputStream(out);
-            try {
-                byte[] buf = new byte[65536];
-                int r;
-                while ((r = in.read(buf)) > 0) fo.write(buf, 0, r);
-            } finally {
-                fo.close();
-            }
-        } finally {
-            in.close();
-        }
-        return out;
-    }
-
-    /** Find a zip entry whose base name matches (case-insensitive). */
-    private static ZipEntry findZipEntryByName(ZipFile zf, String baseName) {
-        for (Enumeration<? extends ZipEntry> en = zf.entries(); en.hasMoreElements(); ) {
-            ZipEntry e = en.nextElement();
-            if (e.isDirectory()) continue;
-            String n = e.getName();
-            int slash = n.lastIndexOf('/');
-            if (n.substring(slash + 1).equalsIgnoreCase(baseName)) return e;
         }
         return null;
     }

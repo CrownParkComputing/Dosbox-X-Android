@@ -1,8 +1,5 @@
 package com.dosboxx.app;
 
-import org.apache.commons.compress.archivers.sevenz.SevenZArchiveEntry;
-import org.apache.commons.compress.archivers.sevenz.SevenZFile;
-
 import java.io.File;
 import java.io.FileOutputStream;
 import java.io.IOException;
@@ -16,9 +13,7 @@ import java.util.zip.ZipEntry;
 import java.util.zip.ZipFile;
 
 /**
- * Extracts game archives for the in-app importer. Supports .zip (java.util.zip)
- * and .7z (Apache Commons Compress + XZ for LZMA2) — the two formats the
- * pre-packaged DOS/CD game sets ship as.
+ * Extracts ZIP game archives for the in-app importer.
  *
  * Two install shapes:
  *  - DOS game: every file extracted into a game folder, with a redundant single
@@ -33,7 +28,7 @@ final class ArchiveExtractor {
 
     static boolean isArchive(String name) {
         String n = name.toLowerCase(Locale.US);
-        return n.endsWith(".zip") || n.endsWith(".7z");
+        return n.endsWith(".zip");
     }
 
     private static boolean isDiscImage(String name) {
@@ -66,27 +61,15 @@ final class ArchiveExtractor {
 
     private static List<String> listNames(File archive) throws IOException {
         List<String> out = new ArrayList<>();
-        if (archive.getName().toLowerCase(Locale.US).endsWith(".7z")) {
-            SevenZFile z = new SevenZFile(archive);
-            try {
-                SevenZArchiveEntry e;
-                while ((e = z.getNextEntry()) != null) {
-                    if (!e.isDirectory()) out.add(e.getName());
-                }
-            } finally {
-                z.close();
+        ZipFile z = new ZipFile(archive);
+        try {
+            Enumeration<? extends ZipEntry> en = z.entries();
+            while (en.hasMoreElements()) {
+                ZipEntry e = en.nextElement();
+                if (!e.isDirectory()) out.add(e.getName());
             }
-        } else {
-            ZipFile z = new ZipFile(archive);
-            try {
-                Enumeration<? extends ZipEntry> en = z.entries();
-                while (en.hasMoreElements()) {
-                    ZipEntry e = en.nextElement();
-                    if (!e.isDirectory()) out.add(e.getName());
-                }
-            } finally {
-                z.close();
-            }
+        } finally {
+            z.close();
         }
         return out;
     }
@@ -110,33 +93,18 @@ final class ArchiveExtractor {
     private static long totalBytes(File archive, boolean discOnly) {
         long total = 0;
         try {
-            if (archive.getName().toLowerCase(Locale.US).endsWith(".7z")) {
-                SevenZFile z = new SevenZFile(archive);
-                try {
-                    SevenZArchiveEntry e;
-                    while ((e = z.getNextEntry()) != null) {
-                        if (e.isDirectory()) continue;
-                        if (discOnly && !isDiscImage(e.getName())) continue;
-                        if (e.getSize() < 0) return -1;
-                        total += e.getSize();
-                    }
-                } finally {
-                    z.close();
+            ZipFile z = new ZipFile(archive);
+            try {
+                Enumeration<? extends ZipEntry> en = z.entries();
+                while (en.hasMoreElements()) {
+                    ZipEntry e = en.nextElement();
+                    if (e.isDirectory()) continue;
+                    if (discOnly && !isDiscImage(e.getName())) continue;
+                    if (e.getSize() < 0) return -1;
+                    total += e.getSize();
                 }
-            } else {
-                ZipFile z = new ZipFile(archive);
-                try {
-                    Enumeration<? extends ZipEntry> en = z.entries();
-                    while (en.hasMoreElements()) {
-                        ZipEntry e = en.nextElement();
-                        if (e.isDirectory()) continue;
-                        if (discOnly && !isDiscImage(e.getName())) continue;
-                        if (e.getSize() < 0) return -1;
-                        total += e.getSize();
-                    }
-                } finally {
-                    z.close();
-                }
+            } finally {
+                z.close();
             }
         } catch (IOException e) {
             return -1;
@@ -168,35 +136,20 @@ final class ArchiveExtractor {
         long[] done = {0};
         long[] lastReport = {-1};
         try {
-            if (archive.getName().toLowerCase(Locale.US).endsWith(".7z")) {
-                SevenZFile z = new SevenZFile(archive);
-                try {
-                    SevenZArchiveEntry e;
-                    while ((e = z.getNextEntry()) != null) {
-                        if (e.isDirectory()) continue;
-                        File out = target(e.getName(), destDir, discOnly, stripTop);
-                        if (out == null) continue;
-                        writeEntry(z, out, total, done, lastReport, p);
-                    }
-                } finally {
-                    z.close();
+            ZipFile z = new ZipFile(archive);
+            try {
+                Enumeration<? extends ZipEntry> en = z.entries();
+                while (en.hasMoreElements()) {
+                    ZipEntry e = en.nextElement();
+                    if (e.isDirectory()) continue;
+                    File out = target(e.getName(), destDir, discOnly, stripTop);
+                    if (out == null) continue;
+                    InputStream in = z.getInputStream(e);
+                    try { writeStream(in, out, total, done, lastReport, p); }
+                    finally { in.close(); }
                 }
-            } else {
-                ZipFile z = new ZipFile(archive);
-                try {
-                    Enumeration<? extends ZipEntry> en = z.entries();
-                    while (en.hasMoreElements()) {
-                        ZipEntry e = en.nextElement();
-                        if (e.isDirectory()) continue;
-                        File out = target(e.getName(), destDir, discOnly, stripTop);
-                        if (out == null) continue;
-                        InputStream in = z.getInputStream(e);
-                        try { writeStream(in, out, total, done, lastReport, p); }
-                        finally { in.close(); }
-                    }
-                } finally {
-                    z.close();
-                }
+            } finally {
+                z.close();
             }
             if (p != null) p.onProgress(done[0], total);
             return true;
@@ -232,18 +185,6 @@ final class ArchiveExtractor {
         File parent = out.getParentFile();
         if (parent != null && !parent.exists()) parent.mkdirs();
         return out;
-    }
-
-    private static void writeEntry(SevenZFile z, File out, long total,
-                                   long[] done, long[] lastReport, Progress p) throws IOException {
-        OutputStream o = new FileOutputStream(out);
-        try {
-            byte[] buf = new byte[1 << 16];
-            int n;
-            while ((n = z.read(buf)) > 0) { o.write(buf, 0, n); report(total, done, lastReport, n, p); }
-        } finally {
-            o.close();
-        }
     }
 
     private static void writeStream(InputStream in, File out, long total,

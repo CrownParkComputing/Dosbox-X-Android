@@ -29,7 +29,7 @@ import java.util.Locale;
  *
  *   - CD game + MS-DOS: copy media to cds/, mount it as D:, boot DOS setup.
  *   - CD game + Windows 98: copy media to cds/, boot Win98 with it mounted.
- *   - Rip game + MS-DOS: unzip/7z to games/<name>/ and launch from there.
+ *   - Rip game + MS-DOS: unzip to games/<name>/ and launch from there.
  *   - Rip game + Windows 98: keep a .zip rip as setup media, convert it to
  *     an ISO on first boot, and boot Win98 with it mounted.
  *
@@ -59,7 +59,7 @@ final class GameImporter {
 
     public static void startSafPicker(Activity a, int requestCode) {
         Intent i = new Intent(Intent.ACTION_OPEN_DOCUMENT);
-        // .zip / .7z / .iso / .cue / .bin / .img — the user picks any of
+        // .zip / .iso / .cue / .bin / .img — the user picks any of
         // them and the import dialog figures out which kind it is from the
         // extension. ACTION_OPEN_DOCUMENT with no type works too, but the
         // MIME hints make the picker more useful (Drive shows archives and
@@ -68,7 +68,6 @@ final class GameImporter {
         i.addCategory(Intent.CATEGORY_OPENABLE);
         i.putExtra(Intent.EXTRA_MIME_TYPES, new String[]{
             "application/zip",
-            "application/x-7z-compressed",
             "application/octet-stream",
             "application/x-cd-image",
             "application/x-iso9660-image",
@@ -99,7 +98,7 @@ final class GameImporter {
         if (requestCode == REQ_PICK_CD_GAME) {
             if (!isCdMediaName(name)) {
                 Toast.makeText(a,
-                    "CD games need .iso, .cue, .bin, .img, .zip, or .7z media.",
+                    "CD games need .iso, .cue, .bin, .img, or .zip media.",
                     Toast.LENGTH_LONG).show();
                 return;
             }
@@ -172,7 +171,7 @@ final class GameImporter {
         final String safe = safeName(base);
         final boolean archiveMedia = (kind == KIND_DOS_CD || kind == KIND_DOS_CD_SETUP
             || kind == KIND_WIN98_MEDIA)
-            && (ext.equalsIgnoreCase("zip") || ext.equalsIgnoreCase("7z"));
+            && ext.equalsIgnoreCase("zip");
         // Disc images go to the visible CD library. Archive-backed media is a
         // reusable source package, so keep it in the hidden archive collection;
         // the launcher extracts one temporary mountable image per run.
@@ -251,7 +250,7 @@ final class GameImporter {
     private static boolean isCdMediaName(String name) {
         String n = name.toLowerCase(Locale.US);
         return n.endsWith(".iso") || n.endsWith(".cue") || n.endsWith(".bin")
-            || n.endsWith(".img") || n.endsWith(".zip") || n.endsWith(".7z");
+            || n.endsWith(".img") || n.endsWith(".zip");
     }
 
     private static String extOf(String name) {

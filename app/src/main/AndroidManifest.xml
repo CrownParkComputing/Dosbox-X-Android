@@ -15,10 +15,6 @@
 
     <uses-permission android:name="android.permission.VIBRATE" />
     <uses-permission android:name="android.permission.INTERNET" />
-    <!-- Optional: lets the setup wizard place the games/cds/import folders
-         anywhere on shared storage (real paths the emulator can mount). -->
-    <uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE" />
-
     <application
         android:label="@string/app_name"
         android:icon="@mipmap/ic_launcher"

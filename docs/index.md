@@ -7,10 +7,11 @@ management on handheld Android devices.
 ## What It Adds
 
 - A unified games launcher for DOS games, CD games, and Windows 98.
-- A first-run setup wizard that makes the user choose or confirm storage.
+- A first-run setup wizard that makes the user choose or confirm app-specific
+  storage.
 - A storage manager for archives, extracted CDs, visible images, imports, and
   installed games.
-- ZIP/7Z CD source collection with optional kept extracted copies.
+- ZIP CD source collection with optional kept extracted copies.
 - One temporary extracted CD mount at a time for archive-backed launches.
 - Windows 98 CD setup with the selected CD mounted as `D:`.
 - Per-game CD/rip metadata and remembered CD source selection.
@@ -18,7 +19,7 @@ management on handheld Android devices.
 
 ## Storage Model
 
-The app creates a base folder containing:
+The app creates an app-specific base folder containing:
 
 ```text
 games/
@@ -29,8 +30,12 @@ cds/.extracted-cds/
 import/
 ```
 
-`cds/.archives/` stores ZIP/7Z source packages. These do not appear as launcher
+`cds/.archives/` stores ZIP source packages. These do not appear as launcher
 rows. Use `+ Add CD game` to select them.
+
+New files are imported through Android's system file picker. The emulator keeps
+real filesystem paths by storing imported files under the app-specific storage
+folder instead of requesting broad external storage access.
 
 `cds/.prepared-cds/` is temporary. The app clears old `run_*` folders before
 preparing another archive-backed CD.
@@ -56,4 +61,6 @@ workflow and uploaded as workflow artifacts.
 
 Source: <https://github.com/CrownParkComputing/Dosbox-X-Android>
 
-License: GPL-2.0
+License: GPL-2.0. The source repository includes GPL and third-party notices.
+Paid distribution is allowed under the GPL, but recipients keep the GPL rights
+to source code, copying, modification, and redistribution.
