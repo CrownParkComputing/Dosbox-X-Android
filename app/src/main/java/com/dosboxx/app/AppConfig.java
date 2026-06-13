@@ -16,6 +16,7 @@ final class AppConfig {
 
     private static final String PREFS = "dosboxx";
     private static final String KEY_BASE = "baseDir";
+    private static final String KEY_WIN98_IMAGE_URL = "win98ImageUrl";
 
     /** The configured base folder, or the app default if unset/missing. */
     static File baseDir(Context c) {
@@ -48,6 +49,14 @@ final class AppConfig {
 
     static void markSetupDone(Context c) {
         prefs(c).edit().putBoolean("setupDone", true).apply();
+    }
+
+    static String win98ImageUrl(Context c) {
+        return prefs(c).getString(KEY_WIN98_IMAGE_URL, "");
+    }
+
+    static void setWin98ImageUrl(Context c, String url) {
+        prefs(c).edit().putString(KEY_WIN98_IMAGE_URL, url == null ? "" : url.trim()).apply();
     }
 
     static File defaultBase(Context c) {

@@ -52,6 +52,7 @@ jobs:
           ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
           ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
           ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+          WIN98_IMAGE_URL: ${{ secrets.WIN98_IMAGE_URL }}
         run: ./gradlew bundleRelease
 
       - name: Upload signed AAB

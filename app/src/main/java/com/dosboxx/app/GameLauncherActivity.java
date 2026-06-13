@@ -13,6 +13,7 @@ import android.view.ViewGroup;
 import android.widget.ArrayAdapter;
 import android.widget.Button;
 import android.widget.CheckBox;
+import android.widget.EditText;
 import android.widget.LinearLayout;
 import android.widget.ListView;
 import android.widget.ProgressBar;
@@ -27,6 +28,9 @@ import java.io.FileReader;
 import java.io.FileWriter;
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.OutputStream;
+import java.net.HttpURLConnection;
+import java.net.URL;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
@@ -212,6 +216,8 @@ public class GameLauncherActivity extends Activity {
             () -> manageStorageFolder("Visible CD images", cdsDir, true, true));
         addStorageButton(box, "Installed games", dialog,
             () -> manageStorageFolder("Installed games", gamesDir, false));
+        addStorageButton(box, "Download Windows 98 image...", dialog,
+            () -> promptDownloadWin98Image());
         addStorageButton(box, "Import folder", dialog,
             () -> manageStorageFolder("Import folder", importDir, true));
         addStorageButton(box, "Clear all DOS games", dialog, () -> confirmClearAllDos());
@@ -388,11 +394,199 @@ public class GameLauncherActivity extends Activity {
         rescan();
     }
 
-    /** Placeholder for the Windows 95/98 importer coming in the next phase. */
-    private void toastWindowsClearPending() {
-        Toast.makeText(this,
-            "Windows 95/98 importer is coming next — for now delete the image with a file manager.",
-            Toast.LENGTH_LONG).show();
+    private void promptDownloadWin98Image() {
+        String url = configuredWin98ImageUrl();
+        if (TextUtils.isEmpty(url)) {
+            promptSetWin98DownloadUrl("");
+            return;
+        }
+        confirmWin98Download(url);
+    }
+
+    private String configuredWin98ImageUrl() {
+        String saved = AppConfig.win98ImageUrl(this);
+        if (!TextUtils.isEmpty(saved)) return saved.trim();
+        return getString(R.string.win98_image_url).trim();
+    }
+
+    private void promptSetWin98DownloadUrl(String current) {
+        final EditText input = new EditText(this);
+        input.setSingleLine(true);
+        input.setHint("https://example.com/windows98.7z");
+        input.setText(current);
+        input.setSelectAllOnFocus(true);
+        int pad = dp(20);
+        input.setPadding(pad, pad / 2, pad, pad / 2);
+        new AlertDialog.Builder(this)
+            .setTitle("Windows 98 image URL")
+            .setMessage("Paste an HTTPS URL for a .zip, .7z, or raw .img that you are allowed to use.")
+            .setView(input)
+            .setPositiveButton("Save", (d, w) -> {
+                String url = input.getText().toString().trim();
+                if (!isSupportedWin98DownloadUrl(url)) {
+                    Toast.makeText(this, "Use an HTTPS .zip, .7z, or .img URL.", Toast.LENGTH_LONG).show();
+                    return;
+                }
+                AppConfig.setWin98ImageUrl(this, url);
+                confirmWin98Download(url);
+            })
+            .setNegativeButton("Cancel", null)
+            .show();
+    }
+
+    private void confirmWin98Download(final String url) {
+        File existing = findBootFolder();
+        String msg = "Download and install the Windows 98 image into:\n"
+            + new File(AppConfig.baseDir(this), "WinBox98").getAbsolutePath()
+            + "\n\nSource:\n" + url;
+        if (existing != null) {
+            msg += "\n\nExisting image folder will be replaced:\n" + existing.getAbsolutePath();
+        }
+        new AlertDialog.Builder(this)
+            .setTitle("Download Windows 98 image?")
+            .setMessage(msg)
+            .setPositiveButton("Download", (d, w) -> downloadAndInstallWin98Image(url))
+            .setNeutralButton("Change URL", (d, w) -> promptSetWin98DownloadUrl(url))
+            .setNegativeButton("Cancel", null)
+            .show();
+    }
+
+    private static boolean isSupportedWin98DownloadUrl(String url) {
+        if (url == null) return false;
+        String u = url.trim().toLowerCase(Locale.US);
+        String path = downloadUrlPath(u);
+        return u.startsWith("https://")
+            && (path.endsWith(".zip") || path.endsWith(".7z") || path.endsWith(".img"));
+    }
+
+    private static String downloadUrlPath(String url) {
+        try {
+            return new URL(url).getPath().toLowerCase(Locale.US);
+        } catch (Exception e) {
+            return url == null ? "" : url.toLowerCase(Locale.US);
+        }
+    }
+
+    private void downloadAndInstallWin98Image(final String url) {
+        final int pad = dp(20);
+        LinearLayout box = new LinearLayout(this);
+        box.setOrientation(LinearLayout.VERTICAL);
+        box.setPadding(pad, pad, pad, pad);
+        final TextView msg = new TextView(this);
+        msg.setText("Starting download...");
+        msg.setTextColor(0xFFE0E0E0);
+        box.addView(msg);
+        final ProgressBar bar = new ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal);
+        bar.setIndeterminate(true);
+        bar.setMax(1000);
+        LinearLayout.LayoutParams blp = new LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        blp.topMargin = dp(12);
+        box.addView(bar, blp);
+        final AlertDialog dlg = new AlertDialog.Builder(this)
+            .setTitle("Windows 98 image")
+            .setView(box)
+            .setCancelable(false)
+            .show();
+
+        new Thread(() -> {
+            String error = null;
+            File staging = null;
+            File finalBootDir = new File(AppConfig.baseDir(this), "WinBox98");
+            try {
+                if (!isSupportedWin98DownloadUrl(url)) {
+                    throw new IOException("Use an HTTPS .zip, .7z, or .img URL.");
+                }
+                staging = uniqueDir(new File(importDir, ".win98-download"));
+                if (!staging.mkdirs()) throw new IOException("Couldn't create download folder.");
+                String lower = downloadUrlPath(url);
+                String ext = lower.endsWith(".7z") ? ".7z" : (lower.endsWith(".zip") ? ".zip" : ".img");
+                File payload = new File(staging, "download" + ext);
+                downloadFile(url, payload, (done, total) -> updateWin98DownloadProgress(
+                    msg, bar, "Downloading", done, total));
+
+                File extracted = new File(staging, "WinBox98");
+                if (!extracted.mkdirs()) throw new IOException("Couldn't create install folder.");
+                if (ext.equals(".img")) {
+                    File out = new File(extracted, "windows98.img");
+                    if (!payload.renameTo(out) && !(copyFile(payload, out) && payload.delete())) {
+                        throw new IOException("Couldn't stage downloaded image.");
+                    }
+                } else {
+                    boolean ok = ArchiveExtractor.extractDiscImages(payload, extracted,
+                        (done, total) -> updateWin98DownloadProgress(msg, bar, "Extracting", done, total));
+                    if (!ok) throw new IOException("Couldn't extract downloaded archive.");
+                }
+                if (findBootImage(extracted) == null) {
+                    throw new IOException("Downloaded file did not contain a bootable Windows 98 .img.");
+                }
+                if (finalBootDir.exists() && !deleteTree(finalBootDir)) {
+                    throw new IOException("Couldn't replace existing WinBox98 folder.");
+                }
+                if (!moveTree(extracted, finalBootDir)) {
+                    throw new IOException("Couldn't install WinBox98 folder.");
+                }
+            } catch (IOException e) {
+                error = e.getMessage();
+            } finally {
+                if (staging != null && staging.exists()) deleteTree(staging);
+            }
+            final String fError = error;
+            runOnUiThread(() -> {
+                dlg.dismiss();
+                if (fError == null) {
+                    Toast.makeText(this, "Windows 98 image installed.", Toast.LENGTH_LONG).show();
+                    rescan();
+                } else {
+                    Toast.makeText(this, "Download failed: " + fError, Toast.LENGTH_LONG).show();
+                }
+            });
+        }).start();
+    }
+
+    private void updateWin98DownloadProgress(final TextView msg, final ProgressBar bar,
+                                             final String label, final long done,
+                                             final long total) {
+        runOnUiThread(() -> {
+            if (total > 0) {
+                int permille = (int) Math.min(1000, done * 1000 / total);
+                bar.setIndeterminate(false);
+                bar.setProgress(permille);
+                msg.setText(String.format(Locale.US, "%s %d%%   (%d / %d MB)",
+                    label, permille / 10, done >> 20, total >> 20));
+            } else {
+                msg.setText(label + " " + (done >> 20) + " MB...");
+            }
+        });
+    }
+
+    private static void downloadFile(String url, File out, ArchiveExtractor.Progress progress)
+            throws IOException {
+        HttpURLConnection conn = (HttpURLConnection) new URL(url).openConnection();
+        conn.setConnectTimeout(30000);
+        conn.setReadTimeout(30000);
+        conn.setInstanceFollowRedirects(true);
+        int code = conn.getResponseCode();
+        if (code < 200 || code >= 300) throw new IOException("HTTP " + code);
+        long total = conn.getContentLengthLong();
+        long done = 0;
+        long lastReport = -1;
+        try (InputStream in = conn.getInputStream();
+             OutputStream os = new FileOutputStream(out)) {
+            byte[] buf = new byte[1 << 16];
+            int n;
+            while ((n = in.read(buf)) > 0) {
+                os.write(buf, 0, n);
+                done += n;
+                if (progress != null && (done - lastReport >= (2L << 20) || lastReport < 0)) {
+                    lastReport = done;
+                    progress.onProgress(done, total);
+                }
+            }
+        } finally {
+            conn.disconnect();
+        }
+        if (progress != null) progress.onProgress(done, total);
     }
 
     private void chooseFolder() {

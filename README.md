@@ -71,6 +71,15 @@ Repository secrets required by the workflow:
 
 The workflow uploads `app-release.aab` as a run artifact.
 
+Optional Win98 image download:
+
+- Add `WIN98_IMAGE_URL` as a repository secret to bake a default HTTPS URL into
+  the app.
+- The URL must point to a `.zip`, `.7z`, or raw `.img`.
+- ZIP/7Z archives should contain `windows98.img` or another OS-sized `.img`;
+  optional boot floppies such as `WIN98C.IMG` can be included too.
+- Users can also paste or replace the URL from the app's Storage screen.
+
 ## Project Layout
 
 ```text
