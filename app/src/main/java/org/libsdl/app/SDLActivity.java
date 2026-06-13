@@ -473,6 +473,7 @@ public class SDLActivity extends Activity implements View.OnSystemUiVisibilityCh
             if (game != null && !game.isEmpty()) {
                 setKeyMap(com.dosboxx.app.KeyMapStore.load(this, game));
                 setJoystickMode(com.dosboxx.app.KeyMapStore.loadJoystickMode(this, game));
+                setStickMouseMode(com.dosboxx.app.KeyMapStore.loadStickMouseMode(this, game));
             }
         } catch (Exception ignored) { }
 
@@ -648,10 +649,11 @@ public class SDLActivity extends Activity implements View.OnSystemUiVisibilityCh
 
     // ---- DosBoxX on-screen PC keyboard overlay ----
     private android.widget.LinearLayout mDosKeyPanel;
+    private android.widget.LinearLayout mDosCursorPanel;
     // Keys are weight-sized so every row stretches edge-to-edge across the
     // device; compact heights + translucency keep the game visible behind.
-    private int mDosKeyH = 30;
-    private float mDosKeyTextSp = 9f;
+    private int mDosKeyH = 60;
+    private float mDosKeyTextSp = 18f;
     private int mDosKeyBg = 0xD8383838;
 
     /** Build a small toggle button + a full PC keyboard laid out like the
@@ -662,22 +664,49 @@ public class SDLActivity extends Activity implements View.OnSystemUiVisibilityCh
         final float d = getResources().getDisplayMetrics().density;
         final int pad = (int)(4*d);
 
-        // Container pinned to the bottom; rows are weight-distributed.
+        // Container pinned to the bottom by default; rows are weight-distributed.
+        // The user can drag the handle bar at the top of the panel to move it
+        // anywhere on screen (handy when a text field sits at the bottom and
+        // the keyboard would cover it). Long-press the handle to snap back
+        // to the bottom. While dragging, the per-key touch listeners stay
+        // active (touch events still hit the buttons), so keys remain
+        // responsive when the panel is in its new position.
         mDosKeyPanel = new android.widget.LinearLayout(this);
         mDosKeyPanel.setOrientation(android.widget.LinearLayout.VERTICAL);
         mDosKeyPanel.setBackgroundColor(0x90202020);
         mDosKeyPanel.setVisibility(View.GONE);
 
-        // The main (typewriter) block sums to 15 weight units per row; a
-        // separator + 3-column navigation cluster (≈4.4 units) sits to its
-        // right on every row, so the typewriter keys compress left and the
-        // nav/arrow cluster lines up like a real full-size keyboard.
+        // Thin drag-handle bar above the keys. The bar itself is the grab
+        // target; below it the row of keys is unaffected.
+        android.widget.LinearLayout handle = new android.widget.LinearLayout(this);
+        handle.setOrientation(android.widget.LinearLayout.HORIZONTAL);
+        handle.setGravity(android.view.Gravity.CENTER);
+        handle.setBackgroundColor(0x60505050);
+        android.widget.TextView grip = new android.widget.TextView(this);
+        grip.setText("≡  drag to move · long-press to snap bottom");
+        grip.setTextColor(0xFFE0E0E0);
+        grip.setTextSize(8f);
+        android.widget.LinearLayout.LayoutParams gripLp =
+            new android.widget.LinearLayout.LayoutParams(
+                android.widget.LinearLayout.LayoutParams.WRAP_CONTENT,
+                android.widget.LinearLayout.LayoutParams.WRAP_CONTENT);
+        gripLp.gravity = android.view.Gravity.CENTER;
+        handle.addView(grip, gripLp);
+        android.widget.LinearLayout.LayoutParams handleLp =
+            new android.widget.LinearLayout.LayoutParams(
+                android.widget.LinearLayout.LayoutParams.MATCH_PARENT,
+                (int)(14*d));
+        mDosKeyPanel.addView(handle, handleLp);
+        attachKeyboardDragHandler(handle);
+
+        // The main (typewriter) block sums to about 15 weight units per row.
+        // The arrow/navigation cluster is a separate floating pad so the
+        // letter/number keys can use the full screen width.
         {
             // Row 1: ESC + function keys (main subtotal 13 -> pad to 15)
             android.widget.LinearLayout row1 = newDosKeyRow();
             addDosKey(row1, "ESC", 111, false, 1f);
             for (int i=1;i<=12;i++) addDosKey(row1, "F"+i, 130+i, false, 1f); // F1=131..F12=142
-            navCluster(row1, 13f, null, 0, null, 0, null, 0);
 
             android.widget.LinearLayout num = newDosKeyRow();
             addDosKey(num, "`", 68, false, 1f);
@@ -687,7 +716,6 @@ public class SDLActivity extends Activity implements View.OnSystemUiVisibilityCh
             addDosKey(num, "-", 69, false, 1f);
             addDosKey(num, "=", 70, false, 1f);
             addDosKey(num, "BKSP", 67, false, 2f);
-            navCluster(num, 15f, "INS", 124, "HOME", 122, "PGUP", 92);
 
             android.widget.LinearLayout top = newDosKeyRow();
             addDosKey(top, "TAB", 61, false, 1.5f);
@@ -697,7 +725,6 @@ public class SDLActivity extends Activity implements View.OnSystemUiVisibilityCh
             addDosKey(top, "[", 71, false, 1f);
             addDosKey(top, "]", 72, false, 1f);
             addDosKey(top, "\\", 73, false, 1.5f);
-            navCluster(top, 15f, "DEL", 112, "END", 123, "PGDN", 93);
 
             android.widget.LinearLayout home = newDosKeyRow();
             addDosKey(home, "CAPS", 115, false, 1.75f);
@@ -707,7 +734,6 @@ public class SDLActivity extends Activity implements View.OnSystemUiVisibilityCh
             addDosKey(home, ";", 74, false, 1f);
             addDosKey(home, "'", 75, false, 1f);
             addDosKey(home, "ENTER", 66, false, 2.25f);
-            navCluster(home, 15f, null, 0, null, 0, null, 0);
 
             android.widget.LinearLayout bot = newDosKeyRow();
             addDosKey(bot, "SHIFT", 59, true, 2.25f);   // latching modifier
@@ -718,19 +744,23 @@ public class SDLActivity extends Activity implements View.OnSystemUiVisibilityCh
             addDosKey(bot, ".", 56, false, 1f);
             addDosKey(bot, "/", 76, false, 1f);
             addDosKey(bot, "SHIFT", 60, true, 2.75f);   // latching modifier
-            navCluster(bot, 15f, null, 0, "↑", 19, null, 0);   // up arrow, centered
 
             android.widget.LinearLayout sp = newDosKeyRow();
             addDosKey(sp, "CTRL", 113, true, 1.5f);     // latching modifier
             addDosKey(sp, "ALT", 57, true, 1.5f);       // latching modifier
             addDosKey(sp, "SPACE", 62, false, 12f);
-            navCluster(sp, 15f, "←", 21, "↓", 20, "→", 22);   // inverted-T base
         }
 
+        // Default position: pinned to the bottom (the initial state before
+        // the user has dragged it). The drag handler removes the
+        // ALIGN_PARENT_BOTTOM rule on first move and switches to explicit
+        // leftMargin/topMargin from then on.
         RelativeLayout.LayoutParams plp = new RelativeLayout.LayoutParams(
             RelativeLayout.LayoutParams.MATCH_PARENT, RelativeLayout.LayoutParams.WRAP_CONTENT);
         plp.addRule(RelativeLayout.ALIGN_PARENT_BOTTOM);
         mLayout.addView(mDosKeyPanel, plp);
+
+        buildCursorPad(d);
 
         // Keyboard toggle — top-left.
         android.widget.Button toggle = new android.widget.Button(this);
@@ -744,8 +774,11 @@ public class SDLActivity extends Activity implements View.OnSystemUiVisibilityCh
         tlp.addRule(RelativeLayout.ALIGN_PARENT_LEFT);
         toggle.setOnClickListener(new View.OnClickListener() {
             @Override public void onClick(View v) {
-                mDosKeyPanel.setVisibility(
-                    mDosKeyPanel.getVisibility()==View.VISIBLE ? View.GONE : View.VISIBLE);
+                boolean show = mDosKeyPanel.getVisibility() != View.VISIBLE;
+                mDosKeyPanel.setVisibility(show ? View.VISIBLE : View.GONE);
+                if (mDosCursorPanel != null) {
+                    mDosCursorPanel.setVisibility(show ? View.VISIBLE : View.GONE);
+                }
                 showOverlayButtons();
             }
         });
@@ -819,6 +852,176 @@ public class SDLActivity extends Activity implements View.OnSystemUiVisibilityCh
         showOverlayButtons();   // visible on launch, then auto-hide after 2s
     }
 
+    /** Separate cursor/navigation pad so the main keyboard can keep full-width keys. */
+    private void buildCursorPad(final float d) {
+        mDosCursorPanel = new android.widget.LinearLayout(this);
+        mDosCursorPanel.setOrientation(android.widget.LinearLayout.VERTICAL);
+        mDosCursorPanel.setBackgroundColor(0x90202020);
+        mDosCursorPanel.setPadding((int)(4*d), (int)(4*d), (int)(4*d), (int)(4*d));
+        mDosCursorPanel.setVisibility(View.GONE);
+
+        android.widget.LinearLayout nav = cursorRow();
+        addCursorKey(nav, "INS", 124);
+        addCursorKey(nav, "HOME", 122);
+        addCursorKey(nav, "PGUP", 92);
+
+        android.widget.LinearLayout nav2 = cursorRow();
+        addCursorKey(nav2, "DEL", 112);
+        addCursorKey(nav2, "END", 123);
+        addCursorKey(nav2, "PGDN", 93);
+
+        android.widget.LinearLayout up = cursorRow();
+        addCursorGap(up);
+        addCursorKey(up, "↑", 19);
+        addCursorGap(up);
+
+        android.widget.LinearLayout arrows = cursorRow();
+        addCursorKey(arrows, "←", 21);
+        addCursorKey(arrows, "↓", 20);
+        addCursorKey(arrows, "→", 22);
+
+        RelativeLayout.LayoutParams cp = new RelativeLayout.LayoutParams(
+            RelativeLayout.LayoutParams.WRAP_CONTENT, RelativeLayout.LayoutParams.WRAP_CONTENT);
+        cp.addRule(RelativeLayout.ALIGN_PARENT_TOP);
+        cp.addRule(RelativeLayout.ALIGN_PARENT_RIGHT);
+        cp.topMargin = (int)(48*d);
+        cp.rightMargin = (int)(8*d);
+        mLayout.addView(mDosCursorPanel, cp);
+    }
+
+    private android.widget.LinearLayout cursorRow() {
+        android.widget.LinearLayout row = new android.widget.LinearLayout(this);
+        row.setOrientation(android.widget.LinearLayout.HORIZONTAL);
+        mDosCursorPanel.addView(row, new android.widget.LinearLayout.LayoutParams(
+            android.widget.LinearLayout.LayoutParams.WRAP_CONTENT,
+            android.widget.LinearLayout.LayoutParams.WRAP_CONTENT));
+        return row;
+    }
+
+    private void addCursorGap(android.widget.LinearLayout row) {
+        final float d = getResources().getDisplayMetrics().density;
+        View gap = new View(this);
+        row.addView(gap, new android.widget.LinearLayout.LayoutParams((int)(56*d), (int)(56*d)));
+    }
+
+    private void addCursorKey(android.widget.LinearLayout row, String label, final int keycode) {
+        final float d = getResources().getDisplayMetrics().density;
+        final android.widget.Button b = new android.widget.Button(this);
+        b.setText(label);
+        b.setTextColor(0xFFE0E0E0);
+        b.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, 14f);
+        b.setAllCaps(false);
+        b.setBackgroundColor(mDosKeyBg);
+        b.setPadding((int)(2*d), 0, (int)(2*d), 0);
+        b.setMinHeight(0);
+        b.setMinimumHeight(0);
+        b.setMinWidth(0);
+        b.setMinimumWidth(0);
+        android.widget.LinearLayout.LayoutParams lp =
+            new android.widget.LinearLayout.LayoutParams((int)(56*d), (int)(56*d));
+        lp.setMargins((int)(2*d), (int)(2*d), (int)(2*d), (int)(2*d));
+        b.setLayoutParams(lp);
+        b.setOnTouchListener(new View.OnTouchListener() {
+            @Override public boolean onTouch(View v, android.view.MotionEvent e) {
+                switch (e.getActionMasked()) {
+                    case android.view.MotionEvent.ACTION_DOWN:
+                        SDLActivity.onNativeKeyDown(keycode); v.setPressed(true); return true;
+                    case android.view.MotionEvent.ACTION_UP:
+                    case android.view.MotionEvent.ACTION_CANCEL:
+                        SDLActivity.onNativeKeyUp(keycode); v.setPressed(false); return true;
+                }
+                return false;
+            }
+        });
+        row.addView(b);
+    }
+
+    /** Make the keyboard draggable via its handle bar. The handle is the
+     *  strip at the top of {@link #mDosKeyPanel}; pressing-and-dragging on
+     *  the keys themselves must keep typing (those listeners are
+     *  attached to each button), so the drag is isolated to the handle. */
+    private void attachKeyboardDragHandler(View handle) {
+        final float[] downXY = new float[2];
+        final boolean[] everMoved = new boolean[1];
+        final boolean[] snapped = new boolean[1];   // true once user has dragged at all
+        handle.setOnTouchListener(new View.OnTouchListener() {
+            @Override public boolean onTouch(View v, android.view.MotionEvent ev) {
+                RelativeLayout.LayoutParams lp =
+                    (RelativeLayout.LayoutParams) mDosKeyPanel.getLayoutParams();
+                switch (ev.getActionMasked()) {
+                    case android.view.MotionEvent.ACTION_DOWN:
+                        downXY[0] = ev.getRawX();
+                        downXY[1] = ev.getRawY();
+                        everMoved[0] = false;
+                        return true;
+                    case android.view.MotionEvent.ACTION_MOVE: {
+                        float dx = ev.getRawX() - downXY[0];
+                        float dy = ev.getRawY() - downXY[1];
+                        // Ignore jittery touches (less than 6 px in either axis)
+                        // so a tap on the handle doesn't shift the panel.
+                        if (!everMoved[0] && Math.abs(dx) < 6 && Math.abs(dy) < 6) {
+                            return true;
+                        }
+                        everMoved[0] = true;
+                        // First move: drop the bottom-pinned rule and switch
+                        // to explicit margins. After this, leftMargin /
+                        // topMargin drive the position.
+                        if (!snapped[0]) {
+                            lp.addRule(RelativeLayout.ALIGN_PARENT_BOTTOM, 0);
+                            // Seed the margins from wherever the panel
+                            // currently is, so the drag is continuous
+                            // rather than jumping to (0, 0).
+                            int[] loc = new int[2];
+                            mDosKeyPanel.getLocationOnScreen(loc);
+                            lp.leftMargin = loc[0];
+                            lp.topMargin = loc[1];
+                            snapped[0] = true;
+                        }
+                        int parentW = mLayout.getWidth();
+                        int parentH = mLayout.getHeight();
+                        int panelW = mDosKeyPanel.getWidth();
+                        int panelH = mDosKeyPanel.getHeight();
+                        if (parentW <= 0 || parentH <= 0 || panelW <= 0 || panelH <= 0) {
+                            return true;     // layout not settled yet
+                        }
+                        int newLeft = lp.leftMargin + (int) dx;
+                        int newTop  = lp.topMargin  + (int) dy;
+                        // Clamp so the panel stays fully on screen.
+                        newLeft = Math.max(0, Math.min(newLeft, parentW - panelW));
+                        newTop  = Math.max(0, Math.min(newTop,  parentH - panelH));
+                        lp.leftMargin = newLeft;
+                        lp.topMargin  = newTop;
+                        mDosKeyPanel.setLayoutParams(lp);
+                        downXY[0] = ev.getRawX();
+                        downXY[1] = ev.getRawY();
+                        return true;
+                    }
+                    case android.view.MotionEvent.ACTION_UP:
+                    case android.view.MotionEvent.ACTION_CANCEL:
+                        // A pure tap on the handle is a no-op (a touch on
+                        // the handle is not meaningful to the user).
+                        return true;
+                }
+                return false;
+            }
+        });
+        handle.setOnLongClickListener(new View.OnLongClickListener() {
+            @Override public boolean onLongClick(View v) {
+                // Snap back to the bottom — clear explicit margins and
+                // re-add the ALIGN_PARENT_BOTTOM rule. Convenient when the
+                // user has dragged it somewhere awkward.
+                RelativeLayout.LayoutParams lp =
+                    (RelativeLayout.LayoutParams) mDosKeyPanel.getLayoutParams();
+                lp.leftMargin = 0;
+                lp.topMargin = 0;
+                lp.addRule(RelativeLayout.ALIGN_PARENT_BOTTOM);
+                mDosKeyPanel.setLayoutParams(lp);
+                snapped[0] = false;
+                return true;
+            }
+        });
+    }
+
     // ---- auto-hiding overlay buttons (⌨ / CD▾ / ✕) for a clean "cursor only"
     //      view: they fade out 2s after a touch and reappear on the next touch.
     private final java.util.List<View> mOverlayButtons = new java.util.ArrayList<>();
@@ -827,7 +1030,8 @@ public class SDLActivity extends Activity implements View.OnSystemUiVisibilityCh
     private final Runnable mHideOverlays = new Runnable() {
         @Override public void run() {
             // Keep them up while the on-screen keyboard is open.
-            if (mDosKeyPanel != null && mDosKeyPanel.getVisibility() == View.VISIBLE) {
+            if ((mDosKeyPanel != null && mDosKeyPanel.getVisibility() == View.VISIBLE)
+                    || (mDosCursorPanel != null && mDosCursorPanel.getVisibility() == View.VISIBLE)) {
                 showOverlayButtons();
                 return;
             }
@@ -1100,8 +1304,16 @@ public class SDLActivity extends Activity implements View.OnSystemUiVisibilityCh
             int mapped = SDLActivity.mapGamepadButtonToKey(keyCode);
             if (mapped != 0) {
                 int action = event.getAction();
-                if (action == KeyEvent.ACTION_DOWN)      SDLActivity.onNativeKeyDown(mapped);
-                else if (action == KeyEvent.ACTION_UP)   SDLActivity.onNativeKeyUp(mapped);
+                if (isMouseTarget(mapped)) {
+                    int mouseButton = mapped == com.dosboxx.app.KeyMapStore.TARGET_MOUSE_RIGHT ? 3 : 1;
+                    if (action == KeyEvent.ACTION_DOWN || action == KeyEvent.ACTION_UP) {
+                        SDLActivity.onNativeMouse(mouseButton, action, 0, 0, true);
+                    }
+                } else if (action == KeyEvent.ACTION_DOWN) {
+                    SDLActivity.onNativeKeyDown(mapped);
+                } else if (action == KeyEvent.ACTION_UP) {
+                    SDLActivity.onNativeKeyUp(mapped);
+                }
                 return true;
             }
         }
@@ -1149,6 +1361,14 @@ public class SDLActivity extends Activity implements View.OnSystemUiVisibilityCh
             // fold in the right stick for turning (X) so either stick can aim
             float rx = event.getAxisValue(android.view.MotionEvent.AXIS_Z);
             if (Math.abs(rx) > Math.abs(lx)) lx = rx;
+            if (sStickMouseMode) {
+                final float dz = 0.16f;
+                float mx = Math.abs(lx) > dz ? lx * 18f : 0f;
+                float my = Math.abs(ly) > dz ? ly * 18f : 0f;
+                if (mx != 0f || my != 0f) SDLActivity.onNativeMouse(0, android.view.MotionEvent.ACTION_MOVE, mx, my, true);
+                releaseStickKeys();
+                return true;
+            }
             final float dz = 0.35f;
             boolean[] want = new boolean[4];
             want[0] = ly < -dz;   // up    -> forward
@@ -1157,12 +1377,23 @@ public class SDLActivity extends Activity implements View.OnSystemUiVisibilityCh
             want[3] = lx >  dz;   // right -> turn right
             for (int i = 0; i < 4; i++) {
                 int kc = stickKeyFor(STICK_BUTTONS[i], STICK_FALLBACKS[i]);
+                if (isMouseTarget(kc)) continue;
                 if (want[i] && !mStickKeyDown[i])      { onNativeKeyDown(kc); mStickKeyDown[i] = true; }
                 else if (!want[i] && mStickKeyDown[i]) { onNativeKeyUp(kc);   mStickKeyDown[i] = false; }
             }
             return true;
         }
         return super.dispatchGenericMotionEvent(event);
+    }
+
+    private void releaseStickKeys() {
+        for (int i = 0; i < 4; i++) {
+            if (mStickKeyDown[i]) {
+                int kc = stickKeyFor(STICK_BUTTONS[i], STICK_FALLBACKS[i]);
+                if (!isMouseTarget(kc)) onNativeKeyUp(kc);
+                mStickKeyDown[i] = false;
+            }
+        }
     }
 
     /** Map a physical gamepad button (Android keycode) to the keyboard key we
@@ -1207,9 +1438,19 @@ public class SDLActivity extends Activity implements View.OnSystemUiVisibilityCh
      *  and reach DOS as a real gameport joystick (joysticktype=auto in the
      *  conf). Set by GameLauncherActivity before each launch. */
     public static boolean sJoystickMode = false;
+    public static boolean sStickMouseMode = false;
 
     public static void setJoystickMode(boolean on) {
         sJoystickMode = on;
+    }
+
+    public static void setStickMouseMode(boolean on) {
+        sStickMouseMode = on;
+    }
+
+    private static boolean isMouseTarget(int target) {
+        return target == com.dosboxx.app.KeyMapStore.TARGET_MOUSE_LEFT
+            || target == com.dosboxx.app.KeyMapStore.TARGET_MOUSE_RIGHT;
     }
 
     /** Trackpad mouse for booted-OS sessions (Win98): the touch screen acts
@@ -2755,4 +2996,3 @@ class SDLClipboardHandler implements
         SDLActivity.onNativeClipboardChanged();
     }
 }
-

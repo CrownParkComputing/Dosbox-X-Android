@@ -33,6 +33,7 @@ final class IsoReader implements AutoCloseable {
     /** Result of {@link #scan}: DOS-runnable programs + whether Windows exes exist. */
     static final class Scan {
         final List<String> programs = new ArrayList<>();   // "DIR\\RUN.EXE" style paths
+        final List<String> allPrograms = new ArrayList<>(); // unfiltered .exe/.bat/.com for setup pickers
         boolean sawWindowsExe = false;
         /** Highest PE "major subsystem version" across the Windows exes — the
          *  minimum Windows it targets. 4 = Win9x/NT4; >=5 = Win2000/XP+ (won't
@@ -65,16 +66,50 @@ final class IsoReader implements AutoCloseable {
 
     /** Extract the entire image into destDir. Returns false on any error. */
     static boolean extractTo(File isoOrCue, File destDir) {
+        try {
+            extractToOrThrow(isoOrCue, destDir);
+            return true;
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
+    static void extractToOrThrow(File isoOrCue, File destDir) throws IOException {
         File data = dataFileFor(isoOrCue);
-        if (data == null) return false;
+        if (data == null) throw new IOException("CD data file not found for " + isoOrCue.getName());
+        if (!destDir.exists() && !destDir.mkdirs()) {
+            throw new IOException("Could not create temp folder " + destDir.getAbsolutePath());
+        }
         IsoReader r = null;
         try {
             r = new IsoReader(data);
             r.walk(r.rootLba, r.rootLen, "", 8, null, destDir);
-            return true;
-        } catch (Exception e) {
-            return false;
         } finally {
+            if (r != null) r.close();
+        }
+    }
+
+    interface FileSource {
+        void read(long off, byte[] dst, int dstOff, int len) throws IOException;
+    }
+
+    static String copyToFat32OrThrow(File isoOrCue, File fatImg, String wantedName) throws IOException {
+        File data = dataFileFor(isoOrCue);
+        if (data == null) throw new IOException("CD data file not found for " + isoOrCue.getName());
+        IsoReader r = null;
+        Fat32Disk.Writer w = null;
+        try {
+            r = new IsoReader(data);
+            w = new Fat32Disk.Writer(fatImg);
+            String dosName = w.uniqueShortName(w.rootCluster, wantedName, true);
+            long dirCluster = w.allocCluster();
+            w.clearCluster(dirCluster);
+            w.initDir(dirCluster, w.rootCluster);
+            w.addEntry(w.rootCluster, dosName, true, dirCluster, 0);
+            r.copyToFat(w, r.rootLba, r.rootLen, 8, dirCluster);
+            return dosName.trim();
+        } finally {
+            if (w != null) w.close();
             if (r != null) r.close();
         }
     }
@@ -207,8 +242,10 @@ final class IsoReader implements AutoCloseable {
                         if (scan != null) {
                             String lower = name.toLowerCase(Locale.US);
                             if (lower.endsWith(".bat") || lower.endsWith(".com")) {
+                                scan.allPrograms.add(prefix + name);
                                 scan.programs.add(prefix + name);
                             } else if (lower.endsWith(".exe")) {
+                                scan.allPrograms.add(prefix + name);
                                 if (isWindowsExe(extLba, extLen)) {
                                     scan.sawWindowsExe = true;
                                     int sub = peMajorSubsystem(extLba, extLen);
@@ -218,6 +255,51 @@ final class IsoReader implements AutoCloseable {
                                 }
                             }
                         }
+                    }
+                }
+                pos += recLen;
+            }
+        }
+    }
+
+    private void copyToFat(Fat32Disk.Writer w, long lba, long len, int depth, long dstCluster)
+            throws IOException {
+        if (len <= 0 || len > MAX_DIR_BYTES) return;
+        int sectors = (int) ((len + SECTOR_DATA - 1) / SECTOR_DATA);
+        byte[] buf = new byte[SECTOR_DATA];
+        for (int s = 0; s < sectors; s++) {
+            readAt(lba + s, 0, buf, SECTOR_DATA);
+            int pos = 0;
+            while (pos < SECTOR_DATA) {
+                int recLen = buf[pos] & 0xff;
+                if (recLen == 0) break;
+                if (pos + recLen > SECTOR_DATA) break;
+                int nameLen = buf[pos + 32] & 0xff;
+                boolean isDir = (buf[pos + 25] & 0x02) != 0;
+                boolean special = nameLen == 1 && (buf[pos + 33] == 0 || buf[pos + 33] == 1);
+                if (!special && nameLen > 0 && pos + 33 + nameLen <= SECTOR_DATA) {
+                    String name = new String(buf, pos + 33, nameLen,
+                        joliet ? "UTF-16BE" : "US-ASCII");
+                    int semi = name.indexOf(';');
+                    if (semi >= 0) name = name.substring(0, semi);
+                    if (name.endsWith(".")) name = name.substring(0, name.length() - 1);
+                    long extLba = u32le(buf, pos + 2);
+                    long extLen = u32le(buf, pos + 10);
+                    if (isDir) {
+                        if (depth > 0) {
+                            String n83 = w.uniqueShortName(dstCluster, name, true);
+                            long c = w.allocCluster();
+                            w.clearCluster(c);
+                            w.initDir(c, dstCluster);
+                            w.addEntry(dstCluster, n83, true, c, 0);
+                            copyToFat(w, extLba, extLen, depth - 1, c);
+                        }
+                    } else {
+                        String n83 = w.uniqueShortName(dstCluster, name, false);
+                        long first = extLen > 0 ? w.writeFileClusters(
+                            (off, dst, dstOff, n) -> readAt(extLba, off, dst, dstOff, n),
+                            extLen) : 0;
+                        w.addEntry(dstCluster, n83, false, first, extLen);
                     }
                 }
                 pos += recLen;
@@ -266,6 +348,10 @@ final class IsoReader implements AutoCloseable {
 
     private void extractFile(long lba, long size, File out) throws IOException {
         byte[] buf = new byte[SECTOR_DATA];
+        File parent = out.getParentFile();
+        if (parent != null && !parent.exists() && !parent.mkdirs()) {
+            throw new IOException("mkdir failed: " + parent);
+        }
         FileOutputStream fos = new FileOutputStream(out);
         try {
             long left = size;
@@ -285,6 +371,11 @@ final class IsoReader implements AutoCloseable {
 
     /** Read n bytes starting at byte `off` within the extent beginning at `lba`. */
     private void readAt(long lba, long off, byte[] dst, int n) throws IOException {
+        readAt(lba, off, dst, 0, n);
+    }
+
+    /** Read n bytes starting at byte `off` into dst at dstOff. */
+    private void readAt(long lba, long off, byte[] dst, int dstOff, int n) throws IOException {
         int got = 0;
         while (got < n) {
             long abs = off + got;
@@ -292,7 +383,7 @@ final class IsoReader implements AutoCloseable {
             int inSec = (int) (abs % SECTOR_DATA);
             raf.seek(sec * (long) sectorSize + dataOffset + inSec);
             int take = Math.min(n - got, SECTOR_DATA - inSec);
-            raf.readFully(dst, got, take);
+            raf.readFully(dst, dstOff + got, take);
             got += take;
         }
     }

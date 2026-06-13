@@ -1,88 +1,101 @@
 # DOSBox-X Android
 
-A handheld-friendly Android front-end for [DOSBox-X](https://dosbox-x.com/), built for
-playing DOS games and running a Windows 98 guest on devices like the Retroid Pocket.
-The native emulator (`libmain.so`, DOSBox-X 2026.06) is bundled; this repo is the
-Java/Android launcher and overlay around it.
+Android launcher and handheld front-end for DOSBox-X, focused on DOS games and
+Windows 98 CD game installs on devices such as the Retroid Pocket.
 
-## What it does
+The app bundles the native DOSBox-X core and adds an Android-native launcher,
+storage setup, CD archive management, per-game controls, and Win98 boot helpers.
 
-- **On-device game launcher** with two tabs:
-  - **MS-DOS** — game folders and disk images (`.iso` / `.cue+bin` / `.img`). Tap to play;
-    the launcher auto-picks the right executable, gives each CD game its own persistent
-    writable `C:` drive, and copies "pre-installed" CDs onto `C:` so saves survive.
-  - **Windows 98** — boots a Win9x hard-disk image, with an in-app **CD changer** and
-    library so you can insert / eject / swap discs and create a formatted data drive.
-- **On-screen keyboard** — a full, edge-to-edge staggered PC keyboard overlay that
-  injects real key events into the emulator.
-- **Gamepad support** — per-game keymaps, plus a "joystick mode" that passes the pad
-  through to DOS as a real gameport joystick.
-- **Trackpad mouse** for Windows guests (relative motion, tap / two-finger / drag).
-- **3dfx Voodoo** via the software rasterizer (`voodoo_card=software`) for Glide games.
-- **In-app tooling** to build/convert disc images:
-  - `ZipToIso` — presses a folder of files (in a `.zip`) into an ISO9660 + Joliet CD.
-  - `IsoReader` — minimal ISO9660 reader for auto-picking programs / extracting CDs.
-  - `Fat32Disk` — creates a sparse MBR + FAT32 hard-disk image for the Win98 data drive.
+## Features
 
-## Project layout
+- Unified games list for DOS folders, DOS CD games, Windows 98, and Win98 games.
+- First-run storage wizard for choosing where `games/`, `cds/`, and imports live.
+- Storage manager for ZIP/7Z sources, kept extracted CDs, temporary extracts,
+  visible CD images, installed games, and imports.
+- CD archive workflow:
+  - ZIP/7Z sources live under `cds/.archives/`.
+  - one temporary extracted CD at a time under `cds/.prepared-cds/run_*`.
+  - optional kept extracts under `cds/.extracted-cds/`.
+  - kept extracts and source archives can both be selected from `+ Add CD game`.
+- Windows 98 boot flow that mounts the selected CD as `D:` for installers that
+  expect the CD-ROM there.
+- Per-game metadata for DOS/Win98 type, CD/rip state, and remembered CD source.
+- Per-game gamepad mappings and mouse/trackpad modes.
+- Software Voodoo support through DOSBox-X for Glide-era games.
 
+## Storage Layout
+
+The setup wizard creates or selects a base folder. On removable storage this is
+commonly:
+
+```text
+/storage/<card>/Alarms/DOSBox-X/
 ```
-app/src/main/java/com/dosboxx/app/
-  GameLauncherActivity.java   # the launcher UI + conf generation (the core)
-  KeyMapStore.java            # per-game gamepad keymaps + joystick-mode flag (JSON)
-  KeyMapEditorActivity.java   # UI to rebind pad buttons per game
-  IsoReader.java              # ISO9660 reader (scan / extract)
-  ZipToIso.java               # zip -> ISO9660+Joliet CD image builder
-  Fat32Disk.java              # FAT32 hard-disk image creator
-  DosStatus.java              # JNI bridge for the FPS/status overlay
-app/src/main/java/org/libsdl/app/
-  SDLActivity.java            # SDL2 activity + on-screen keyboard/overlay, CD picker, exit
-  ...                         # stock SDL2 Android glue
-app/src/main/jniLibs/         # prebuilt native libs (libmain.so = DOSBox-X core, libSDL2.so, ...)
+
+Inside that base folder:
+
+```text
+games/                 installed DOS games and the Win98 bundle
+cds/                   visible standalone CD images only
+cds/.archives/         reusable ZIP/7Z CD source packages
+cds/.prepared-cds/     one temporary extracted CD mount at a time
+cds/.extracted-cds/    optional kept extracted CD images
+import/                transient imports
+WinBox98/              Windows 98 disk images, if present
 ```
+
+The visible launcher does not show ZIP/7Z sources directly. Use `+ Add CD game`
+to select from the hidden archive collection or kept extracted CDs.
+
+## Windows 98 Notes
+
+For Windows 98 CD setup, the launcher boots with:
+
+- Win98 hard disk as `C:`
+- selected CD-ROM as `D:`
+
+This avoids installers failing because they expect the CD in `D:`. Install the
+game into `C:\...` unless the game installer explicitly asks otherwise.
 
 ## Building
 
-Requires the Android SDK and JDK 17 (Android Studio's bundled JBR works):
+Requires Android SDK and JDK 17. Android Studio's bundled JBR is known to work:
 
 ```sh
-JAVA_HOME=/path/to/jbr ./gradlew assembleDebug
+./gradlew -Dorg.gradle.java.home=/opt/android-studio/jbr assembleDebug
 adb install -r app/build/outputs/apk/debug/app-debug.apk
 ```
 
-`local.properties` (pointing `sdk.dir` at your Android SDK) is created by Android Studio
-and is intentionally git-ignored.
+`local.properties` is intentionally ignored.
 
-## Using it
+## Project Layout
 
-Put content under the app's external files dir
-(`Android/data/com.dosboxx.app/files/`):
+```text
+app/src/main/java/com/dosboxx/app/
+  GameLauncherActivity.java   launcher UI, storage manager, config generation
+  GameImporter.java           Android file-picker import routing
+  GameMeta.java               per-game platform/CD metadata
+  KeyMapStore.java            per-game controls
+  IsoReader.java              ISO9660 scan/extract helpers
+  ZipToIso.java               ZIP folder to ISO helper
+  Fat32Disk.java              FAT32 image creator/writer
 
-- `games/` — one subfolder per DOS game, or a disk image. A subfolder containing an
-  OS-sized (`>=256 MB`) `.img` is treated as a bootable Windows guest.
-- `cds/` — your CD library (`.iso` / `.cue`+data / `.zip`); these show up in the
-  Windows-98 tab's changer and (for DOS discs) as playable entries on the MS-DOS tab.
+app/src/main/java/org/libsdl/app/
+  SDLActivity.java            SDL/DOSBox activity, overlay, input bridge
 
-## Native core
-
-`libmain.so` is **DOSBox-X** compiled for `arm64-v8a` and `x86_64`, checked in under
-`app/src/main/jniLibs/` so the app builds without a native toolchain.
-
-Upstream DOSBox-X is tracked as a git submodule in [`native/`](native/), pinned to the
-release tag matching the shipped binary (`dosbox-x-v2026.06.02`). Our changes go on top
-as patch files in `native/patches/` (currently none), and `native/build-android.sh`
-drives the NDK cross-build. See [`native/README.md`](native/README.md) for the
-update / patch / rebuild workflow.
-
-```sh
-git clone --recurse-submodules <repo>      # or: git submodule update --init
+native/
+  DOSBox-X upstream submodule and Android build notes
 ```
 
-## Credits
+## GitHub Pages
 
-- [DOSBox-X](https://github.com/joncampbell123/dosbox-x) — the emulator (GPL-2.0).
-- [SDL2](https://www.libsdl.org/) — Android application glue.
+The static project page lives in [`docs/index.md`](docs/index.md). In GitHub:
+
+1. Open repository Settings.
+2. Go to Pages.
+3. Set Source to `Deploy from a branch`.
+4. Select the default branch and `/docs`.
 
 ## License
 
-GPL-2.0, matching DOSBox-X (the bundled native core is GPL-2.0). See `LICENSE`.
+GPL-2.0, matching DOSBox-X. See [`LICENSE`](LICENSE).

@@ -24,6 +24,8 @@ final class AppConfig {
             File f = new File(p);
             if (f.isDirectory() || f.mkdirs()) return f;
         }
+        File external = autoExternalBase();
+        if (external != null) return external;
         return defaultBase(c);
     }
 
@@ -50,6 +52,26 @@ final class AppConfig {
 
     static File defaultBase(Context c) {
         return c.getExternalFilesDir(null);
+    }
+
+    private static File autoExternalBase() {
+        File storage = new File("/storage");
+        File[] vols = storage.listFiles();
+        if (vols == null) return null;
+        for (File v : vols) {
+            String name = v.getName();
+            if ("emulated".equals(name) || "self".equals(name)) continue;
+            File d = new File(v, "Alarms/DOSBox-X");
+            if (isDosBoxBase(d)) return d;
+        }
+        return null;
+    }
+
+    private static boolean isDosBoxBase(File d) {
+        if (d == null || !d.isDirectory()) return false;
+        return new File(d, "WinBox98").isDirectory()
+            || new File(d, "cds").isDirectory()
+            || new File(d, "games").isDirectory();
     }
 
     private static SharedPreferences prefs(Context c) {

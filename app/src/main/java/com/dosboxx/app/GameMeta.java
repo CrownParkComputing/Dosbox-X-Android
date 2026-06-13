@@ -32,8 +32,15 @@ final class GameMeta {
         return o != null ? o.optBoolean("needsCd", dflt) : dflt;
     }
 
+    static String cdMedia(Context c, String name) {
+        JSONObject o = read(c, name);
+        String v = o != null ? o.optString("cdMedia", null) : null;
+        return v != null && v.length() > 0 ? v : null;
+    }
+
     static void setPlatform(Context c, String name, String p) { put(c, name, "platform", p); }
     static void setNeedsCd(Context c, String name, boolean b) { put(c, name, "needsCd", b); }
+    static void setCdMedia(Context c, String name, String mediaName) { put(c, name, "cdMedia", mediaName); }
 
     /** Drop a game's metadata (e.g. when it's deleted). */
     static void clear(Context c, String name) {

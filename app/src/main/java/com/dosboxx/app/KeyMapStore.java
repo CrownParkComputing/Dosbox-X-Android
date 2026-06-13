@@ -8,6 +8,7 @@ import org.json.JSONObject;
 
 import java.io.File;
 import java.io.FileOutputStream;
+import java.io.FileWriter;
 import java.io.OutputStreamWriter;
 import java.io.Writer;
 import java.util.Collections;
@@ -24,6 +25,8 @@ import java.util.Map;
 public final class KeyMapStore {
 
     private static final String DIR_NAME = "keymaps";
+    public static final int TARGET_MOUSE_LEFT = -1001;
+    public static final int TARGET_MOUSE_RIGHT = -1002;
 
     /** Canonical button names, in the order the editor displays them. */
     public static final String[] BUTTONS = {
@@ -127,38 +130,78 @@ public final class KeyMapStore {
 
     /** Atomic write: write to .tmp, then rename. Preserves the joystick flag. */
     public static boolean save(Context ctx, String folderName, Map<String, Integer> map) {
-        return write(ctx, folderName, map, loadJoystickMode(ctx, folderName));
+        return write(ctx, folderName, map, loadJoystickMode(ctx, folderName), loadStickMouseMode(ctx, folderName));
     }
 
     /**
      * Per-game "joystick mode": the gamepad is passed through to DOS as a real
      * joystick instead of being translated to keyboard keys. Stored alongside
-     * the keymap in the same JSON file. ON by default (user preference) —
-     * the long-press toggle opts a game out.
-     */
+     * the keymap in the same JSON file. OFF by default — the long-press
+     * "Joystick mode: ON" toggle in the games list opts a game in.
+     *
+     * Migration: the old build wrote "joystick":true into every file it
+     * created (even games that never opted in), so users upgrading to the
+     * OFF-by-default build would still see joystick mode stuck on. If the
+     * file's joystick field is true AND the user hasn't actually bound any
+     * buttons, treat it as the old default and flip to false. A real
+     * per-game customisation will have non-empty `buttons`, so we leave
+     * those alone. */
     public static boolean loadJoystickMode(Context ctx, String folderName) {
         File f = new File(dir(ctx), safeName(folderName) + ".json");
-        if (!f.isFile()) return true;
+        if (!f.isFile()) return false;
         try {
             JSONObject root = new JSONObject(readFile(f));
-            return root.optBoolean("joystick", true);
-        } catch (Exception e) {
+            boolean stored = root.optBoolean("joystick", false);
+            if (!stored) return false;
+            // Field is true — was this a real user choice or just the
+            // old build's default? Empty buttons map = old default.
+            JSONObject btns = root.optJSONObject("buttons");
+            boolean hasBindings = btns != null && btns.length() > 0;
+            if (!hasBindings) {
+                // Strip the false-positive joystick field. Best-effort; if
+                // the rewrite fails, we still return false for this read
+                // so the user gets the new OFF default.
+                try {
+                    root.put("joystick", false);
+                    FileWriter w = new FileWriter(f, false);
+                    try { w.write(root.toString()); } finally { w.close(); }
+                } catch (Exception ignored) { }
+                return false;
+            }
             return true;
+        } catch (Exception e) {
+            return false;
         }
     }
 
     public static boolean saveJoystickMode(Context ctx, String folderName, boolean on) {
-        return write(ctx, folderName, load(ctx, folderName), on);
+        return write(ctx, folderName, load(ctx, folderName), on, loadStickMouseMode(ctx, folderName));
     }
 
-    private static boolean write(Context ctx, String folderName, Map<String, Integer> map, boolean joystick) {
+    public static boolean loadStickMouseMode(Context ctx, String folderName) {
+        File f = new File(dir(ctx), safeName(folderName) + ".json");
+        if (!f.isFile()) return false;
+        try {
+            JSONObject root = new JSONObject(readFile(f));
+            return root.optBoolean("stickMouse", false);
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
+    public static boolean saveStickMouseMode(Context ctx, String folderName, boolean on) {
+        return write(ctx, folderName, load(ctx, folderName), loadJoystickMode(ctx, folderName), on);
+    }
+
+    private static boolean write(Context ctx, String folderName, Map<String, Integer> map,
+                                 boolean joystick, boolean stickMouse) {
         File d = dir(ctx);
         File f = new File(d, safeName(folderName) + ".json");
         File tmp = new File(d, safeName(folderName) + ".json.tmp");
         try {
             Writer w = new OutputStreamWriter(new FileOutputStream(tmp, false), "UTF-8");
             try {
-                w.write(toJson(folderName, map, joystick));
+                w.write(toJson(folderName, map, joystick, stickMouse));
             } finally {
                 w.close();
             }
@@ -182,13 +225,19 @@ public final class KeyMapStore {
     // ---- JSON (intentionally tiny, no external dependencies) ----
 
     public static String toJson(String folderName, Map<String, Integer> map) {
-        return toJson(folderName, map, false);
+        return toJson(folderName, map, false, false);
     }
 
     public static String toJson(String folderName, Map<String, Integer> map, boolean joystick) {
+        return toJson(folderName, map, joystick, false);
+    }
+
+    public static String toJson(String folderName, Map<String, Integer> map,
+                                boolean joystick, boolean stickMouse) {
         StringBuilder sb = new StringBuilder(256);
         sb.append("{\"game\":\"").append(escape(folderName)).append("\"");
         sb.append(",\"joystick\":").append(joystick);
+        sb.append(",\"stickMouse\":").append(stickMouse);
         sb.append(",\"buttons\":{");
         boolean first = true;
         if (map != null) {
@@ -256,6 +305,8 @@ public final class KeyMapStore {
 
     /** Human-friendly label for an Android keycode — used in the editor UI. */
     public static String keycodeLabel(int kc) {
+        if (kc == TARGET_MOUSE_LEFT) return "Mouse left click";
+        if (kc == TARGET_MOUSE_RIGHT) return "Mouse right click";
         if (kc == KeyEvent.KEYCODE_UNKNOWN) return "(none)";
         switch (kc) {
             case KeyEvent.KEYCODE_DPAD_UP:     return "DPAD UP";

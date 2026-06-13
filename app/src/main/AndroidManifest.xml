@@ -53,12 +53,5 @@
             android:preferMinimalPostProcessing="true"
             android:exported="true">
         </activity>
-
-        <!-- Per-game gamepad keymap editor, started from the launcher's long-press menu. -->
-        <activity
-            android:name="com.dosboxx.app.KeyMapEditorActivity"
-            android:label="@string/keymap_editor_title"
-            android:exported="false"
-            android:configChanges="orientation|screenSize|keyboardHidden" />
     </application>
 </manifest>
