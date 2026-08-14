@@ -19,7 +19,22 @@ class DosboxLauncherApp extends StatelessWidget {
     return MaterialApp(
       title: 'DOSBox-X',
       debugShowCheckedModeBanner: false,
-      theme: ThemeData.dark(useMaterial3: true),
+      // The look every DOS user already knows: the deep blue of setup
+      // programs and text-mode installers, amber where a cursor would glow.
+      theme: ThemeData.dark(useMaterial3: true).copyWith(
+        scaffoldBackgroundColor: const Color(0xFF0A0A2A),
+        colorScheme: const ColorScheme.dark(
+          primary: Color(0xFFFFB000),
+          secondary: Color(0xFF55FFFF),
+          surface: Color(0xFF10104A),
+          surfaceContainerHighest: Color(0xFF1A1A5E),
+        ),
+        appBarTheme: const AppBarTheme(
+          backgroundColor: Color(0xFF10104A),
+          foregroundColor: Color(0xFFFFB000),
+        ),
+        cardTheme: const CardThemeData(color: Color(0xFF10104A)),
+      ),
       home: const ShelfScreen(),
     );
   }
