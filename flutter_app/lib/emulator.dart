@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:flutter/services.dart';
 
 import 'data/conf_generator.dart';
+import 'data/conf_overrides.dart';
 import 'data/dos_settings.dart';
 
 /// The one road from Flutter into the emulator.
@@ -17,13 +18,15 @@ class Emulator {
   static Future<String> gamesDir() async =>
       await _channel.invokeMethod<String>('gamesDir') ?? '';
 
-  static Future<void> launch(DosSettings settings) async {
+  static Future<void> launch(DosSettings settings,
+      [ConfOverrides? overrides]) async {
     final String confPath =
         await _channel.invokeMethod<String>('confPath') ?? '';
     if (confPath.isEmpty) {
       throw Exception('The emulator did not say where its conf lives.');
     }
-    File(confPath).writeAsStringSync(ConfGenerator.generate(settings));
+    File(confPath)
+        .writeAsStringSync(ConfGenerator.generate(settings, overrides));
     await _channel.invokeMethod<bool>('launch');
   }
 }

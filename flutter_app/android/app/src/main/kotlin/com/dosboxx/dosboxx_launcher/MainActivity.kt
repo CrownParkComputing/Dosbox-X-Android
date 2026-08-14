@@ -25,6 +25,8 @@ class MainActivity : FlutterActivity() {
                         if (!dir.exists()) dir.mkdirs()
                         result.success(dir.absolutePath)
                     }
+                    "filesDir" -> result.success(
+                        getExternalFilesDir(null)?.absolutePath ?: filesDir.absolutePath)
                     "launch" -> {
                         // The conf is already on disk - Dart wrote it. Start
                         // the emulator in its own process and stand back.

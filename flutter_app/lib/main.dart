@@ -2,8 +2,12 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 
+import 'package:flutter/services.dart';
+
+import 'data/conf_overrides.dart';
 import 'data/dos_settings.dart';
 import 'emulator.dart';
+import 'screens/advanced_config_screen.dart';
 
 void main() => runApp(const DosboxLauncherApp());
 
@@ -33,11 +37,24 @@ class ShelfScreen extends StatefulWidget {
 class _ShelfScreenState extends State<ShelfScreen> {
   List<Directory> _games = const <Directory>[];
   String _gamesDir = '';
+  ConfOverrides _overrides = ConfOverrides.empty();
+  String _filesDir = '';
 
   @override
   void initState() {
     super.initState();
     _scan();
+    _loadOverrides();
+  }
+
+  Future<void> _loadOverrides() async {
+    _filesDir = await const MethodChannel('dosboxx/emulator')
+            .invokeMethod<String>('filesDir') ??
+        '';
+    if (_filesDir.isNotEmpty) {
+      _overrides = await ConfOverrides.load(_filesDir);
+      if (mounted) setState(() {});
+    }
   }
 
   Future<void> _scan() async {
@@ -75,10 +92,10 @@ class _ShelfScreenState extends State<ShelfScreen> {
       ),
     );
     if (machine == null) return;
-    await Emulator.launch(DosSettings(
-      machine: machine,
-      mountPath: game.path,
-    ));
+    await Emulator.launch(
+      DosSettings(machine: machine, mountPath: game.path),
+      _overrides,
+    );
   }
 
   @override
@@ -88,6 +105,25 @@ class _ShelfScreenState extends State<ShelfScreen> {
         title: const Text('DOSBox-X'),
         actions: <Widget>[
           IconButton(onPressed: _scan, icon: const Icon(Icons.refresh)),
+          // The complex GUI: every section and option the core knows.
+          IconButton(
+            icon: Badge(
+              isLabelVisible: _overrides.count > 0,
+              label: Text('${_overrides.count}'),
+              child: const Icon(Icons.tune),
+            ),
+            onPressed: () => Navigator.of(context).push<void>(
+              MaterialPageRoute<void>(
+                builder: (BuildContext context) => AdvancedConfigScreen(
+                  overrides: _overrides,
+                  onChanged: () {
+                    if (_filesDir.isNotEmpty) _overrides.save(_filesDir);
+                    setState(() {});
+                  },
+                ),
+              ),
+            ),
+          ),
         ],
       ),
       body: _games.isEmpty

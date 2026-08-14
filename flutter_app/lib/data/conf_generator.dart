@@ -1,33 +1,50 @@
+import 'conf_overrides.dart';
 import 'dos_settings.dart';
 
-/// Serialises a [DosSettings] into the dosbox-x.conf the core reads.
+/// Serialises settings into the dosbox-x.conf the core reads.
 ///
-/// Kept free of dart:io so the exact text is unit-testable: a conf that
-/// drifts from what the core expects fails on a phone screen a long way
-/// from this file.
+/// Overrides-only: every option the user has not touched is left to the
+/// core's defaults. The era preset writes cycles and memsize - but an
+/// explicit override of either wins, because the advanced screen is the
+/// senior of the two.
 class ConfGenerator {
   const ConfGenerator._();
 
-  static String generate(DosSettings s) {
+  static String generate(DosSettings s, [ConfOverrides? overrides]) {
+    final ConfOverrides o = overrides ?? ConfOverrides.empty();
+    final Map<String, Map<String, String>> merged =
+        <String, Map<String, String>>{};
+
+    void put(String section, String key, String value) {
+      (merged[section] ??= <String, String>{})[key] = value;
+    }
+
+    put('sdl', 'fullscreen', 'true');
+    put('sdl', 'autolock', 'true');
+    put('dosbox', 'memsize', '${s.machine.memsizeMb}');
+    put('cpu', 'core', 'normal');
+    put('cpu', 'cycles', s.machine.cycles);
+    put('sblaster', 'sbtype', s.soundBlaster ? 'sb16' : 'none');
+    put('gus', 'gus', '${s.gus}');
+
+    // The advanced screen outranks the preset.
+    o.bySection.forEach((String section, Map<String, String> keys) {
+      keys.forEach((String key, String value) => put(section, key, value));
+    });
+
     final StringBuffer b = StringBuffer()
-      ..writeln('# Written by the launcher. Edits are overwritten on launch.')
-      ..writeln('[sdl]')
-      ..writeln('fullscreen=true')
-      ..writeln('autolock=true')
-      ..writeln()
-      ..writeln('[dosbox]')
-      ..writeln('title=DOSBox-X')
-      ..writeln('memsize=${s.machine.memsizeMb}')
-      ..writeln()
-      ..writeln('[cpu]')
-      ..writeln('core=normal')
-      ..writeln('cycles=${s.machine.cycles}')
-      ..writeln()
-      ..writeln('[sblaster]')
-      ..writeln('sbtype=${s.soundBlaster ? 'sb16' : 'none'}')
-      ..writeln()
-      ..writeln('[gus]')
-      ..writeln('gus=${s.gus}')
+      ..writeln('# Written by the launcher. Edits are overwritten on launch.');
+    for (final MapEntry<String, Map<String, String>> section
+        in merged.entries) {
+      b
+        ..writeln()
+        ..writeln('[${section.key}]');
+      for (final MapEntry<String, String> kv in section.value.entries) {
+        b.writeln('${kv.key}=${kv.value}');
+      }
+    }
+
+    b
       ..writeln()
       ..writeln('[autoexec]');
     if (s.mountPath.isNotEmpty) {

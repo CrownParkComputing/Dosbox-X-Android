@@ -31,6 +31,13 @@ android {
     }
 
     buildTypes {
+        debug {
+            // Rides alongside the Play Store install instead of fighting its
+            // version code and signature - and, more to the point, instead of
+            // requiring an uninstall that would erase the store app's game
+            // library. Test data lives in the .test app's own sandbox.
+            applicationIdSuffix = ".test"
+        }
         release {
             // TODO: Add your own signing config for the release build.
             // Signing with the debug keys for now, so `flutter run --release` works.
