@@ -178,7 +178,11 @@ link_shared() {
   linkcmd="$( ( cd "$BUILD/src" && make -n dosbox-x 2>/dev/null ) \
               | grep -E ' -o dosbox-x dosbox\.o' | tail -1 )"
   [ -n "$linkcmd" ] || die "[$ABI] could not find the dosbox-x link command (did the build change?)"
-  shared="${linkcmd/ -o dosbox-x / -shared -Wl,-soname,libmain.so -o libmain.so }"
+  # The host API lives in libgui.a with nothing referencing it - a static
+  # archive member no one needs is a member the linker silently drops, and
+  # the .so ships without the very exports the front end dlsyms. Anchoring
+  # one symbol pulls the whole object in, functions and all.
+  shared="${linkcmd/ -o dosbox-x / -shared -Wl,-soname,libmain.so -Wl,-u,dosboxx_host_quit -o libmain.so }"
   ( cd "$BUILD/src" && eval "$shared" ) 2> "$BUILD/link.log" \
     || { tail -30 "$BUILD/link.log"; die "[$ABI] link failed (see $BUILD/link.log)"; }
   "$STRIP" --strip-unneeded "$BUILD/src/libmain.so" -o "$JNI/libmain.so"
