@@ -57,6 +57,38 @@ class GameImport {
     return wrote ? dir : null;
   }
 
+  /// Every runnable thing in the game folder, shallowest first - what the
+  /// which-exe question lists.
+  static List<String> candidateExes(Directory game) {
+    final List<File> files =
+        game.listSync(recursive: true).whereType<File>().where((File f) {
+      final String l = f.path.toLowerCase();
+      return l.endsWith('.exe') || l.endsWith('.com') || l.endsWith('.bat');
+    }).toList()
+          ..sort((File a, File b) {
+            final int depth = p.split(a.path).length - p.split(b.path).length;
+            return depth != 0 ? depth : a.path.compareTo(b.path);
+          });
+    return <String>[
+      for (final File f in files) p.relative(f.path, from: game.path),
+    ];
+  }
+
+  /// The remembered answer to "which exe", stored inside the game's own
+  /// folder so it travels with the game and dies with the game.
+  static File _choiceFile(Directory game) =>
+      File('${game.path}/.dosboxx_exe');
+
+  static String? rememberedExe(Directory game) {
+    final File f = _choiceFile(game);
+    if (!f.existsSync()) return null;
+    final String rel = f.readAsStringSync().trim();
+    return File(p.join(game.path, rel)).existsSync() ? rel : null;
+  }
+
+  static void rememberExe(Directory game, String rel) =>
+      _choiceFile(game).writeAsStringSync(rel);
+
   /// The file a beginner means by "the game": prefer an exe named like the
   /// folder, then any .bat that is not install/setup, then the largest exe.
   /// Null means DOS gets a prompt and the player explores - which is also

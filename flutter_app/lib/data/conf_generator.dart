@@ -21,6 +21,16 @@ class ConfGenerator {
 
     put('sdl', 'fullscreen', 'true');
     put('sdl', 'autolock', 'true');
+    // The three keys the Java launcher always wrote and Android cannot run
+    // without: surface output (the patched fast path - anything else paints
+    // nothing and reads as a black screen), and no core-drawn chrome.
+    put('sdl', 'output', 'surface');
+    put('sdl', 'showmenu', 'false');
+    put('sdl', 'showdetails', 'false');
+    // bilinear aspect is what the Android render patch serves; the store
+    // launcher always wrote it and the surface path is tuned for it.
+    put('render', 'aspect', 'bilinear');
+    put('dosbox', 'machine', 'svga_s3');
     put('dosbox', 'memsize', '${s.machine.memsizeMb}');
     put('cpu', 'core', 'normal');
     put('cpu', 'cycles', s.machine.cycles);

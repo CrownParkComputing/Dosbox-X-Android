@@ -139,12 +139,40 @@ class _ShelfScreenState extends State<ShelfScreen> {
       if (chosen == null) return;
       machine = chosen;
     }
-    final String? exe = GameImport.autoExe(game);
+    // Which exe: the remembered answer, a confident auto-pick, or the
+    // question - asked once, remembered in the game's own folder.
+    String? exe = GameImport.rememberedExe(game) ?? GameImport.autoExe(game);
+    final List<String> candidates = GameImport.candidateExes(game);
+    if (exe == null && candidates.length == 1) exe = candidates.first;
+    if (exe == null && candidates.isNotEmpty) {
+      if (!mounted) return;
+      exe = await showDialog<String>(
+        context: context,
+        builder: (BuildContext context) => SimpleDialog(
+          title: const Text('Which one starts the game?'),
+          children: <Widget>[
+            for (final String c in candidates.take(20))
+              SimpleDialogOption(
+                onPressed: () => Navigator.pop(context, c),
+                child: Text(c,
+                    style: const TextStyle(fontFamily: 'monospace')),
+              ),
+          ],
+        ),
+      );
+      if (exe == null) return;
+    }
+    if (exe != null) GameImport.rememberExe(game, exe);
+
+    // Mount the exe's own directory: DOS cannot speak the long folder names
+    // a zip arrives with, and every game expects to run from where it lives.
+    final String mount =
+        exe == null ? game.path : File('${game.path}/$exe').parent.path;
     await Emulator.launch(
       DosSettings(
         machine: machine,
-        mountPath: game.path,
-        autoexec: exe ?? '',
+        mountPath: mount,
+        autoexec: exe == null ? '' : exe.split('/').last,
       ),
       _geek ? _overrides : null,
     );
