@@ -1,11 +1,11 @@
 import 'dart:io';
 
 import 'package:flutter/material.dart';
-
 import 'package:flutter/services.dart';
 
 import 'data/conf_overrides.dart';
 import 'data/dos_settings.dart';
+import 'data/game_import.dart';
 import 'emulator.dart';
 import 'screens/advanced_config_screen.dart';
 
@@ -40,8 +40,13 @@ class DosboxLauncherApp extends StatelessWidget {
   }
 }
 
-/// The game shelf: every subfolder of games/ is a game, tap to set up and
-/// play. The same shape as the Amiga launcher's library, DOS-flavoured.
+/// The shelf, in two personalities.
+///
+/// Beginner mode is the app the Play Store already knows: your games, one
+/// big way to add another, tap to play - the machine picks its own settings.
+/// Geek mode adds the era picker on launch and the full 899-option
+/// configuration surface. One switch in the menu moves between them; the
+/// choice persists.
 class ShelfScreen extends StatefulWidget {
   const ShelfScreen({super.key});
 
@@ -50,25 +55,37 @@ class ShelfScreen extends StatefulWidget {
 }
 
 class _ShelfScreenState extends State<ShelfScreen> {
+  static const MethodChannel _channel = MethodChannel('dosboxx/emulator');
+
   List<Directory> _games = const <Directory>[];
   String _gamesDir = '';
-  ConfOverrides _overrides = ConfOverrides.empty();
   String _filesDir = '';
+  ConfOverrides _overrides = ConfOverrides.empty();
+  bool _geek = false;
+  bool _busy = false;
 
   @override
   void initState() {
     super.initState();
-    _scan();
-    _loadOverrides();
+    _load();
   }
 
-  Future<void> _loadOverrides() async {
-    _filesDir = await const MethodChannel('dosboxx/emulator')
-            .invokeMethod<String>('filesDir') ??
-        '';
+  Future<void> _load() async {
+    _filesDir = await _channel.invokeMethod<String>('filesDir') ?? '';
     if (_filesDir.isNotEmpty) {
       _overrides = await ConfOverrides.load(_filesDir);
-      if (mounted) setState(() {});
+      _geek = File('$_filesDir/geek_mode').existsSync();
+    }
+    await _scan();
+  }
+
+  Future<void> _setGeek(bool on) async {
+    setState(() => _geek = on);
+    final File flag = File('$_filesDir/geek_mode');
+    if (on) {
+      flag.writeAsStringSync('');
+    } else if (flag.existsSync()) {
+      flag.deleteSync();
     }
   }
 
@@ -76,11 +93,9 @@ class _ShelfScreenState extends State<ShelfScreen> {
     final String dir = await Emulator.gamesDir();
     final List<Directory> games = dir.isEmpty
         ? const <Directory>[]
-        : Directory(dir)
-            .listSync()
-            .whereType<Directory>()
-            .toList()
-      ..sort((Directory a, Directory b) => a.path.compareTo(b.path));
+        : (Directory(dir).listSync().whereType<Directory>().toList()
+          ..sort((Directory a, Directory b) =>
+              a.path.toLowerCase().compareTo(b.path.toLowerCase())));
     if (mounted) {
       setState(() {
         _gamesDir = dir;
@@ -89,27 +104,49 @@ class _ShelfScreenState extends State<ShelfScreen> {
     }
   }
 
+  Future<void> _addGame() async {
+    setState(() => _busy = true);
+    final Directory? added = await GameImport.pickAndImport(_gamesDir);
+    setState(() => _busy = false);
+    if (added != null) {
+      await _scan();
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content:
+              Text('${added.path.split('/').last} is on the shelf.'),
+        ));
+      }
+    }
+  }
+
   Future<void> _play(Directory game) async {
-    // The wizard, sized to what a first slice needs: pick the machine, go.
-    // The exe hunt and per-game remembered settings come with the library
-    // layer; a mounted C: and a DIR prompt already proves the whole chain.
-    final DosMachine? machine = await showDialog<DosMachine>(
-      context: context,
-      builder: (BuildContext context) => SimpleDialog(
-        title: Text(game.path.split('/').last),
-        children: <Widget>[
-          for (final DosMachine m in DosMachine.all)
-            SimpleDialogOption(
-              onPressed: () => Navigator.pop(context, m),
-              child: Text(m.displayName),
-            ),
-        ],
-      ),
-    );
-    if (machine == null) return;
+    DosMachine machine = DosMachine.dx486;
+    if (_geek) {
+      // Geeks pick the era; beginners get a sensible 486.
+      final DosMachine? chosen = await showDialog<DosMachine>(
+        context: context,
+        builder: (BuildContext context) => SimpleDialog(
+          title: Text(game.path.split('/').last),
+          children: <Widget>[
+            for (final DosMachine m in DosMachine.all)
+              SimpleDialogOption(
+                onPressed: () => Navigator.pop(context, m),
+                child: Text(m.displayName),
+              ),
+          ],
+        ),
+      );
+      if (chosen == null) return;
+      machine = chosen;
+    }
+    final String? exe = GameImport.autoExe(game);
     await Emulator.launch(
-      DosSettings(machine: machine, mountPath: game.path),
-      _overrides,
+      DosSettings(
+        machine: machine,
+        mountPath: game.path,
+        autoexec: exe ?? '',
+      ),
+      _geek ? _overrides : null,
     );
   }
 
@@ -117,49 +154,122 @@ class _ShelfScreenState extends State<ShelfScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('DOSBox-X'),
+        title: const Text(
+          'DOSBox-X',
+          style: TextStyle(fontFamily: 'monospace', letterSpacing: 2),
+        ),
         actions: <Widget>[
-          IconButton(onPressed: _scan, icon: const Icon(Icons.refresh)),
-          // The complex GUI: every section and option the core knows.
-          IconButton(
-            icon: Badge(
-              isLabelVisible: _overrides.count > 0,
-              label: Text('${_overrides.count}'),
-              child: const Icon(Icons.tune),
-            ),
-            onPressed: () => Navigator.of(context).push<void>(
-              MaterialPageRoute<void>(
-                builder: (BuildContext context) => AdvancedConfigScreen(
-                  overrides: _overrides,
-                  onChanged: () {
-                    if (_filesDir.isNotEmpty) _overrides.save(_filesDir);
-                    setState(() {});
-                  },
+          if (_geek)
+            IconButton(
+              tooltip: 'Configuration',
+              icon: Badge(
+                isLabelVisible: _overrides.count > 0,
+                label: Text('${_overrides.count}'),
+                child: const Icon(Icons.tune),
+              ),
+              onPressed: () => Navigator.of(context).push<void>(
+                MaterialPageRoute<void>(
+                  builder: (BuildContext context) => AdvancedConfigScreen(
+                    overrides: _overrides,
+                    onChanged: () {
+                      if (_filesDir.isNotEmpty) _overrides.save(_filesDir);
+                      setState(() {});
+                    },
+                  ),
                 ),
               ),
             ),
+          PopupMenuButton<String>(
+            onSelected: (String v) {
+              if (v == 'mode') _setGeek(!_geek);
+              if (v == 'rescan') _scan();
+            },
+            itemBuilder: (BuildContext context) => <PopupMenuEntry<String>>[
+              CheckedPopupMenuItem<String>(
+                value: 'mode',
+                checked: _geek,
+                child: const Text('Geek mode'),
+              ),
+              const PopupMenuItem<String>(
+                value: 'rescan',
+                child: Text('Rescan shelf'),
+              ),
+            ],
           ),
         ],
       ),
+      floatingActionButton: FloatingActionButton.extended(
+        onPressed: _busy ? null : _addGame,
+        icon: _busy
+            ? const SizedBox(
+                width: 18,
+                height: 18,
+                child: CircularProgressIndicator(strokeWidth: 2))
+            : const Icon(Icons.add),
+        label: const Text('Add a game'),
+      ),
       body: _games.isEmpty
           ? Center(
-              child: Padding(
-                padding: const EdgeInsets.all(24),
-                child: Text(
-                  'No games yet.\n\nPut each game in its own folder under:\n'
-                  '$_gamesDir\n\nthen pull to refresh.',
-                  textAlign: TextAlign.center,
-                ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: <Widget>[
+                  const Icon(Icons.videogame_asset_off,
+                      size: 56, color: Color(0xFF55FFFF)),
+                  const SizedBox(height: 16),
+                  const Text('No games yet.',
+                      style: TextStyle(fontSize: 18)),
+                  const SizedBox(height: 8),
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 40),
+                    child: Text(
+                      'Tap "Add a game" and pick a zip - it lands on the '
+                      'shelf ready to play.\n\nOr drop game folders into:\n'
+                      '$_gamesDir',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                          color: Colors.white.withValues(alpha: 0.6)),
+                    ),
+                  ),
+                ],
               ),
             )
-          : ListView.builder(
+          : GridView.builder(
+              padding: const EdgeInsets.fromLTRB(12, 12, 12, 96),
+              gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
+                maxCrossAxisExtent: 220,
+                childAspectRatio: 1.4,
+                crossAxisSpacing: 10,
+                mainAxisSpacing: 10,
+              ),
               itemCount: _games.length,
               itemBuilder: (BuildContext context, int i) {
                 final Directory game = _games[i];
-                return ListTile(
-                  leading: const Icon(Icons.videogame_asset),
-                  title: Text(game.path.split('/').last),
-                  onTap: () => _play(game),
+                final String name = game.path.split('/').last;
+                return Card(
+                  clipBehavior: Clip.antiAlias,
+                  child: InkWell(
+                    onTap: () => _play(game),
+                    child: Padding(
+                      padding: const EdgeInsets.all(12),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: <Widget>[
+                          const Icon(Icons.videogame_asset,
+                              color: Color(0xFF55FFFF)),
+                          const Spacer(),
+                          Text(
+                            name,
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                              fontFamily: 'monospace',
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
                 );
               },
             ),
