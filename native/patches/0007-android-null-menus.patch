@@ -1,0 +1,18 @@
+diff --git a/include/menu.h b/include/menu.h
+index 28666f83..cfe389b7 100644
+--- a/include/menu.h
++++ b/include/menu.h
+@@ -102,7 +102,12 @@ void SetVal(const std::string & secname, const std::string & preval, const std::
+ #define DOSBOXMENU_NSMENU   (2)     /* Mac OS X NSMenu / NSMenuItem resources */
+ #define DOSBOXMENU_SDLDRAW  (3)     /* menus that WE draw on the SDL surface */
+ 
+-#if C_FORCE_MENU_SDLDRAW /* Programmer/Dev wants to compile with SDL drawn menus even if host OS offers menus (shrug) Ok */
++#if defined(__ANDROID__)
++/* No core-drawn menus on Android: the Flutter front end owns every control
++ * surface, and a menu bar drawn onto the game surface is chrome the phone
++ * host cannot use. NULL is upstream's own "nothing" backend. */
++# define DOSBOXMENU_TYPE    DOSBOXMENU_NULL
++#elif C_FORCE_MENU_SDLDRAW /* Programmer/Dev wants to compile with SDL drawn menus even if host OS offers menus (shrug) Ok */
+ # define DOSBOXMENU_TYPE    DOSBOXMENU_SDLDRAW
+ #elif defined(HX_DOS)
+ # define DOSBOXMENU_TYPE    DOSBOXMENU_SDLDRAW
