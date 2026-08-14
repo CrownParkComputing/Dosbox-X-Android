@@ -8,6 +8,7 @@ import 'data/dos_settings.dart';
 import 'data/game_import.dart';
 import 'emulator.dart';
 import 'screens/advanced_config_screen.dart';
+import 'screens/game_browser_screen.dart';
 
 void main() => runApp(const DosboxLauncherApp());
 
@@ -114,6 +115,13 @@ class _ShelfScreenState extends State<ShelfScreen> {
           mainAxisSize: MainAxisSize.min,
           children: <Widget>[
             ListTile(
+              leading: const Icon(Icons.video_library),
+              title: const Text('Browse the collection'),
+              subtitle:
+                  const Text('Search your whole game folder, A to Z'),
+              onTap: () => Navigator.pop(context, 'browse'),
+            ),
+            ListTile(
               leading: const Icon(Icons.folder_zip),
               title: const Text('A zip file'),
               subtitle: const Text('Downloaded game archives'),
@@ -130,6 +138,22 @@ class _ShelfScreenState extends State<ShelfScreen> {
       ),
     );
     if (kind == null) return;
+
+    if (kind == 'browse') {
+      if (!mounted) return;
+      final Directory? added = await Navigator.push<Directory>(
+        context,
+        MaterialPageRoute<Directory>(
+          builder: (BuildContext context) =>
+              GameBrowserScreen(gamesDir: _gamesDir),
+        ),
+      );
+      if (added == null) return;
+      await _scan();
+      if (!mounted) return;
+      await _chooseExe(added, announce: true);
+      return;
+    }
 
     setState(() => _busy = true);
     final Directory? added = kind == 'zip'
