@@ -11,6 +11,37 @@ import java.io.File
 /// for a start; everything else the emulator needs it reads from that conf,
 /// which is the same contract the Java launcher spoke.
 class MainActivity : FlutterActivity() {
+    override fun onResume() {
+        super.onResume()
+        // Integration-test door (tools/boot-test.sh): boot plain DOS with an
+        // autoexec that writes C:\BOOTOK.TXT. The file appearing on the
+        // Android side proves conf parse, mount, DOS boot and shell
+        // execution end to end - no screenshot judgement involved.
+        if (intent?.getBooleanExtra("boottest", false) == true) {
+            intent.removeExtra("boottest")
+            val files = getExternalFilesDir(null) ?: filesDir
+            val cdir = File(files, "boottest")
+            cdir.mkdirs()
+            File(cdir, "BOOTOK.TXT").delete()
+            File(files, "dosbox-x.conf").writeText(
+                """
+                [sdl]
+                fullscreen=true
+                autolock=true
+                output=surface
+                showmenu=false
+                showdetails=false
+
+                [autoexec]
+                mount c "${cdir.absolutePath}"
+                c:
+                echo OK > C:\BOOTOK.TXT
+                """.trimIndent() + "\n")
+            startActivity(Intent().setComponent(
+                ComponentName(packageName, "org.libsdl.app.SDLActivity")))
+        }
+    }
+
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "dosboxx/emulator")
