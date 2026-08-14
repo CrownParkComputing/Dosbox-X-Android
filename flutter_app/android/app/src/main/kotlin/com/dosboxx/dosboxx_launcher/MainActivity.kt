@@ -26,7 +26,7 @@ class MainActivity : FlutterActivity() {
             File(files, "dosbox-x.conf").writeText(
                 """
                 [sdl]
-                fullscreen=true
+                fullscreen=false
                 autolock=true
                 output=surface
                 showmenu=false

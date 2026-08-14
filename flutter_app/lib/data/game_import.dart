@@ -24,7 +24,7 @@ class GameImport {
       // A bare game file is welcome too: it gets a folder of its own.
       final Directory dir =
           _uniqueDir(gamesDir, p.basenameWithoutExtension(path));
-      File(path).copySync('${dir.path}/${p.basename(path)}');
+      File(path).copySync('${dir.path}/${dosName(p.basename(path))}');
       return dir;
     }
     return importZip(File(path), gamesDir);
@@ -45,10 +45,13 @@ class GameImport {
     final Directory dir =
         _uniqueDir(gamesDir, p.basename(srcPath.replaceAll(RegExp(r'/+$'), '')));
     bool wrote = false;
+    final Map<String, String> memo = <String, String>{};
+    final Set<String> taken = <String>{};
     try {
       for (final FileSystemEntity e in src.listSync(recursive: true)) {
         if (e is! File) continue;
-        final String rel = p.relative(e.path, from: src.path);
+        final String rel = p.joinAll(dosPath(
+            p.split(p.relative(e.path, from: src.path)), memo, taken));
         final File out = File(p.join(dir.path, rel));
         out.parent.createSync(recursive: true);
         e.copySync(out.path);
@@ -58,6 +61,72 @@ class GameImport {
       // Partial copies stand; the user sees what arrived and can retry.
     }
     return wrote ? dir : null;
+  }
+
+  /// DOS 8.3-safe file/dir name. DOS 5 has no long filenames: a name with a
+  /// space or over 8+3 characters is unreachable from the prompt ("boulder
+  /// dash.exe" -> Bad command or filename), so every path segment inside a
+  /// game folder is sanitised at import. The game folder itself keeps its
+  /// long shelf name - only its contents must be DOS-legal, because that is
+  /// what gets mounted.
+  static String dosName(String segment) {
+    String stem = segment;
+    String ext = '';
+    final int dot = segment.lastIndexOf('.');
+    if (dot > 0) {
+      stem = segment.substring(0, dot);
+      ext = segment.substring(dot + 1);
+    }
+    String clean(String s, int max) {
+      final String kept =
+          s.replaceAll(RegExp(r'[^A-Za-z0-9_\-~]'), '').toUpperCase();
+      return kept.substring(0, kept.length > max ? max : kept.length);
+    }
+    final String cStem = clean(stem, 8);
+    final String cExt = clean(ext, 3);
+    final String name = cStem.isEmpty ? 'X' : cStem;
+    return cExt.isEmpty ? name : '$name.$cExt';
+  }
+
+  /// [dosName] over every segment of a relative path. The same original
+  /// directory always maps to the same sanitised directory (memo), and two
+  /// different originals that truncate to the same short name get a digit
+  /// bumped into the stem (HELLO WORLD.TXT vs HELLOWORLD.TXT).
+  static List<String> dosPath(
+      List<String> parts, Map<String, String> memo, Set<String> taken) {
+    String origPrefix = '';
+    String sanPrefix = '';
+    final List<String> out = <String>[];
+    for (final String part in parts) {
+      origPrefix =
+          origPrefix.isEmpty ? part.toLowerCase() : '$origPrefix/${part.toLowerCase()}';
+      final String? seen = memo[origPrefix];
+      if (seen != null) {
+        sanPrefix = seen;
+        out.add(seen.split('/').last);
+        continue;
+      }
+      String seg = dosName(part);
+      String candidate = sanPrefix.isEmpty ? seg : '$sanPrefix/$seg';
+      int n = 2;
+      while (taken.contains(candidate.toLowerCase())) {
+        final int dot = seg.lastIndexOf('.');
+        final String stem = dot > 0 ? seg.substring(0, dot) : seg;
+        final String ext = dot > 0 ? seg.substring(dot) : '';
+        final String digits = '$n';
+        final String base = stem.length + digits.length > 8
+            ? stem.substring(0, 8 - digits.length)
+            : stem;
+        final String bumped = '$base$digits$ext';
+        candidate = sanPrefix.isEmpty ? bumped : '$sanPrefix/$bumped';
+        n++;
+      }
+      taken.add(candidate.toLowerCase());
+      memo[origPrefix] = candidate;
+      sanPrefix = candidate;
+      out.add(candidate.split('/').last);
+    }
+    return out;
   }
 
   /// games/name, or name-2, -3... - an import must never overwrite a
@@ -82,6 +151,8 @@ class GameImport {
     final Directory dir =
         _uniqueDir(gamesDir, p.basenameWithoutExtension(zip.path));
     bool wrote = false;
+    final Map<String, String> memo = <String, String>{};
+    final Set<String> taken = <String>{};
     for (final ArchiveFile entry in archive) {
       if (!entry.isFile) continue;
       // Flatten traversal attempts; keep the zip's own folder shape.
@@ -90,7 +161,8 @@ class GameImport {
           .where((String s) => s != '..' && s != '.' && s.isNotEmpty)
           .toList();
       if (parts.isEmpty) continue;
-      final File out = File(p.joinAll(<String>[dir.path, ...parts]));
+      final File out =
+          File(p.joinAll(<String>[dir.path, ...dosPath(parts, memo, taken)]));
       out.parent.createSync(recursive: true);
       out.writeAsBytesSync(entry.content as List<int>);
       wrote = true;

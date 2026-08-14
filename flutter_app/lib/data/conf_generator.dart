@@ -19,7 +19,12 @@ class ConfGenerator {
       (merged[section] ??= <String, String>{})[key] = value;
     }
 
-    put('sdl', 'fullscreen', 'true');
+    // Windowed, never fullscreen=true: on Android the SDL window is the whole
+    // display already, and the content-scale patches (0005/0006) only live in
+    // the windowed path. fullscreen=true takes the desktop path, which clips
+    // against 1920x1080 while the surface is content-sized - window_too_small
+    // then latches and the renderer drops every frame (the black screen).
+    put('sdl', 'fullscreen', 'false');
     put('sdl', 'autolock', 'true');
     // The three keys the Java launcher always wrote and Android cannot run
     // without: surface output (the patched fast path - anything else paints
