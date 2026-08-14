@@ -105,17 +105,144 @@ class _ShelfScreenState extends State<ShelfScreen> {
   }
 
   Future<void> _addGame() async {
+    // Zip or folder - both roads end at the same place: a folder on the
+    // shelf and the which-program question answered up front.
+    final String? kind = await showModalBottomSheet<String>(
+      context: context,
+      builder: (BuildContext context) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: <Widget>[
+            ListTile(
+              leading: const Icon(Icons.folder_zip),
+              title: const Text('A zip file'),
+              subtitle: const Text('Downloaded game archives'),
+              onTap: () => Navigator.pop(context, 'zip'),
+            ),
+            ListTile(
+              leading: const Icon(Icons.folder),
+              title: const Text('A folder'),
+              subtitle: const Text('A game already unpacked somewhere'),
+              onTap: () => Navigator.pop(context, 'folder'),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (kind == null) return;
+
     setState(() => _busy = true);
-    final Directory? added = await GameImport.pickAndImport(_gamesDir);
+    final Directory? added = kind == 'zip'
+        ? await GameImport.pickAndImport(_gamesDir)
+        : await GameImport.pickAndImportFolder(_gamesDir);
     setState(() => _busy = false);
-    if (added != null) {
-      await _scan();
-      if (mounted) {
+    if (added == null) return;
+    await _scan();
+    if (!mounted) return;
+    // The which-program question belongs to import, not to the first
+    // bewildered tap later.
+    await _chooseExe(added, announce: true);
+  }
+
+  /// Asks which program starts [game] and remembers the answer. With one
+  /// obvious candidate it confirms silently.
+  Future<void> _chooseExe(Directory game, {bool announce = false}) async {
+    final List<String> candidates = GameImport.candidateExes(game);
+    final String name = game.path.split('/').last;
+    if (candidates.isEmpty) {
+      if (announce && mounted) {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-          content:
-              Text('${added.path.split('/').last} is on the shelf.'),
+          content: Text('$name is on the shelf - no programs found inside, '
+              'it will open at the DOS prompt.'),
         ));
       }
+      return;
+    }
+    final String? auto =
+        GameImport.rememberedExe(game) ?? GameImport.autoExe(game);
+    if (candidates.length == 1) {
+      GameImport.rememberExe(game, candidates.first);
+      if (announce && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text('$name is ready - runs ${candidates.first}.'),
+        ));
+      }
+      return;
+    }
+    if (!mounted) return;
+    final String? picked = await showDialog<String>(
+      context: context,
+      builder: (BuildContext context) => SimpleDialog(
+        title: Text('$name - which program starts it?'),
+        children: <Widget>[
+          for (final String c in candidates.take(30))
+            SimpleDialogOption(
+              onPressed: () => Navigator.pop(context, c),
+              child: Row(
+                children: <Widget>[
+                  Icon(
+                    c == auto ? Icons.star : Icons.play_arrow,
+                    size: 16,
+                    color: c == auto
+                        ? const Color(0xFFFFB000)
+                        : const Color(0xFF55FFFF),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(c,
+                        style: const TextStyle(fontFamily: 'monospace')),
+                  ),
+                ],
+              ),
+            ),
+        ],
+      ),
+    );
+    if (picked != null) {
+      GameImport.rememberExe(game, picked);
+      if (announce && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('$name is ready - runs $picked.')),
+        );
+      }
+    }
+  }
+
+  /// Long-press: everything about one game in one place.
+  Future<void> _gameMenu(Directory game) async {
+    final String name = game.path.split('/').last;
+    final String? action = await showModalBottomSheet<String>(
+      context: context,
+      builder: (BuildContext context) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: <Widget>[
+            ListTile(
+              title: Text(name,
+                  style: const TextStyle(fontWeight: FontWeight.bold)),
+              subtitle: Text(
+                  GameImport.rememberedExe(game) ?? 'no program chosen yet'),
+            ),
+            const Divider(height: 1),
+            ListTile(
+              leading: const Icon(Icons.play_circle_outline),
+              title: const Text('Choose which program runs'),
+              onTap: () => Navigator.pop(context, 'exe'),
+            ),
+            ListTile(
+              leading: const Icon(Icons.delete_outline),
+              title: const Text('Remove from shelf'),
+              onTap: () => Navigator.pop(context, 'delete'),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (action == 'exe') {
+      await _chooseExe(game, announce: true);
+    } else if (action == 'delete') {
+      game.deleteSync(recursive: true);
+      await _scan();
     }
   }
 
@@ -139,30 +266,15 @@ class _ShelfScreenState extends State<ShelfScreen> {
       if (chosen == null) return;
       machine = chosen;
     }
-    // Which exe: the remembered answer, a confident auto-pick, or the
-    // question - asked once, remembered in the game's own folder.
-    String? exe = GameImport.rememberedExe(game) ?? GameImport.autoExe(game);
-    final List<String> candidates = GameImport.candidateExes(game);
-    if (exe == null && candidates.length == 1) exe = candidates.first;
-    if (exe == null && candidates.isNotEmpty) {
-      if (!mounted) return;
-      exe = await showDialog<String>(
-        context: context,
-        builder: (BuildContext context) => SimpleDialog(
-          title: const Text('Which one starts the game?'),
-          children: <Widget>[
-            for (final String c in candidates.take(20))
-              SimpleDialogOption(
-                onPressed: () => Navigator.pop(context, c),
-                child: Text(c,
-                    style: const TextStyle(fontFamily: 'monospace')),
-              ),
-          ],
-        ),
-      );
-      if (exe == null) return;
+    // The remembered program, or the question now.
+    String? exe = GameImport.rememberedExe(game);
+    if (exe == null) {
+      await _chooseExe(game);
+      exe = GameImport.rememberedExe(game);
+      if (exe == null && GameImport.candidateExes(game).isNotEmpty) {
+        return; // asked and dismissed - not a launch
+      }
     }
-    if (exe != null) GameImport.rememberExe(game, exe);
 
     // Mount the exe's own directory: DOS cannot speak the long folder names
     // a zip arrives with, and every game expects to run from where it lives.
@@ -277,6 +389,7 @@ class _ShelfScreenState extends State<ShelfScreen> {
                   clipBehavior: Clip.antiAlias,
                   child: InkWell(
                     onTap: () => _play(game),
+                    onLongPress: () => _gameMenu(game),
                     child: Padding(
                       padding: const EdgeInsets.all(12),
                       child: Column(

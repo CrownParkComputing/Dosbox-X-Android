@@ -22,13 +22,54 @@ class GameImport {
     if (path == null) return null;
     if (!path.toLowerCase().endsWith('.zip')) {
       // A bare game file is welcome too: it gets a folder of its own.
-      final String name = p.basenameWithoutExtension(path);
-      final Directory dir = Directory('$gamesDir/$name')
-        ..createSync(recursive: true);
+      final Directory dir =
+          _uniqueDir(gamesDir, p.basenameWithoutExtension(path));
       File(path).copySync('${dir.path}/${p.basename(path)}');
       return dir;
     }
     return importZip(File(path), gamesDir);
+  }
+
+  /// The folder flavour of [pickAndImport].
+  static Future<Directory?> pickAndImportFolder(String gamesDir) async {
+    final String? src = await FilePicker.platform.getDirectoryPath();
+    if (src == null) return null;
+    return importFolder(src, gamesDir);
+  }
+
+  /// A folder brought in whole - a game already unpacked somewhere else.
+  /// Copies rather than moves: the source is the user's, wherever it lives.
+  static Directory? importFolder(String srcPath, String gamesDir) {
+    final Directory src = Directory(srcPath);
+    if (!src.existsSync()) return null;
+    final Directory dir =
+        _uniqueDir(gamesDir, p.basename(srcPath.replaceAll(RegExp(r'/+$'), '')));
+    bool wrote = false;
+    try {
+      for (final FileSystemEntity e in src.listSync(recursive: true)) {
+        if (e is! File) continue;
+        final String rel = p.relative(e.path, from: src.path);
+        final File out = File(p.join(dir.path, rel));
+        out.parent.createSync(recursive: true);
+        e.copySync(out.path);
+        wrote = true;
+      }
+    } on FileSystemException {
+      // Partial copies stand; the user sees what arrived and can retry.
+    }
+    return wrote ? dir : null;
+  }
+
+  /// games/name, or name-2, -3... - an import must never overwrite a
+  /// game that shares a title.
+  static Directory _uniqueDir(String gamesDir, String name) {
+    Directory dir = Directory('$gamesDir/$name');
+    int n = 2;
+    while (dir.existsSync() && dir.listSync().isNotEmpty) {
+      dir = Directory('$gamesDir/$name-${n++}');
+    }
+    dir.createSync(recursive: true);
+    return dir;
   }
 
   static Directory? importZip(File zip, String gamesDir) {
@@ -38,8 +79,8 @@ class GameImport {
     } on Object {
       return null;
     }
-    final String name = p.basenameWithoutExtension(zip.path);
-    final Directory dir = Directory('$gamesDir/$name');
+    final Directory dir =
+        _uniqueDir(gamesDir, p.basenameWithoutExtension(zip.path));
     bool wrote = false;
     for (final ArchiveFile entry in archive) {
       if (!entry.isFile) continue;
