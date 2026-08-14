@@ -19,14 +19,14 @@ class Emulator {
       await _channel.invokeMethod<String>('gamesDir') ?? '';
 
   static Future<void> launch(DosSettings settings,
-      [ConfOverrides? overrides]) async {
+      [ConfOverrides? overrides, bool showMenu = false]) async {
     final String confPath =
         await _channel.invokeMethod<String>('confPath') ?? '';
     if (confPath.isEmpty) {
       throw Exception('The emulator did not say where its conf lives.');
     }
-    File(confPath)
-        .writeAsStringSync(ConfGenerator.generate(settings, overrides));
+    File(confPath).writeAsStringSync(
+        ConfGenerator.generate(settings, overrides, showMenu));
     await _channel.invokeMethod<bool>('launch');
   }
 }

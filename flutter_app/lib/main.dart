@@ -311,6 +311,7 @@ class _ShelfScreenState extends State<ShelfScreen> {
         autoexec: exe == null ? '' : exe.split('/').last,
       ),
       _geek ? _overrides : null,
+      _geek, // geek mode brings up DOSBox-X's own menu bar
     );
   }
 
