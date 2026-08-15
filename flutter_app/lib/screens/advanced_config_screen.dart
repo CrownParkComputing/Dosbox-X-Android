@@ -64,6 +64,9 @@ const List<_Group> _groups = <_Group>[
 class _AdvancedConfigScreenState extends State<AdvancedConfigScreen> {
   ConfCatalog? _catalog;
   String _query = '';
+  /// Which headings are open. Machine first, so the page is useful the
+  /// moment it appears rather than a list of closed doors.
+  final Set<String> _open = <String>{'Machine'};
   final TextEditingController _search = TextEditingController();
 
   @override
@@ -152,7 +155,7 @@ class _AdvancedConfigScreenState extends State<AdvancedConfigScreen> {
                 ),
                 Expanded(
                   child: _query.isEmpty
-                      ? _groupGrid(catalog)
+                      ? _onePage(catalog)
                       : _searchResults(catalog),
                 ),
               ],
@@ -160,7 +163,11 @@ class _AdvancedConfigScreenState extends State<AdvancedConfigScreen> {
     );
   }
 
-  Widget _groupGrid(ConfCatalog catalog) {
+  /// Everything on one page. Each heading opens in place - no card wall to
+  /// tap through, no second screen. The rows are flattened into one lazy
+  /// list so all ~900 options can live here without building what is not on
+  /// screen.
+  Widget _onePage(ConfCatalog catalog) {
     final Map<String, ConfSection> byName = <String, ConfSection>{
       for (final ConfSection s in catalog.sections) s.name: s,
     };
@@ -172,86 +179,113 @@ class _AdvancedConfigScreenState extends State<AdvancedConfigScreen> {
         if (!claimed.contains(s.name)) s,
     ];
 
-    final List<Widget> cards = <Widget>[
-      for (final _Group g in _groups)
-        _groupCard(
-          g.title,
-          g.icon,
-          <ConfSection>[
-            for (final String name in g.sections)
-              if (byName.containsKey(name)) byName[name]!,
-          ],
-        ),
-      if (esoterica.isNotEmpty)
-        _groupCard('Esoterica', Icons.science, esoterica),
-    ];
+    final List<_Entry> rows = <_Entry>[];
+    void addGroup(String title, IconData icon, List<ConfSection> sections) {
+      if (sections.isEmpty) return;
+      final bool open = _open.contains(title);
+      rows.add(_Entry.header(title, icon, sections, open));
+      if (!open) return;
+      for (final ConfSection s in sections) {
+        rows.add(_Entry.section(s));
+        for (final ConfOption o in s.options) {
+          rows.add(_Entry.option(s, o));
+        }
+      }
+    }
 
-    return ListView.separated(
-      padding: const EdgeInsets.symmetric(vertical: 4),
-      itemCount: cards.length,
-      separatorBuilder: (BuildContext c, int i) =>
-          const Divider(height: 1, color: Color(0x22FFFFFF)),
-      itemBuilder: (BuildContext c, int i) => cards[i],
-    );
-  }
+    for (final _Group g in _groups) {
+      addGroup(g.title, g.icon, <ConfSection>[
+        for (final String name in g.sections)
+          if (byName.containsKey(name)) byName[name]!,
+      ]);
+    }
+    addGroup('Esoterica', Icons.science, esoterica);
 
-  Widget _groupCard(String title, IconData icon, List<ConfSection> sections) {
-    final int options =
-        sections.fold(0, (int n, ConfSection s) => n + s.options.length);
-    final int changed =
-        sections.fold(0, (int n, ConfSection s) => n + _changedIn(s));
-    return ListTile(
-      dense: true,
-      visualDensity: VisualDensity.compact,
-      leading: Icon(icon, color: const Color(0xFF55FFFF), size: 22),
-      title: Text(
-        title.toUpperCase(),
-        style: const TextStyle(
-          fontFamily: 'monospace',
-          fontWeight: FontWeight.bold,
-          letterSpacing: 1.5,
-          fontSize: 14,
-        ),
-      ),
-      subtitle: Text(
-        '$options options',
-        style: TextStyle(
-          fontSize: 11,
-          color: Colors.white.withValues(alpha: 0.55),
-        ),
-      ),
-      trailing: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: <Widget>[
-          if (changed > 0)
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-              decoration: BoxDecoration(
-                color: const Color(0xFFFFB000),
-                borderRadius: BorderRadius.circular(10),
+    return ListView.builder(
+      padding: const EdgeInsets.only(bottom: 24),
+      itemCount: rows.length,
+      itemBuilder: (BuildContext context, int i) {
+        final _Entry e = rows[i];
+        switch (e.kind) {
+          case _EntryKind.header:
+            final int options = e.sections!
+                .fold(0, (int n, ConfSection s) => n + s.options.length);
+            final int changed = e.sections!
+                .fold(0, (int n, ConfSection s) => n + _changedIn(s));
+            return Material(
+              color: const Color(0xFF16164A),
+              child: InkWell(
+                onTap: () => setState(() {
+                  if (!_open.remove(e.title!)) _open.add(e.title!);
+                }),
+                child: Padding(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                  child: Row(
+                    children: <Widget>[
+                      Icon(e.icon, color: const Color(0xFF55FFFF), size: 20),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Text(
+                          e.title!.toUpperCase(),
+                          style: const TextStyle(
+                            fontFamily: 'monospace',
+                            fontWeight: FontWeight.bold,
+                            letterSpacing: 1.5,
+                            fontSize: 13,
+                          ),
+                        ),
+                      ),
+                      if (changed > 0)
+                        Container(
+                          margin: const EdgeInsets.only(right: 8),
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 7, vertical: 1),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFFFB000),
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                          child: Text('$changed',
+                              style: const TextStyle(
+                                  color: Colors.black,
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 11)),
+                        ),
+                      Text('$options',
+                          style: TextStyle(
+                              fontSize: 11,
+                              color: Colors.white.withValues(alpha: 0.4))),
+                      Icon(
+                        e.open! ? Icons.expand_less : Icons.expand_more,
+                        size: 20,
+                      ),
+                    ],
+                  ),
+                ),
               ),
+            );
+          case _EntryKind.section:
+            return Padding(
+              padding: const EdgeInsets.fromLTRB(16, 14, 16, 4),
               child: Text(
-                '$changed',
+                '[${e.section!.name}]',
                 style: const TextStyle(
-                    color: Colors.black,
-                    fontWeight: FontWeight.bold,
-                    fontSize: 11),
+                  fontFamily: 'monospace',
+                  fontSize: 11,
+                  letterSpacing: 1,
+                  color: Color(0xFF8888BB),
+                ),
               ),
-            ),
-          const SizedBox(width: 4),
-          const Icon(Icons.chevron_right, size: 20),
-        ],
-      ),
-      onTap: () => Navigator.of(context).push<void>(
-        MaterialPageRoute<void>(
-          builder: (BuildContext context) => _GroupScreen(
-            title: title,
-            sections: sections,
-            overrides: widget.overrides,
-            onSet: _set,
-          ),
-        ),
-      ),
+            );
+          case _EntryKind.option:
+            return OptionTile(
+              section: e.section!.name,
+              option: e.option!,
+              current: widget.overrides.valueOf(e.section!.name, e.option!.key),
+              onSet: (String v) => _set(e.section!.name, e.option!, v),
+            );
+        }
+      },
     );
   }
 
@@ -281,100 +315,6 @@ class _AdvancedConfigScreenState extends State<AdvancedConfigScreen> {
 
 /// One themed group: its sections as tabs across the top, so [cpu] and
 /// [dosbox] sit a swipe apart instead of a navigation stack apart.
-class _GroupScreen extends StatelessWidget {
-  const _GroupScreen({
-    required this.title,
-    required this.sections,
-    required this.overrides,
-    required this.onSet,
-  });
-
-  final String title;
-  final List<ConfSection> sections;
-  final ConfOverrides overrides;
-  final void Function(String section, ConfOption option, String value) onSet;
-
-  @override
-  Widget build(BuildContext context) {
-    return DefaultTabController(
-      length: sections.length,
-      child: Scaffold(
-        appBar: AppBar(
-          title: Text(
-            title.toUpperCase(),
-            style: const TextStyle(
-                fontFamily: 'monospace', letterSpacing: 2, fontSize: 16),
-          ),
-          bottom: TabBar(
-            isScrollable: true,
-            tabs: <Widget>[
-              for (final ConfSection s in sections)
-                Tab(
-                  child: Text(
-                    '[${s.name}]',
-                    style: const TextStyle(fontFamily: 'monospace'),
-                  ),
-                ),
-            ],
-          ),
-        ),
-        body: TabBarView(
-          children: <Widget>[
-            for (final ConfSection s in sections) _SectionList(
-              section: s,
-              overrides: overrides,
-              onSet: onSet,
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _SectionList extends StatefulWidget {
-  const _SectionList({
-    required this.section,
-    required this.overrides,
-    required this.onSet,
-  });
-
-  final ConfSection section;
-  final ConfOverrides overrides;
-  final void Function(String section, ConfOption option, String value) onSet;
-
-  @override
-  State<_SectionList> createState() => _SectionListState();
-}
-
-class _SectionListState extends State<_SectionList> {
-  @override
-  Widget build(BuildContext context) {
-    return ListView.separated(
-      padding: const EdgeInsets.symmetric(vertical: 6),
-      itemCount: widget.section.options.length,
-      separatorBuilder: (BuildContext context, int i) => Divider(
-        height: 1,
-        color: Colors.white.withValues(alpha: 0.05),
-        indent: 16,
-        endIndent: 16,
-      ),
-      itemBuilder: (BuildContext context, int i) {
-        final ConfOption option = widget.section.options[i];
-        return OptionTile(
-          section: widget.section.name,
-          option: option,
-          current: widget.overrides.valueOf(widget.section.name, option.key),
-          onSet: (String v) {
-            widget.onSet(widget.section.name, option, v);
-            setState(() {});
-          },
-        );
-      },
-    );
-  }
-}
-
 class OptionTile extends StatelessWidget {
   const OptionTile({
     super.key,
@@ -492,4 +432,31 @@ class OptionTile extends StatelessWidget {
       ),
     );
   }
+}
+
+/// One line of the settings page: a heading, a section label, or an option.
+enum _EntryKind { header, section, option }
+
+class _Entry {
+  const _Entry._(this.kind,
+      {this.title, this.icon, this.sections, this.open, this.section, this.option});
+
+  factory _Entry.header(String title, IconData icon, List<ConfSection> sections,
+          bool open) =>
+      _Entry._(_EntryKind.header,
+          title: title, icon: icon, sections: sections, open: open);
+
+  factory _Entry.section(ConfSection s) =>
+      _Entry._(_EntryKind.section, section: s);
+
+  factory _Entry.option(ConfSection s, ConfOption o) =>
+      _Entry._(_EntryKind.option, section: s, option: o);
+
+  final _EntryKind kind;
+  final String? title;
+  final IconData? icon;
+  final List<ConfSection>? sections;
+  final bool? open;
+  final ConfSection? section;
+  final ConfOption? option;
 }
