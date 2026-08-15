@@ -523,6 +523,8 @@ public class SDLActivity extends Activity implements View.OnSystemUiVisibilityCh
     protected void onPause() {
         Log.v(TAG, "onPause()");
         super.onPause();
+        // The menu lives in the other process while we are backgrounded; the
+        // receiver stays up so its actions still reach us.
 
         if (mHIDDeviceManager != null) {
             mHIDDeviceManager.setFrozen(true);
@@ -536,6 +538,7 @@ public class SDLActivity extends Activity implements View.OnSystemUiVisibilityCh
     protected void onResume() {
         Log.v(TAG, "onResume()");
         super.onResume();
+        registerMenuReceiver();
 
         if (mHIDDeviceManager != null) {
             mHIDDeviceManager.setFrozen(false);
@@ -857,10 +860,11 @@ public class SDLActivity extends Activity implements View.OnSystemUiVisibilityCh
         mLayout.addView(exitBtn, xb);
         mOverlayButtons.add(exitBtn);
 
-        // DOSBox-X tool shortcuts (top-centre row): fullscreen toggle, the
-        // Configuration Tool, the Mapper Editor, and emulation speed up/down.
-        // These are the host-key (F12) combos shown on the welcome screen.
-        buildDosToolsRow(d, pad);
+        // Our own in-game menu button (top-centre). The old row of DOSBox-X
+        // shortcuts is gone: this port replaces the DOSBox-X GUI rather than
+        // surfacing it, and one of those buttons (fullscreen) drove the core
+        // into the path that stops the renderer.
+        buildMenuButton(d, pad);
 
         showOverlayButtons();   // visible on launch, then auto-hide after 2s
     }
@@ -874,55 +878,94 @@ public class SDLActivity extends Activity implements View.OnSystemUiVisibilityCh
         onNativeKeyUp(KeyEvent.KEYCODE_F12);
     }
 
-    /** Build the top-centre row of DOSBox-X tool buttons (part of the auto-hiding
-     *  overlay). Labels double as icons. Most fire an F12 host combo; MAP opens
-     *  the Android touch mapper instead (DOSBox-X's own Mapper Editor is a
-     *  mouse/keyboard grid that's unusable on a touchscreen). */
-    private void buildDosToolsRow(float d, int pad) {
-        android.widget.LinearLayout tools = new android.widget.LinearLayout(this);
-        tools.setOrientation(android.widget.LinearLayout.HORIZONTAL);
-
-        final String[] labels = { "⛶",                  "CFG",                 "MAP",            "spd+",                 "spd−" };
-        final String[] toasts = { "Window / fullscreen", "Configuration Tool",  "Controls",       "Emulation speed +",     "Emulation speed −" };
-        // host-combo keycode for each button, or 0 for "use the custom action below"
-        final int[]    combos = { KeyEvent.KEYCODE_F,    KeyEvent.KEYCODE_C,    0,                KeyEvent.KEYCODE_EQUALS, KeyEvent.KEYCODE_MINUS };
-
-        for (int i = 0; i < labels.length; i++) {
-            final int combo = combos[i];
-            final String toast = toasts[i];
-            android.widget.Button b = new android.widget.Button(this);
-            b.setText(labels[i]);
-            b.setTextColor(0xFFFFFFFF);
-            b.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, 11);
-            b.setAllCaps(false);
-            b.setBackgroundColor(0xA0303030);
-            b.setPadding(pad, pad, pad, pad);
-            android.widget.LinearLayout.LayoutParams blp =
-                new android.widget.LinearLayout.LayoutParams((int)(52*d), (int)(40*d));
-            blp.leftMargin = (int)(3*d);
-            b.setLayoutParams(blp);
-            b.setOnClickListener(new View.OnClickListener() {
-                @Override public void onClick(View v) {
-                    if (combo == 0) {
-                        // MAP -> Android touch control mapper (not the DOSBox grid)
-                        showGamepadMapper();
-                    } else {
-                        pressHostCombo(combo);
-                        android.widget.Toast.makeText(SDLActivity.this, toast, android.widget.Toast.LENGTH_SHORT).show();
-                    }
-                    showOverlayButtons();   // keep the overlay visible after use
-                }
-            });
-            tools.addView(b);
-            mOverlayButtons.add(b);
-        }
-
+    /** The in-game menu button. Everything a player needs mid-game lives in
+     *  our own Flutter menu (settings, controls, quit) - the emulator draws
+     *  no menus of its own. */
+    private void buildMenuButton(float d, int pad) {
+        android.widget.Button menu = new android.widget.Button(this);
+        menu.setText("\u2630 MENU");
+        menu.setTextColor(0xFFFFB000);
+        menu.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, 12);
+        menu.setAllCaps(false);
+        menu.setBackgroundColor(0xC0101040);
+        menu.setPadding(pad, pad, pad, pad);
         RelativeLayout.LayoutParams rlp = new RelativeLayout.LayoutParams(
-            RelativeLayout.LayoutParams.WRAP_CONTENT, RelativeLayout.LayoutParams.WRAP_CONTENT);
+            (int)(104*d), (int)(40*d));
         rlp.addRule(RelativeLayout.ALIGN_PARENT_TOP);
         rlp.addRule(RelativeLayout.CENTER_HORIZONTAL);
-        mLayout.addView(tools, rlp);
-        mOverlayButtons.add(tools);
+        menu.setOnClickListener(new View.OnClickListener() {
+            @Override public void onClick(View v) {
+                openLauncherMenu();
+                showOverlayButtons();
+            }
+        });
+        mLayout.addView(menu, rlp);
+        mOverlayButtons.add(menu);
+    }
+
+    /** Bring the launcher (our Flutter front end) up over the game, asking it
+     *  to show the in-game menu. The emulator keeps its process; coming back
+     *  is just this activity returning to the front. */
+    private void openLauncherMenu() {
+        try {
+            android.content.Intent i = new android.content.Intent();
+            i.setClassName(getPackageName(),
+                "com.dosboxx.dosboxx_launcher.MainActivity");
+            i.putExtra("ingame_menu", true);
+            i.addFlags(android.content.Intent.FLAG_ACTIVITY_SINGLE_TOP
+                     | android.content.Intent.FLAG_ACTIVITY_REORDER_TO_FRONT);
+            startActivity(i);
+        } catch (Exception e) {
+            Toast.makeText(this, "Could not open the menu.", Toast.LENGTH_SHORT).show();
+        }
+    }
+
+    /** Actions the Flutter menu sends back to the running emulator. Registered
+     *  at runtime and not exported: same app, different process (:emu). */
+    public static final String ACTION_INGAME = "com.dosboxx.app.INGAME";
+    private final android.content.BroadcastReceiver mMenuReceiver =
+        new android.content.BroadcastReceiver() {
+            @Override public void onReceive(android.content.Context c,
+                                            android.content.Intent i) {
+                String what = i.getStringExtra("action");
+                if (what == null) return;
+                switch (what) {
+                    case "speed_up":   pressHostCombo(KeyEvent.KEYCODE_EQUALS); break;
+                    case "speed_down": pressHostCombo(KeyEvent.KEYCODE_MINUS);  break;
+                    case "controls":   showGamepadMapper();                     break;
+                    case "keyboard":
+                        if (mDosKeyPanel != null) {
+                            boolean show = mDosKeyPanel.getVisibility() != View.VISIBLE;
+                            mDosKeyPanel.setVisibility(show ? View.VISIBLE : View.GONE);
+                            if (mDosCursorPanel != null) {
+                                mDosCursorPanel.setVisibility(show ? View.VISIBLE : View.GONE);
+                            }
+                        }
+                        break;
+                    case "quit":       exitToLauncher();                        break;
+                    default: break;
+                }
+                showOverlayButtons();
+            }
+        };
+
+    private boolean mMenuReceiverRegistered = false;
+
+    private void registerMenuReceiver() {
+        if (mMenuReceiverRegistered) return;
+        android.content.IntentFilter f = new android.content.IntentFilter(ACTION_INGAME);
+        if (android.os.Build.VERSION.SDK_INT >= 33) {
+            registerReceiver(mMenuReceiver, f, Context.RECEIVER_NOT_EXPORTED);
+        } else {
+            registerReceiver(mMenuReceiver, f);
+        }
+        mMenuReceiverRegistered = true;
+    }
+
+    private void unregisterMenuReceiver() {
+        if (!mMenuReceiverRegistered) return;
+        try { unregisterReceiver(mMenuReceiver); } catch (Exception ignored) { }
+        mMenuReceiverRegistered = false;
     }
 
     private void updatePadModeButton(android.widget.Button b) {
@@ -1437,6 +1480,7 @@ public class SDLActivity extends Activity implements View.OnSystemUiVisibilityCh
 
     @Override
     protected void onDestroy() {
+        unregisterMenuReceiver();
         Log.v(TAG, "onDestroy()");
 
         if (mHIDDeviceManager != null) {

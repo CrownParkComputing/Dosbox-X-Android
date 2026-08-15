@@ -9,6 +9,7 @@ import 'data/game_import.dart';
 import 'emulator.dart';
 import 'screens/advanced_config_screen.dart';
 import 'screens/game_browser_screen.dart';
+import 'screens/in_game_menu_screen.dart';
 
 void main() => runApp(const DosboxLauncherApp());
 
@@ -62,13 +63,97 @@ class _ShelfScreenState extends State<ShelfScreen> {
   String _gamesDir = '';
   String _filesDir = '';
   ConfOverrides _overrides = ConfOverrides.empty();
+  /// Per-game settings, keyed by game folder path. A game's own settings are
+  /// laid over the global ones at launch, so "this game runs slower" never
+  /// means "every game runs slower".
+  final Map<String, ConfOverrides> _perGame = <String, ConfOverrides>{};
   bool _geek = false;
   bool _busy = false;
+  String _filter = '';
+  Directory? _playing;
+
+  List<Directory> get _shownGames => _filter.isEmpty
+      ? _games
+      : <Directory>[
+          for (final Directory g in _games)
+            if (g.path.split('/').last.toLowerCase().contains(_filter)) g,
+        ];
+
+  /// Settings this game carries of its own - shown on its row so tweaks are
+  /// never invisible.
+  int _gameTweakCount(Directory game) => _perGame[game.path]?.count ?? 0;
+
+  Future<ConfOverrides> _gameOverrides(Directory game) async {
+    final ConfOverrides? cached = _perGame[game.path];
+    if (cached != null) return cached;
+    final ConfOverrides loaded = await ConfOverrides.load(game.path);
+    _perGame[game.path] = loaded;
+    return loaded;
+  }
+
+  /// The per-game configuration screen: the same 899 options, saved into the
+  /// game's own folder.
+  Future<void> _editGameConfig(Directory game) async {
+    final ConfOverrides o = await _gameOverrides(game);
+    if (!mounted) return;
+    await Navigator.push(
+      context,
+      MaterialPageRoute<void>(
+        builder: (BuildContext context) => AdvancedConfigScreen(
+          overrides: o,
+          onChanged: () {
+            o.save(game.path);
+            setState(() {});
+          },
+        ),
+      ),
+    );
+    if (mounted) setState(() {});
+  }
 
   @override
   void initState() {
     super.initState();
     _load();
+    // The emulator asks for our in-game menu through this channel; it is our
+    // replacement for the DOSBox-X menu bar, which the core no longer draws.
+    _channel.setMethodCallHandler((MethodCall call) async {
+      if (call.method == 'showInGameMenu') await _showInGameMenu();
+      return null;
+    });
+  }
+
+  Future<void> _showInGameMenu() async {
+    // The launcher may have been recycled while the game ran, in which case
+    // the menu request arrives before _load() has read the mode and settings.
+    if (_filesDir.isEmpty) await _load();
+    if (!mounted) return;
+    final Directory? game = _playing;
+    await Navigator.push(
+      context,
+      MaterialPageRoute<void>(
+        builder: (BuildContext context) => InGameMenuScreen(
+          geek: _geek,
+          overrides: _overrides,
+          filesDir: _filesDir,
+          gameName: game?.path.split('/').last,
+          onGameConfig: game == null ? null : () => _editGameConfig(game),
+          onGlobalConfig: () => Navigator.push(
+            context,
+            MaterialPageRoute<void>(
+              builder: (BuildContext context) => AdvancedConfigScreen(
+                overrides: _overrides,
+                onChanged: () {
+                  if (_filesDir.isNotEmpty) _overrides.save(_filesDir);
+                  setState(() {});
+                },
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+    if (mounted) setState(() {});
   }
 
   Future<void> _load() async {
@@ -76,6 +161,11 @@ class _ShelfScreenState extends State<ShelfScreen> {
     if (_filesDir.isNotEmpty) {
       _overrides = await ConfOverrides.load(_filesDir);
       _geek = File('$_filesDir/geek_mode').existsSync();
+      final File last = File('$_filesDir/last_game');
+      if (last.existsSync()) {
+        final Directory d = Directory(last.readAsStringSync().trim());
+        if (d.existsSync()) _playing = d;
+      }
     }
     await _scan();
   }
@@ -97,6 +187,9 @@ class _ShelfScreenState extends State<ShelfScreen> {
         : (Directory(dir).listSync().whereType<Directory>().toList()
           ..sort((Directory a, Directory b) =>
               a.path.toLowerCase().compareTo(b.path.toLowerCase())));
+    for (final Directory g in games) {
+      _perGame[g.path] = await ConfOverrides.load(g.path);
+    }
     if (mounted) {
       setState(() {
         _gamesDir = dir;
@@ -241,6 +334,13 @@ class _ShelfScreenState extends State<ShelfScreen> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: <Widget>[
+            if (_geek)
+              ListTile(
+                leading: const Icon(Icons.tune, color: Color(0xFFFFB000)),
+                title: const Text('Settings for this game'),
+                subtitle: const Text('Only this game'),
+                onTap: () => Navigator.pop(context, 'config'),
+              ),
             ListTile(
               title: Text(name,
                   style: const TextStyle(fontWeight: FontWeight.bold)),
@@ -262,6 +362,10 @@ class _ShelfScreenState extends State<ShelfScreen> {
         ),
       ),
     );
+    if (action == 'config') {
+      await _editGameConfig(game);
+      return;
+    }
     if (action == 'exe') {
       await _chooseExe(game, announce: true);
     } else if (action == 'delete') {
@@ -304,14 +408,20 @@ class _ShelfScreenState extends State<ShelfScreen> {
     // a zip arrives with, and every game expects to run from where it lives.
     final String mount =
         exe == null ? game.path : File('${game.path}/$exe').parent.path;
+    // Global settings first, then this game's own on top.
+    final ConfOverrides forThisGame = ConfOverrides.layered(
+        _overrides, await _gameOverrides(game));
+    _playing = game;
+    if (_filesDir.isNotEmpty) {
+      File('$_filesDir/last_game').writeAsStringSync(game.path);
+    }
     await Emulator.launch(
       DosSettings(
         machine: machine,
         mountPath: mount,
         autoexec: exe == null ? '' : exe.split('/').last,
       ),
-      _geek ? _overrides : null,
-      _geek, // geek mode brings up DOSBox-X's own menu bar
+      _geek ? forThisGame : null,
     );
   }
 
@@ -398,46 +508,66 @@ class _ShelfScreenState extends State<ShelfScreen> {
                 ],
               ),
             )
-          : GridView.builder(
-              padding: const EdgeInsets.fromLTRB(12, 12, 12, 96),
-              gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
-                maxCrossAxisExtent: 220,
-                childAspectRatio: 1.4,
-                crossAxisSpacing: 10,
-                mainAxisSpacing: 10,
-              ),
-              itemCount: _games.length,
-              itemBuilder: (BuildContext context, int i) {
-                final Directory game = _games[i];
-                final String name = game.path.split('/').last;
-                return Card(
-                  clipBehavior: Clip.antiAlias,
-                  child: InkWell(
-                    onTap: () => _play(game),
-                    onLongPress: () => _gameMenu(game),
-                    child: Padding(
-                      padding: const EdgeInsets.all(12),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: <Widget>[
-                          const Icon(Icons.videogame_asset,
-                              color: Color(0xFF55FFFF)),
-                          const Spacer(),
-                          Text(
-                            name,
-                            maxLines: 2,
-                            overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(
-                              fontFamily: 'monospace',
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                        ],
+          : Column(
+              children: <Widget>[
+                if (_games.length > 6)
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(12, 8, 12, 4),
+                    child: TextField(
+                      onChanged: (String v) =>
+                          setState(() => _filter = v.toLowerCase()),
+                      style: const TextStyle(fontFamily: 'monospace'),
+                      decoration: InputDecoration(
+                        isDense: true,
+                        prefixIcon:
+                            const Icon(Icons.search, color: Color(0xFF55FFFF)),
+                        hintText: 'Search ${_games.length} games...',
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(4),
+                        ),
                       ),
                     ),
                   ),
-                );
-              },
+                Expanded(
+                  child: ListView.separated(
+                    padding: const EdgeInsets.only(bottom: 96),
+                    itemCount: _shownGames.length,
+                    separatorBuilder: (BuildContext c, int i) =>
+                        const Divider(height: 1, color: Color(0x22FFFFFF)),
+                    itemBuilder: (BuildContext context, int i) {
+                      final Directory game = _shownGames[i];
+                      final String name = game.path.split('/').last;
+                      final int tweaks = _gameTweakCount(game);
+                      return ListTile(
+                        dense: true,
+                        visualDensity: VisualDensity.compact,
+                        leading: const Icon(Icons.play_circle_outline,
+                            color: Color(0xFFFFB000)),
+                        title: Text(
+                          name,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                              fontFamily: 'monospace', fontSize: 14),
+                        ),
+                        subtitle: tweaks == 0
+                            ? null
+                            : Text('$tweaks setting${tweaks == 1 ? '' : 's'} '
+                                'for this game',
+                                style: const TextStyle(
+                                    fontSize: 11, color: Color(0xFF55FFFF))),
+                        trailing: IconButton(
+                          tooltip: 'This game',
+                          icon: const Icon(Icons.more_vert, size: 20),
+                          onPressed: () => _gameMenu(game),
+                        ),
+                        onTap: () => _play(game),
+                        onLongPress: () => _gameMenu(game),
+                      );
+                    },
+                  ),
+                ),
+              ],
             ),
     );
   }

@@ -46,6 +46,18 @@ class ConfOverrides {
 
   static ConfOverrides empty() => ConfOverrides(<String, Map<String, String>>{});
 
+  /// [top] laid over [base] - how a game's own settings outrank the global
+  /// ones without either being edited. Neither input is modified.
+  static ConfOverrides layered(ConfOverrides base, ConfOverrides top) {
+    final Map<String, Map<String, String>> out = <String, Map<String, String>>{};
+    for (final ConfOverrides src in <ConfOverrides>[base, top]) {
+      src._values.forEach((String section, Map<String, String> keys) {
+        (out[section] ??= <String, String>{}).addAll(keys);
+      });
+    }
+    return ConfOverrides(out);
+  }
+
   static Future<File> _file(String dirPath) async =>
       File('$dirPath/conf_overrides.json');
 

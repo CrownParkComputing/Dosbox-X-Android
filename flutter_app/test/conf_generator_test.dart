@@ -1,3 +1,4 @@
+import 'package:dosboxx_launcher/data/conf_overrides.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:dosboxx_launcher/data/conf_generator.dart';
@@ -23,26 +24,33 @@ void main() {
     expect(conf, contains('sbtype=none'));
   });
 
-    test('geek mode asks for the DOSBox-X menu bar, beginner mode does not', () {
+    test('a game\'s own settings outrank the global ones', () {
+      final ConfOverrides global = ConfOverrides.empty()
+        ..set('cpu', 'cycles', '3000')
+        ..set('sblaster', 'sbtype', 'sb16');
+      final ConfOverrides perGame = ConfOverrides.empty()
+        ..set('cpu', 'cycles', '500');
+      final ConfOverrides merged = ConfOverrides.layered(global, perGame);
+      expect(merged.valueOf('cpu', 'cycles'), '500');
+      // Global keys the game does not mention still apply.
+      expect(merged.valueOf('sblaster', 'sbtype'), 'sb16');
+      // Neither input was mutated.
+      expect(global.valueOf('cpu', 'cycles'), '3000');
+      expect(perGame.valueOf('sblaster', 'sbtype'), isNull);
+    });
+
+
+    test('the core is told to draw no chrome - our menu replaces it', () {
       const DosSettings s = DosSettings(
         machine: DosMachine.dx486,
         mountPath: '/games/x',
         autoexec: 'X.EXE',
       );
-      final String beginner = ConfGenerator.generate(s);
-      expect(beginner, contains('showmenu=false'));
-      expect(beginner, contains('showdetails=false'));
-
-      final String geek = ConfGenerator.generate(s, null, true);
-      expect(geek, contains('showmenu=true'));
-      expect(geek, contains('showdetails=true'));
-      // The menu must never cost us the fixes underneath it.
-      expect(geek, contains('fullscreen=false'));
-      expect(geek, contains('output=surface'));
-      // Autolock would capture the mouse on the first tap and the core would
-      // then never route a click to the menu bar.
-      expect(geek, contains('autolock=false'));
-      expect(beginner, contains('autolock=true'));
+      final String conf = ConfGenerator.generate(s);
+      expect(conf, contains('showmenu=false'));
+      expect(conf, contains('showdetails=false'));
+      expect(conf, contains('fullscreen=false'));
+      expect(conf, contains('output=surface'));
     });
 
 }

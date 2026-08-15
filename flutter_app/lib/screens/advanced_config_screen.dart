@@ -186,18 +186,12 @@ class _AdvancedConfigScreenState extends State<AdvancedConfigScreen> {
         _groupCard('Esoterica', Icons.science, esoterica),
     ];
 
-    return LayoutBuilder(
-      builder: (BuildContext context, BoxConstraints constraints) {
-        final int columns = (constraints.maxWidth / 340).floor().clamp(1, 4);
-        return GridView.count(
-          padding: const EdgeInsets.all(12),
-          crossAxisCount: columns,
-          childAspectRatio: 1.55,
-          crossAxisSpacing: 10,
-          mainAxisSpacing: 10,
-          children: cards,
-        );
-      },
+    return ListView.separated(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      itemCount: cards.length,
+      separatorBuilder: (BuildContext c, int i) =>
+          const Divider(height: 1, color: Color(0x22FFFFFF)),
+      itemBuilder: (BuildContext c, int i) => cards[i],
     );
   }
 
@@ -206,72 +200,55 @@ class _AdvancedConfigScreenState extends State<AdvancedConfigScreen> {
         sections.fold(0, (int n, ConfSection s) => n + s.options.length);
     final int changed =
         sections.fold(0, (int n, ConfSection s) => n + _changedIn(s));
-    return Card(
-      clipBehavior: Clip.antiAlias,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(12),
-        side: BorderSide(
-          color: changed > 0
-              ? const Color(0xFFFFB000)
-              : Colors.white.withValues(alpha: 0.08),
+    return ListTile(
+      dense: true,
+      visualDensity: VisualDensity.compact,
+      leading: Icon(icon, color: const Color(0xFF55FFFF), size: 22),
+      title: Text(
+        title.toUpperCase(),
+        style: const TextStyle(
+          fontFamily: 'monospace',
+          fontWeight: FontWeight.bold,
+          letterSpacing: 1.5,
+          fontSize: 14,
         ),
       ),
-      child: InkWell(
-        onTap: () => Navigator.of(context).push<void>(
-          MaterialPageRoute<void>(
-            builder: (BuildContext context) => _GroupScreen(
-              title: title,
-              sections: sections,
-              overrides: widget.overrides,
-              onSet: _set,
-            ),
-          ),
+      subtitle: Text(
+        '$options options',
+        style: TextStyle(
+          fontSize: 11,
+          color: Colors.white.withValues(alpha: 0.55),
         ),
-        child: Padding(
-          padding: const EdgeInsets.all(14),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: <Widget>[
-              Row(
-                children: <Widget>[
-                  Icon(icon, color: const Color(0xFF55FFFF), size: 22),
-                  const Spacer(),
-                  if (changed > 0)
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 8, vertical: 2),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFFFFB000),
-                        borderRadius: BorderRadius.circular(10),
-                      ),
-                      child: Text(
-                        '$changed',
-                        style: const TextStyle(
-                            color: Colors.black,
-                            fontWeight: FontWeight.bold,
-                            fontSize: 12),
-                      ),
-                    ),
-                ],
+      ),
+      trailing: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: <Widget>[
+          if (changed > 0)
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+              decoration: BoxDecoration(
+                color: const Color(0xFFFFB000),
+                borderRadius: BorderRadius.circular(10),
               ),
-              const Spacer(),
-              Text(
-                title.toUpperCase(),
+              child: Text(
+                '$changed',
                 style: const TextStyle(
-                  fontFamily: 'monospace',
-                  fontWeight: FontWeight.bold,
-                  letterSpacing: 1.5,
-                ),
+                    color: Colors.black,
+                    fontWeight: FontWeight.bold,
+                    fontSize: 11),
               ),
-              const SizedBox(height: 3),
-              Text(
-                '${sections.length} sections · $options options',
-                style: TextStyle(
-                  fontSize: 12,
-                  color: Colors.white.withValues(alpha: 0.55),
-                ),
-              ),
-            ],
+            ),
+          const SizedBox(width: 4),
+          const Icon(Icons.chevron_right, size: 20),
+        ],
+      ),
+      onTap: () => Navigator.of(context).push<void>(
+        MaterialPageRoute<void>(
+          builder: (BuildContext context) => _GroupScreen(
+            title: title,
+            sections: sections,
+            overrides: widget.overrides,
+            onSet: _set,
           ),
         ),
       ),

@@ -1,0 +1,32 @@
+diff --git a/src/gui/sdlmain.cpp b/src/gui/sdlmain.cpp
+index c1c296d7..4fe8f38f 100644
+--- a/src/gui/sdlmain.cpp
++++ b/src/gui/sdlmain.cpp
+@@ -2976,6 +2976,15 @@ void modeSwitched(bool full) {
+ 
+ void GFX_SwitchFullScreen(void)
+ {
++#if defined(__ANDROID__)
++    /* Nothing to switch to: the SDL window already covers the whole display.
++     * Worse, the fullscreen path in OUTPUT_SURFACE_SetSize centres the clip
++     * against the display size while our surface stays content-sized, which
++     * latches sdl.window_too_small and stops the renderer dead - the black
++     * screen. The menu item is disabled to match (see the mapper handler),
++     * but the shortcut and any config route land here too. */
++    return;
++#endif
+ #if defined(USE_TTF)
+ #if DOSBOXMENU_TYPE == DOSBOXMENU_HMENU
+     if (ttf.fullScrn && ttf.inUse && !control->opt_nomenu && static_cast<Section_prop *>(control->GetSection("sdl"))->Get_bool("showmenu")) {
+@@ -4066,6 +4075,11 @@ static void GUI_StartUp() {
+ 
+         MAPPER_AddHandler(SwitchFullScreen,MK_f,MMODHOST,"fullscr","Toggle fullscreen", &item);
+         item->set_text("Toggle fullscreen");
++#if defined(__ANDROID__)
++        /* Android is always fullscreen; the toggle would only break the
++         * renderer, so show the item greyed rather than let it fire. */
++        item->enable(false);
++#endif
+ 
+         MAPPER_AddHandler(&GUI_ResetResize, MK_backspace, MMODHOST, "resetsize", "Reset window size", &item);
+         item->set_text("Reset window size");

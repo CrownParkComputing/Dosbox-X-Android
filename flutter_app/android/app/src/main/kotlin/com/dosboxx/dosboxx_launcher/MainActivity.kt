@@ -15,6 +15,10 @@ import java.io.File
 /// which is the same contract the Java launcher spoke.
 class MainActivity : FlutterActivity() {
     private var pendingPick: MethodChannel.Result? = null
+    private var channel: MethodChannel? = null
+    /// Set when the emulator asked for the in-game menu before Flutter was
+    /// listening; delivered as soon as the channel exists.
+    private var menuPending = false
 
     private fun prefs() = getSharedPreferences("launcher", MODE_PRIVATE)
 
@@ -30,6 +34,14 @@ class MainActivity : FlutterActivity() {
 
     override fun onResume() {
         super.onResume()
+        // The emulator's menu request arrives either as a new intent (we were
+        // still alive) or as this activity's launch intent (we were not).
+        // onResume covers both; the extra is consumed so it fires once.
+        if (intent?.getBooleanExtra("ingame_menu", false) == true) {
+            intent.removeExtra("ingame_menu")
+            android.util.Log.i("DosBoxX", "in-game menu requested")
+            showInGameMenu()
+        }
         // Integration-test door (tools/boot-test.sh): boot plain DOS with an
         // autoexec that writes C:\BOOTOK.TXT. The file appearing on the
         // Android side proves conf parse, mount, DOS boot and shell
@@ -59,10 +71,31 @@ class MainActivity : FlutterActivity() {
         }
     }
 
+    /// The emulator (in its own :emu process) asks for our menu by launching
+    /// this activity with ingame_menu; Flutter shows it.
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)   // onResume follows and acts on it
+    }
+
+    private fun showInGameMenu() {
+        val ch = channel
+        if (ch == null) menuPending = true else ch.invokeMethod("showInGameMenu", null)
+    }
+
+    /// Hand an action to the running emulator. Same app, different process,
+    /// so a not-exported broadcast is the road between them.
+    private fun emuAction(action: String) {
+        sendBroadcast(Intent("com.dosboxx.app.INGAME")
+            .setPackage(packageName)
+            .putExtra("action", action))
+    }
+
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
-        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "dosboxx/emulator")
-            .setMethodCallHandler { call, result ->
+        val ch = MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "dosboxx/emulator")
+        channel = ch
+        ch.setMethodCallHandler { call, result ->
                 when (call.method) {
                     // Where the conf lives and the emulator reads it.
                     "confPath" -> result.success(
@@ -75,6 +108,25 @@ class MainActivity : FlutterActivity() {
                     }
                     "filesDir" -> result.success(
                         getExternalFilesDir(null)?.absolutePath ?: filesDir.absolutePath)
+                    // The in-game menu's own verbs.
+                    "emuAction" -> {
+                        val a = call.argument<String>("action")
+                        if (a == null) {
+                            result.error("args", "missing action", null)
+                        } else {
+                            emuAction(a)
+                            result.success(true)
+                        }
+                    }
+                    // Resume: bring the emulator activity back to the front.
+                    // It is singleTask, so this returns to the running game
+                    // rather than starting a second one.
+                    "resumeGame" -> {
+                        startActivity(Intent().setComponent(ComponentName(
+                            packageName, "org.libsdl.app.SDLActivity"))
+                            .addFlags(Intent.FLAG_ACTIVITY_REORDER_TO_FRONT))
+                        result.success(true)
+                    }
                     "launch" -> {
                         // The conf is already on disk - Dart wrote it. Start
                         // the emulator in its own process and stand back.
@@ -169,6 +221,10 @@ class MainActivity : FlutterActivity() {
                     else -> result.notImplemented()
                 }
             }
+        if (menuPending) {
+            menuPending = false
+            ch.invokeMethod("showInGameMenu", null)
+        }
     }
 
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
