@@ -7,7 +7,9 @@ plugins {
 
 android {
     namespace = "com.dosboxx.dosboxx_launcher"
-    compileSdk = flutter.compileSdkVersion
+    // Pinned rather than inherited: Play compliance is checked against these
+    // numbers, so they are stated here where a person can read them.
+    compileSdk = 36
     ndkVersion = flutter.ndkVersion
 
     compileOptions {
@@ -24,10 +26,36 @@ android {
         applicationId = "com.dosboxx.app"
         // You can update the following values to match your application needs.
         // For more information, see: https://flutter.dev/to/review-gradle-config.
-        minSdk = flutter.minSdkVersion
-        targetSdk = flutter.targetSdkVersion
+        // The store app's floor, kept deliberately: the native core is built
+        // against a modern API and 64-bit/x86_64 only. Letting Flutter widen
+        // this would offer the app to devices the emulator cannot run on.
+        minSdk = 28
+        targetSdk = 36
         versionCode = flutter.versionCode
+        // Only the ABIs we ship libmain.so for. Without this the bundle also
+        // carries an armeabi-v7a variant holding Flutter but no emulator.
+        ndk {
+            abiFilters += listOf("arm64-v8a", "x86_64")
+        }
         versionName = flutter.versionName
+    }
+
+    signingConfigs {
+        create("release") {
+            // The store key, exactly as the old module took it: from the
+            // environment, never committed. Same key = the update lands on
+            // the existing listing and keeps every user's game library.
+            val ksPath = System.getenv("ANDROID_KEYSTORE_PATH")
+            val ksPass = System.getenv("ANDROID_KEYSTORE_PASSWORD")
+            val alias = System.getenv("ANDROID_KEY_ALIAS")
+            val keyPass = System.getenv("ANDROID_KEY_PASSWORD")
+            if (ksPath != null && ksPass != null && alias != null && keyPass != null) {
+                storeFile = file(ksPath)
+                storePassword = ksPass
+                keyAlias = alias
+                keyPassword = keyPass
+            }
+        }
     }
 
     buildTypes {
@@ -39,9 +67,13 @@ android {
             applicationIdSuffix = ".test"
         }
         release {
-            // TODO: Add your own signing config for the release build.
-            // Signing with the debug keys for now, so `flutter run --release` works.
-            signingConfig = signingConfigs.getByName("debug")
+            // Signed with the store key when the environment supplies it;
+            // otherwise the bundle comes out unsigned rather than silently
+            // debug-signed, which Play would reject at upload with a
+            // confusing error.
+            if (System.getenv("ANDROID_KEYSTORE_PATH") != null) {
+                signingConfig = signingConfigs.getByName("release")
+            }
         }
     }
 }

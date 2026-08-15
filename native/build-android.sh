@@ -13,7 +13,7 @@
 #      then link the objects as a shared library  libmain.so  exporting SDL_main
 #      (SDLActivity dlopen()s it and looks up SDL_main).
 #   4. Verify the artifact (exports SDL_main, sane NEEDED list) and install it to
-#      app/src/main/jniLibs/<abi>/libmain.so.
+#      flutter_app/android/app/src/main/jniLibs/<abi>/libmain.so.
 #
 # Usage:
 #   export ANDROID_NDK=$HOME/Android/Sdk/ndk/<version>
@@ -104,7 +104,7 @@ esac; }
 build_abi() {
   local ABI="$1" TRIPLE BUILD JNI LIBDIR
   TRIPLE="$(abi_triple "$ABI")"; [ "$TRIPLE" != unknown ] || die "unknown ABI $ABI"
-  JNI="$ROOT/app/src/main/jniLibs/$ABI"
+  JNI="$ROOT/flutter_app/android/app/src/main/jniLibs/$ABI"
   [ -f "$JNI/libSDL2.so" ]   || die "$JNI/libSDL2.so missing (need the prebuilt SDL2)"
   [ -f "$JNI/libpng16.so" ]  || die "$JNI/libpng16.so missing (need the prebuilt libpng)"
   BUILD="$TMP/$ABI"; rm -rf "$BUILD"; mkdir -p "$BUILD"
@@ -207,5 +207,5 @@ verify_so() {
 
 for ABI in "${ABIS[@]}"; do build_abi "$ABI"; done
 note "done — refreshed: ${ABIS[*]}"
-echo "Commit the refreshed app/src/main/jniLibs/<abi>/libmain.so (and the submodule"
+echo "Commit the refreshed flutter_app/android/app/src/main/jniLibs/<abi>/libmain.so (and the submodule"
 echo "ref + any new native/patches/*.patch) to ship this build."
