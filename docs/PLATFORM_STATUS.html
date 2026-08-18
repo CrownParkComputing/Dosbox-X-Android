@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>DOSBox-X Multiplatform — Platform Status</title>
+<style>
+  :root {
+    --bg: #14151a; --panel: #1d1f27; --panel2: #23262f;
+    --text: #e6e8ee; --muted: #9aa0ae; --accent: #7fb4ff; --accent2: #ffb46e;
+    --ok: #7fd9a0; --warn: #ffd37f; --border: #33363f;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text);
+         font: 15px/1.6 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+  .wrap { max-width: 960px; margin: 0 auto; padding: 40px 24px 80px; }
+  h1 { font-size: 28px; margin: 0 0 4px; }
+  h2 { font-size: 20px; margin: 36px 0 12px; color: var(--accent); }
+  h3 { font-size: 16px; margin: 24px 0 8px; }
+  .sub { color: var(--muted); margin: 0 0 8px; }
+  code { background: var(--panel2); padding: 1px 5px; border-radius: 4px;
+         font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace; font-size: 13px; }
+  table { border-collapse: collapse; width: 100%; margin: 12px 0; }
+  th, td { text-align: left; padding: 8px 12px; border-bottom: 1px solid var(--border); vertical-align: top; }
+  th { color: var(--muted); font-weight: 600; font-size: 13px; text-transform: uppercase; letter-spacing: .03em; }
+  tr:hover td { background: var(--panel); }
+  .card { background: var(--panel); border: 1px solid var(--border); border-radius: 10px;
+          padding: 16px 20px; margin: 14px 0; }
+  .tag { display: inline-block; font-size: 12px; padding: 2px 8px; border-radius: 20px;
+         margin-right: 6px; background: var(--panel2); color: var(--muted); }
+  .tag.a { background: #26303c; color: var(--accent); }
+  .tag.i { background: #2c2620; color: var(--accent2); }
+  .tag.l { background: #202c26; color: var(--ok); }
+  .note { background: #2a2416; border-left: 3px solid var(--warn); padding: 10px 14px;
+          border-radius: 0 8px 8px 0; margin: 12px 0; }
+  .note b { color: var(--warn); }
+  ul { padding-left: 20px; }
+  li { margin: 5px 0; }
+  .muted { color: var(--muted); }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<h1>DOSBox-X Multiplatform — Platform Status</h1>
+<p class="sub">One Flutter front end over the DOSBox-X core, on Android, iOS and Linux.
+This page records, per platform, how the native core is bundled, what code is
+platform-specific, and where the three builds diverge.</p>
+<p class="muted" style="font-size:13px">Last updated: 2026-08-18. Re-check after the native core
+is wired up; the build scripts exist but a shipped, core-backed build has not been cut yet.</p>
+
+<h2>Shared across all three platforms</h2>
+<div class="card">
+<p>Everything below is compiled/interpreted identically on Android, iOS and Linux.</p>
+<ul>
+  <li><code>flutter_app/lib/</code> — the whole app: 37 Dart files across
+      <code>screens/</code>, <code>services/</code>, <code>widgets/</code>,
+      <code>theme/</code>, <code>data/</code>, <code>ffi/</code>. All UI and all
+      GUI/layout code lives here; there is no per-platform layout.</li>
+  <li><code>native/dosbox_core/bridge/dosbox_bridge.{h,cpp}</code> — the C ABI.
+      One contract, implemented once, linked against DOSBox-X on every platform.</li>
+  <li><code>pubspec.yaml</code> — one dependency set: <code>ffi</code>, <code>path</code>,
+      <code>file_picker</code>, <code>shared_preferences</code>, <code>path_provider</code>,
+      <code>gamepads</code>, <code>archive</code>.</li>
+</ul>
+</div>
+
+<h2>Per-platform</h2>
+
+<h3><span class="tag a">Android</span></h3>
+<div class="card">
+<ul>
+  <li><b>Core bundling</b> — <code>libdosboxcore.so</code> ships in
+      <code>flutter_app/android/app/src/main/jniLibs/&lt;abi&gt;/</code> and is loaded by
+      bare name. Built by <code>native/dosbox_core/android/build.sh</code> (9 patches,
+      cross-built per ABI: arm64-v8a, x86_64).</li>
+  <li><b>Platform-specific code</b> — <code>MainActivity.kt</code> (gamepad hookup +
+      manual SDL JNI init + storage permissions), <code>AppRestartActivity.kt</code>
+      (process restart), <code>org/libsdl/app/*.java</code> (11 files, SDL2 Java glue),
+      <code>native/dosbox_core/android/patches/</code> (9 DOSBox-X source patches).</li>
+  <li><b>Divergence</b> — the heaviest platform. SDL2's Android backend assumes its host is
+      <code>SDLActivity</code>; ours is a <code>FlutterActivity</code>, so SDL JNI is
+      initialised by hand.</li>
+</ul>
+</div>
+
+<h3><span class="tag i">iOS</span></h3>
+<div class="card">
+<ul>
+  <li><b>Core bundling</b> — <code>libdosboxcore.framework</code> inside
+      <code>Runner.app/Frameworks/</code>, dlopen'd by path. Built by
+      <code>native/dosbox_core/ios/build-ios.sh</code> (Docker cross-build).</li>
+  <li><b>Platform-specific code</b> — <code>AppDelegate.swift</code>,
+      <code>SceneDelegate.swift</code> (standard Flutter iOS),
+      <code>Runner-Bridging-Header.h</code>, and the <code>apply-ios-*.py</code> scripts.</li>
+  <li><b>Divergence</b> — framework (not loose dylib) because iOS code-signs every nested
+      Mach-O in <code>Frameworks/</code>; no SDL Java glue or JNI anywhere.</li>
+</ul>
+</div>
+
+<h3><span class="tag l">Linux</span></h3>
+<div class="card">
+<ul>
+  <li><b>Core bundling</b> — <code>libdosboxcore.so</code> next to the executable; dev path
+      derived from the repo root. Built by <code>native/dosbox_core/linux/build.sh</code>.</li>
+  <li><b>Platform-specific code</b> — <code>my_application.cc</code> (standard Flutter/GTK);
+      nothing else.</li>
+  <li><b>Divergence</b> — the reference/dev platform. Gamepads work through the desktop
+      plugin path (no activity subclass needed).</li>
+</ul>
+</div>
+
+<h2>Differences to track</h2>
+<table>
+  <thead><tr><th>Concern</th><th>Android</th><th>iOS</th><th>Linux</th></tr></thead>
+  <tbody>
+    <tr><td>Core load</td><td>bare-name from jniLibs</td><td>explicit path into Frameworks/</td><td>path next to executable</td></tr>
+    <tr><td>Core artifact</td><td><code>.so</code> per ABI</td><td><code>.framework</code></td><td><code>.so</code></td></tr>
+    <tr><td>Audio</td><td>SDL2 Android backend (needs SDL JNI)</td><td>CoreAudio</td><td>ALSA</td></tr>
+    <tr><td>Input / gamepad</td><td><code>GamepadsCompatibleActivity</code></td><td>(standard)</td><td>desktop plugin</td></tr>
+    <tr><td>Storage / permissions</td><td>runtime permission + SAF</td><td>sandbox</td><td>plain filesystem</td></tr>
+    <tr><td>Native patches</td><td>9</td><td>configure/source scripts</td><td>bridge-hook only</td></tr>
+    <tr><td>Build host</td><td>NDK cross-compile</td><td>Docker cross-build</td><td>native</td></tr>
+  </tbody>
+</table>
+
+<h2>Review notes</h2>
+<div class="note"><b>1.</b> <b>Docs were stale, now fixed.</b> <code>README.md</code> and
+<code>docs/NATIVE_BUILD.md</code> previously said the bridge was "not implemented"; it is
+implemented (<code>dosbox_bridge.cpp</code>, ~1000 lines) but not yet compiled against a
+real DOSBox-X tree. Both are corrected, and the audio/shutdown gaps are called out.</div>
+
+<div class="note"><b>2.</b> <b>Android is by far the most customised platform</b> — the SDL
+Java glue plus the manual SDL-JNI bootstrap plus 9 patches is real, load-bearing complexity
+that iOS and Linux simply do not have. Worth a second look once the core is running: the
+<code>org.libsdl.app.*</code> stubs and the hand-rolled <code>SDL.setupJNI()</code> path are
+the highest-risk parts and should not grow.</div>
+
+<div class="note"><b>3.</b> <b>GUI/layouts are fully shared</b> — confirmed nothing in
+<code>android/res</code>, <code>ios/*.storyboard</code>, or <code>linux/</code> carries
+layout; all screens and widgets are in <code>lib/</code>.</div>
+
+<div class="note"><b>4.</b> <b>Core is not yet bundled in a shipped build</b> — the
+per-platform build scripts exist and the bridge is implemented, but a core-backed
+APK/IPA/App has not been produced.</div>
+
+</div>
+</body>
+</html>
