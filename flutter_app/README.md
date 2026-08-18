@@ -1,4 +1,4 @@
-# dosboxx_launcher
+# dosbox_multiplatform
 
 A new Flutter project.
 

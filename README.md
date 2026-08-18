@@ -1,125 +1,57 @@
-# DOSBox-X Android
+# DOSBox-X Multiplatform
 
-Android launcher and handheld front-end for DOSBox-X, focused on DOS games and
-Windows 95/98/ME CD game installs on devices such as the Retroid Pocket.
+A Flutter front end for the [DOSBox-X](https://github.com/joncampbell123/dosbox-x)
+emulator, targeting Android, iOS and Linux. Sibling project to
+ViceMultiplatform, and the successor to the Java/SDL `Dosbox-X-Android` app.
 
-The app bundles the native DOSBox-X core and adds an Android-native launcher,
-storage setup, CD archive management, per-game controls, and Windows 9x boot helpers.
+This repository contains the front end and a plain-C bridge. It does not contain
+an emulator: DOSBox-X does all the actual work.
 
-## Features
+## State
 
-- Unified games list for DOS folders, DOS CD games, and Windows 95/98/ME games.
-- First-run storage wizard for choosing app-specific device or removable storage
-  for `games/`, `cds/`, and imports.
-- Storage manager for ZIP sources, kept extracted CDs, temporary extracts,
-  visible CD images, installed games, and imports.
-- CD archive workflow:
-  - ZIP sources live under `cds/.archives/`.
-  - one temporary extracted CD at a time under `cds/.prepared-cds/run_*`.
-  - optional kept extracts under `cds/.extracted-cds/`.
-  - kept extracts and source archives can both be selected from `+ Add CD game`.
-- Windows 9x boot flow that mounts the selected CD as `D:` for installers that
-  expect the CD-ROM there.
-- Per-game metadata for DOS/Windows 9x type, CD/rip state, and remembered CD source.
-- Per-game gamepad mappings and mouse/trackpad modes.
-- Software Voodoo support through DOSBox-X for Glide-era games.
+The Flutter app is complete and tested against a **stub core**. The native
+bridge is specified but not yet implemented, so nothing is emulated yet -- the
+app says so in a banner when it runs.
 
-## Storage Layout
+- `docs/NATIVE_BUILD.md` -- how the native core is meant to be built, why it is
+  feasible, and the four problems left to solve.
+- `docs/MIGRATION.md` -- what moved over from the Java app, the parity
+  checklist, and the per-game compatibility knowledge that must not be lost.
 
-The setup wizard creates or selects an app-specific base folder. On removable
-storage this is commonly:
+## Layout
 
-```text
-/storage/<card>/Android/data/com.dosboxx.app/files/
+```
+docs/                       design and build notes
+native/dosbox_core/
+  bridge/dosbox_bridge.h    the C ABI contract; read this first
+flutter_app/
+  lib/ffi/                  bindings, the DosboxCore interface, the stub core
+  lib/data/                 library entries, SDL scancode catalogue
+  lib/services/             config generation, scanning, prefs, storage, input
+  lib/screens/              workbench shell, library, emulator, settings
+  lib/widgets/              framebuffer view, sidebar, on-screen controls
+  test/                     runs with no native core and no game files
 ```
 
-Inside that base folder:
+## Developing
 
-```text
-games/                 installed DOS games and user-supplied Windows images
-cds/                   visible standalone CD images only
-cds/.archives/         reusable ZIP CD source packages
-cds/.prepared-cds/     one temporary extracted CD mount at a time
-cds/.extracted-cds/    optional kept extracted CD images
-import/                transient imports
+Flutter is not on `PATH` on this machine; use the checkout directly.
+
+```bash
+cd flutter_app
+/home/jon/development/flutter/bin/flutter pub get
+/home/jon/development/flutter/bin/flutter analyze lib test
+/home/jon/development/flutter/bin/flutter test
+/home/jon/development/flutter/bin/flutter run -d linux
 ```
 
-The visible launcher does not show ZIP sources directly. Use `+ Add CD game`
-to select from the hidden archive collection or kept extracted CDs. New files
-are imported through Android's system file picker, so the app does not request
-broad external storage access.
+The app falls back to `StubDosboxCore` whenever `libdosboxcore` cannot be
+loaded, which is the normal state while working on the UI. The stub draws an
+animated test pattern at 320x200 with a 1.2 pixel aspect, so aspect handling and
+stale-frame bugs are visible rather than hidden.
 
-## Windows 95/98/ME Notes
+## Licensing
 
-The app does not include or download Microsoft Windows disk images. To use an
-installed Windows 95, 98, or ME guest, copy your own bootable `.img` hard disk
-image into the app storage folder, for example:
-
-```text
-games/WinBox95/windows95.img
-games/WinBox98/windows98.img
-games/WinBoxME/windowsme.img
-```
-
-For Windows 9x CD setup, the launcher boots with:
-
-- Windows hard disk as `C:`
-- selected CD-ROM as `D:`
-
-This avoids installers failing because they expect the CD in `D:`. Install the
-game into `C:\...` unless the game installer explicitly asks otherwise.
-
-## Release Bundle
-
-Signed Android App Bundles are produced by the GitHub Actions workflow
-`Build signed Android App Bundle`.
-
-Repository secrets required by the workflow:
-
-- `ANDROID_KEYSTORE_BASE64`
-- `ANDROID_KEYSTORE_PASSWORD`
-- `ANDROID_KEY_ALIAS`
-- `ANDROID_KEY_PASSWORD`
-
-The workflow uploads `app-release.aab` as a run artifact.
-
-## Project Layout
-
-```text
-app/src/main/java/com/dosboxx/app/
-  GameLauncherActivity.java   launcher UI, storage manager, config generation
-  GameImporter.java           Android file-picker import routing
-  GameMeta.java               per-game platform/CD metadata
-  KeyMapStore.java            per-game controls
-  IsoReader.java              ISO9660 scan/extract helpers
-  ZipToIso.java               ZIP folder to ISO helper
-  Fat32Disk.java              FAT32 image creator/writer
-
-app/src/main/java/org/libsdl/app/
-  SDLActivity.java            SDL/DOSBox activity, overlay, input bridge
-
-native/
-  DOSBox-X upstream submodule and Android build notes
-```
-
-## GitHub Pages
-
-The static project page lives in [`docs/index.md`](docs/index.md). In GitHub:
-
-1. Open repository Settings.
-2. Go to Pages.
-3. Set Source to `Deploy from a branch`.
-4. Select the default branch and `/docs`.
-
-## Licensing And Store Distribution
-
-GPL-2.0, matching DOSBox-X. See [`LICENSE`](LICENSE) and
-[`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md).
-
-GPLv2 allows paid distribution. A paid Play Store listing is acceptable provided
-that buyers still receive the GPL rights, including access to the complete
-corresponding source code and the right to copy, modify, and redistribute the
-app under the GPLv2.
-
-The app must not include Microsoft Windows images, game files, ROMs, BIOS files,
-or other third-party content unless the distributor has the required rights.
+DOSBox-X is GPLv2. Anything linked against its objects -- which includes the
+bridge, and therefore any shipped build -- inherits that. Bear this in mind
+before adding dependencies to the Flutter side.

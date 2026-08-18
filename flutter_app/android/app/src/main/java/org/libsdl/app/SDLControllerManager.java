@@ -60,12 +60,7 @@ public class SDLControllerManager
 
     // Joystick glue code, just a series of stubs that redirect to the SDLJoystickHandler instance
     public static boolean handleJoystickMotionEvent(MotionEvent event) {
-        if (!SDLActivity.sJoystickMode) return SDLActivity.handleJoystickMotionAsKeyboard(event);
         return mJoystickHandler.handleMotionEvent(event);
-    }
-
-    public static void resetJoystickState() {
-        if (mJoystickHandler != null) mJoystickHandler.resetJoystickState();
     }
 
     /**
@@ -143,9 +138,6 @@ class SDLJoystickHandler {
      * Handles adding and removing of input devices.
      */
     public void pollInputDevices() {
-    }
-
-    public void resetJoystickState() {
     }
 }
 
@@ -308,43 +300,6 @@ class SDLJoystickHandler_API16 extends SDLJoystickHandler {
             }
         }
         return true;
-    }
-
-    @Override
-    public void resetJoystickState() {
-        int[] keys = new int[] {
-            KeyEvent.KEYCODE_BUTTON_A,
-            KeyEvent.KEYCODE_BUTTON_B,
-            KeyEvent.KEYCODE_BUTTON_X,
-            KeyEvent.KEYCODE_BUTTON_Y,
-            KeyEvent.KEYCODE_BACK,
-            KeyEvent.KEYCODE_MENU,
-            KeyEvent.KEYCODE_BUTTON_MODE,
-            KeyEvent.KEYCODE_BUTTON_START,
-            KeyEvent.KEYCODE_BUTTON_THUMBL,
-            KeyEvent.KEYCODE_BUTTON_THUMBR,
-            KeyEvent.KEYCODE_BUTTON_L1,
-            KeyEvent.KEYCODE_BUTTON_R1,
-            KeyEvent.KEYCODE_DPAD_UP,
-            KeyEvent.KEYCODE_DPAD_DOWN,
-            KeyEvent.KEYCODE_DPAD_LEFT,
-            KeyEvent.KEYCODE_DPAD_RIGHT,
-            KeyEvent.KEYCODE_BUTTON_SELECT,
-            KeyEvent.KEYCODE_DPAD_CENTER,
-            KeyEvent.KEYCODE_BUTTON_L2,
-            KeyEvent.KEYCODE_BUTTON_R2
-        };
-        for (SDLJoystick joystick : mJoysticks) {
-            for (int i = 0; i < joystick.axes.size(); i++) {
-                SDLControllerManager.onNativeJoy(joystick.device_id, i, 0.0f);
-            }
-            for (int i = 0; i < joystick.hats.size() / 2; i++) {
-                SDLControllerManager.onNativeHat(joystick.device_id, i, 0, 0);
-            }
-            for (int key : keys) {
-                SDLControllerManager.onNativePadUp(joystick.device_id, key);
-            }
-        }
     }
 
     public String getJoystickDescriptor(InputDevice joystickDevice) {

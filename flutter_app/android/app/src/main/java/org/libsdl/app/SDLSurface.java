@@ -193,89 +193,6 @@ public class SDLSurface extends SurfaceView implements SurfaceHolder.Callback,
         return SDLActivity.handleKeyEvent(v, keyCode, event, null);
     }
 
-    // ---- DosBoxX trackpad mouse (Win98 guests; see SDLActivity.sTrackpadMouse) ----
-    private float mTpLastX, mTpLastY, mTpDownX, mTpDownY;
-    private boolean mTpMoved, mTpDragging, mTpSecondFinger;
-    private long mTpDownTime;
-    private final android.os.Handler mTpHandler =
-        new android.os.Handler(android.os.Looper.getMainLooper());
-    private final Runnable mTpDragStart = new Runnable() {
-        @Override public void run() {
-            if (!mTpMoved && !mTpDragging) {
-                // long-press: hold the left button so the next move drags
-                mTpDragging = true;
-                SDLActivity.onNativeMouse(1, MotionEvent.ACTION_DOWN, 0, 0, true);
-            }
-        }
-    };
-
-    /** DOSBox only feeds relative motion to the guest while the mouse is
-     *  captured. Synthetic clicks do NOT trigger autolock capture in this
-     *  core, but the capture hotkey (Ctrl+F10) does — verified on device.
-     *  Send it once on the session's first touch. */
-    private static boolean sTpCaptureSent = false;
-
-    /** Touchscreen as trackpad: relative motion + tap clicks. */
-    private boolean trackpadTouch(MotionEvent event) {
-        final float SCALE = 0.3f;   // full-screen swipe ≈ one screen of cursor travel
-        switch (event.getActionMasked()) {
-            case MotionEvent.ACTION_DOWN:
-                if (!sTpCaptureSent) {
-                    sTpCaptureSent = true;
-                    Log.v("DosBoxX-TP", "first touch: sending Ctrl+F10 capture");
-                    SDLActivity.onNativeKeyDown(KeyEvent.KEYCODE_CTRL_LEFT);
-                    SDLActivity.onNativeKeyDown(KeyEvent.KEYCODE_F10);
-                    SDLActivity.onNativeKeyUp(KeyEvent.KEYCODE_F10);
-                    SDLActivity.onNativeKeyUp(KeyEvent.KEYCODE_CTRL_LEFT);
-                }
-                mTpLastX = event.getX(); mTpLastY = event.getY();
-                mTpDownX = mTpLastX;     mTpDownY = mTpLastY;
-                mTpDownTime = event.getEventTime();
-                mTpMoved = false; mTpDragging = false; mTpSecondFinger = false;
-                mTpHandler.postDelayed(mTpDragStart, 450);
-                return true;
-            case MotionEvent.ACTION_POINTER_DOWN:
-                mTpSecondFinger = true;
-                return true;
-            case MotionEvent.ACTION_MOVE: {
-                float x = event.getX(), y = event.getY();
-                float dx = x - mTpLastX, dy = y - mTpLastY;
-                if (!mTpMoved) {
-                    float tx = x - mTpDownX, ty = y - mTpDownY;
-                    if (tx * tx + ty * ty > 24f * 24f) {   // touch slop
-                        mTpMoved = true;
-                        mTpHandler.removeCallbacks(mTpDragStart);
-                    }
-                }
-                if (mTpMoved || mTpDragging) {
-                    SDLActivity.onNativeMouse(mTpDragging ? 1 : 0,
-                        MotionEvent.ACTION_MOVE, dx * SCALE, dy * SCALE, true);
-                }
-                mTpLastX = x; mTpLastY = y;
-                return true;
-            }
-            case MotionEvent.ACTION_UP:
-            case MotionEvent.ACTION_CANCEL:
-                mTpHandler.removeCallbacks(mTpDragStart);
-                if (mTpDragging) {
-                    SDLActivity.onNativeMouse(0, MotionEvent.ACTION_UP, 0, 0, true);
-                } else if (!mTpMoved
-                        && event.getActionMasked() == MotionEvent.ACTION_UP
-                        && event.getEventTime() - mTpDownTime < 350) {
-                    final int btn = mTpSecondFinger ? 2 : 1;   // 2 fingers = right click
-                    SDLActivity.onNativeMouse(btn, MotionEvent.ACTION_DOWN, 0, 0, true);
-                    mTpHandler.postDelayed(new Runnable() {
-                        @Override public void run() {
-                            SDLActivity.onNativeMouse(0, MotionEvent.ACTION_UP, 0, 0, true);
-                        }
-                    }, 60);
-                }
-                return true;
-            default:
-                return true;
-        }
-    }
-
     // Touch events
     @Override
     public boolean onTouch(View v, MotionEvent event) {
@@ -297,18 +214,10 @@ public class SDLSurface extends SurfaceView implements SurfaceHolder.Callback,
             touchDevId -= 1;
         }
 
-        // DosBoxX: booted-OS sessions turn the touch screen into a trackpad
-        // (real mice below still pass through normally).
-        boolean realMouse = event.getSource() == InputDevice.SOURCE_MOUSE
-            || event.getSource() == (InputDevice.SOURCE_MOUSE | InputDevice.SOURCE_TOUCHSCREEN);
-        if (SDLActivity.sTrackpadMouse && !realMouse) {
-            return trackpadTouch(event);
-        }
-
         // 12290 = Samsung DeX mode desktop mouse
         // 12290 = 0x3002 = 0x2002 | 0x1002 = SOURCE_MOUSE | SOURCE_TOUCHSCREEN
         // 0x2   = SOURCE_CLASS_POINTER
-        if (realMouse) {
+        if (event.getSource() == InputDevice.SOURCE_MOUSE || event.getSource() == (InputDevice.SOURCE_MOUSE | InputDevice.SOURCE_TOUCHSCREEN)) {
             int mouseButton = 1;
             try {
                 Object object = event.getClass().getMethod("getButtonState").invoke(event);

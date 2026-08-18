@@ -15,10 +15,4 @@
     <style name="NormalTheme" parent="@android:style/Theme.Light.NoTitleBar">
         <item name="android:windowBackground">?android:colorBackground</item>
     </style>
-    <!-- Carried from the store app: the emulator activity's fullscreen theme
-         and the cold-start splash showing the DOSBox-X logo. -->
-    <style name="AppTheme" parent="android:Theme.NoTitleBar.Fullscreen" />
-    <style name="SplashTheme" parent="android:Theme.NoTitleBar.Fullscreen">
-        <item name="android:windowBackground">@drawable/splash</item>
-    </style>
 </resources>

@@ -1,0 +1,99 @@
+// Colors and sizing shared with ViceMultiplatform's workbench, so the two
+// front ends read as siblings rather than unrelated apps.
+//
+// Flutter's logical pixels are the same concept as Android's dp, so every dp
+// value carried over from the Java sources is used here unconverted.
+import 'package:flutter/material.dart';
+
+class DosColors {
+  DosColors._();
+
+  static const Color rootBackground = Color(0xFF050607);
+
+  static const Color panelFill = Color(0xCC0B0D10);
+  static const Color panelStroke = Color(0x44FFFFFF);
+
+  static const Color selectedFill = Color(0xFF24292E);
+  static const Color selectedStroke = Color(0xFF444D56);
+
+  static const Color sidebarLabelIdle = Color(0xFF8C939D);
+  static const Color sidebarLabelSelected = Colors.white;
+
+  static const Color accentTeal = Color(0xFF00FFCC);
+  static const Color accentBlue = Color(0xFF2D8CFF);
+
+  /// DOS-flavoured accent, distinct from the VICE app's C64 blue: the amber of
+  /// a monochrome PC monitor. Used for the shell/terminal chrome.
+  static const Color accentAmber = Color(0xFFFFB000);
+
+  static const Color cardFill = Color(0xFF191D22);
+  static const Color cardStroke = Color(0xFF353B44);
+  static const Color coverFill = Color(0xFF262C34);
+  static const Color coverStroke = Color(0xFF404853);
+
+  static const Color textMuted = Color(0xFF9AA3AF);
+  static const Color textMuted2 = Color(0xFFBAC2CC);
+
+  static const Color warning = Color(0xFFE5A00D);
+  static const Color danger = Color(0xFFE53935);
+}
+
+class DosMetrics {
+  DosMetrics._();
+
+  /// Clamp bounds for the sidebar, whose width is measured from its widest
+  /// label rather than fixed -- a flat value left a dead strip beside every
+  /// label on wide devices.
+  static const double sidebarMinWidth = 118.0;
+
+  static double sidebarMaxWidth(double screenWidth) {
+    final quarter = screenWidth * 0.25;
+    return quarter < 190.0 ? quarter : 190.0;
+  }
+
+  /// A floor, not a fixed height: the row grows with the platform text scale,
+  /// which is what stops labels looking cramped on handheld devices that
+  /// default to 1.35x.
+  static const double sidebarButtonHeight = 36.0;
+  static const double sidebarButtonTextSize = 13.0;
+  static const double sidebarButtonBottomMargin = 4.0;
+  static const double sidebarButtonSidePadding = 10.0;
+  static const double sidebarButtonVerticalPadding = 8.0;
+
+  static const double rootPadding = 12.0;
+  static const double sideNavPadding = 6.0;
+  static const double contentLeftMargin = 12.0;
+
+  static const double mediaCardWidth = 120.0;
+  static const double mediaCardHeight = 178.0;
+  static const double mediaCoverHeight = 120.0;
+
+  /// Card plus margins, for column math in the library grid.
+  static const double mediaCardCell = 126.0;
+
+  static double quickSettingsPanelWidth(double screenWidth) {
+    final pct = screenWidth * 0.45;
+    return pct < 340.0 ? pct : 340.0;
+  }
+}
+
+/// Monospace styling for the places this app deliberately looks like a DOS
+/// prompt (setup wizard, status lines, config help text).
+class DosTextStyles {
+  DosTextStyles._();
+
+  static const TextStyle terminal = TextStyle(
+    fontFamily: 'monospace',
+    fontFamilyFallback: ['Courier New', 'DejaVu Sans Mono'],
+    fontSize: 13,
+    height: 1.35,
+    color: DosColors.accentAmber,
+  );
+
+  static const TextStyle statusLine = TextStyle(
+    fontFamily: 'monospace',
+    fontFamilyFallback: ['Courier New', 'DejaVu Sans Mono'],
+    fontSize: 11,
+    color: DosColors.textMuted,
+  );
+}

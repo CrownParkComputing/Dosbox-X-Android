@@ -1,0 +1,102 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>CADisableMinimumFrameDurationOnPhone</key>
+	<true/>
+	<key>CFBundleDevelopmentRegion</key>
+	<string>$(DEVELOPMENT_LANGUAGE)</string>
+	<key>CFBundleDisplayName</key>
+	<string>Dosbox Multiplatform</string>
+	<key>CFBundleExecutable</key>
+	<string>$(EXECUTABLE_NAME)</string>
+	<key>CFBundleIdentifier</key>
+	<string>$(PRODUCT_BUNDLE_IDENTIFIER)</string>
+	<key>CFBundleInfoDictionaryVersion</key>
+	<string>6.0</string>
+	<key>CFBundleName</key>
+	<string>dosbox_multiplatform</string>
+	<key>CFBundlePackageType</key>
+	<string>APPL</string>
+	<key>CFBundleShortVersionString</key>
+	<string>$(FLUTTER_BUILD_NAME)</string>
+	<key>CFBundleSignature</key>
+	<string>????</string>
+	<key>CFBundleVersion</key>
+	<string>$(FLUTTER_BUILD_NUMBER)</string>
+	<key>LSRequiresIPhoneOS</key>
+	<true/>
+	<key>UIApplicationSceneManifest</key>
+	<dict>
+		<key>UIApplicationSupportsMultipleScenes</key>
+		<false/>
+		<key>UISceneConfigurations</key>
+		<dict>
+			<key>UIWindowSceneSessionRoleApplication</key>
+			<array>
+				<dict>
+					<key>UISceneClassName</key>
+					<string>UIWindowScene</string>
+					<key>UISceneConfigurationName</key>
+					<string>flutter</string>
+					<key>UISceneDelegateClassName</key>
+					<!-- Literal, not $(PRODUCT_MODULE_NAME): iosbox builds without
+					     Xcode and does not expand build variables here, so the
+					     substitution survives into the shipped Info.plist and the
+					     scene delegate class never resolves. -->
+					<string>Runner.SceneDelegate</string>
+					<!-- No UISceneStoryboardFile. iosbox has no ibtool, so no
+					     storyboard is ever compiled into the bundle and naming
+					     one here aborts the launch with NSInvalidArgumentException
+					     "Could not find a storyboard named 'Main'". SceneDelegate
+					     builds the view controller in code instead. -->
+				</dict>
+			</array>
+		</dict>
+	</dict>
+	<key>UIApplicationSupportsIndirectInputEvents</key>
+	<true/>
+	<!-- Xcode derives this from TARGETED_DEVICE_FAMILY ("1,2" in the pbxproj),
+	     but iosbox does not read the pbxproj, so without it here the key is
+	     absent and iOS treats the app as iPhone-only: on an iPad it then runs
+	     in compatibility mode on a 320x480 canvas, scaled into a small box in
+	     the middle of the screen. Every "RenderFlex overflowed" in this app was
+	     a symptom of that 320pt width, not of the layouts themselves. -->
+	<!-- Without these two the app's Documents folder never appears in the Files
+	     app, so on iOS there is no way to get a game onto the device at all and
+	     the library is permanently empty. UIFileSharingEnabled publishes the
+	     folder; LSSupportsOpeningDocumentsInPlace lets a game be opened where it
+	     sits rather than copied. Both are set in Amiga-Retro for the same
+	     reason. -->
+	<key>UIFileSharingEnabled</key>
+	<true/>
+	<key>LSSupportsOpeningDocumentsInPlace</key>
+	<true/>
+	<key>UIDeviceFamily</key>
+	<array>
+		<integer>1</integer>
+		<integer>2</integer>
+	</array>
+	<key>UIRequiresFullScreen</key>
+	<true/>
+	<!-- UILaunchScreen (an empty dict = a plain system launch screen) rather
+	     than UILaunchStoryboardName/UIMainStoryboardFile, for the same reason
+	     as above: the storyboards in Base.lproj are never compiled on the
+	     iosbox path, so referencing them by name is a launch-time abort. -->
+	<key>UILaunchScreen</key>
+	<dict/>
+	<key>UISupportedInterfaceOrientations</key>
+	<array>
+		<string>UIInterfaceOrientationPortrait</string>
+		<string>UIInterfaceOrientationLandscapeLeft</string>
+		<string>UIInterfaceOrientationLandscapeRight</string>
+	</array>
+	<key>UISupportedInterfaceOrientations~ipad</key>
+	<array>
+		<string>UIInterfaceOrientationPortrait</string>
+		<string>UIInterfaceOrientationPortraitUpsideDown</string>
+		<string>UIInterfaceOrientationLandscapeLeft</string>
+		<string>UIInterfaceOrientationLandscapeRight</string>
+	</array>
+</dict>
+</plist>

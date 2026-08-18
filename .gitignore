@@ -1,29 +1,35 @@
-# Gradle / build
-.gradle/
-build/
-app/build/
-*.apk
-*.ap_
-*.aab
+# Flutter / Dart
+flutter_app/build/
+flutter_app/.dart_tool/
+flutter_app/.flutter-plugins
+flutter_app/.flutter-plugins-dependencies
+flutter_app/ios/Flutter/Generated.xcconfig
+flutter_app/ios/Flutter/flutter_export_environment.sh
+flutter_app/ios/Pods/
+flutter_app/linux/flutter/ephemeral/
+flutter_app/android/.gradle/
+flutter_app/android/local.properties
+flutter_app/android/app/src/main/jniLibs/**/*.so
+**/*.iml
 
-# Android Studio / IntelliJ
-.idea/
-*.iml
-captures/
-.externalNativeBuild/
-.cxx/
+# Native core: large cross-compiled artifacts, rebuilt per machine.
+# See docs/NATIVE_BUILD.md.
+native/dosbox_core/*/build/
+native/dosbox_core/**/*.o
+native/dosbox_core/**/*.a
+native/dosbox_core/**/*.so
 
-# Local config (machine-specific SDK path)
-local.properties
+# DOS games and disc images are never committed.
+*.iso
+*.cue
+*.bin
+*.img
+*.ima
+*.vhd
 
-# Claude Code local settings
-.claude/settings.local.json
-
-# OS
 .DS_Store
-Thumbs.db
-*~
-# Build artifacts from the native cross-build
-native/build/
-native/toolchain/
-native/*.log
+
+# Build output APKs are never committed.
+dist/
+*.apk
+*.aab
