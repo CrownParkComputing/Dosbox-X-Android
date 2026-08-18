@@ -5,12 +5,13 @@ The emulator is not written here. `libdosboxcore` is a thin plain-C bridge in
 
 ## Status
 
-**The bridge is not implemented yet.** What exists today is
-`bridge/dosbox_bridge.h` -- the C ABI contract -- and the whole Flutter app
-written against it. Until the bridge lands, the app loads
-`StubDosboxCore` instead and says so in a banner across the top of the window.
-That is a deliberate ordering: the header is the interface both sides have to
-agree on, and it is much cheaper to change before either side is built.
+**The bridge is implemented** (`bridge/dosbox_bridge.h` + `dosbox_bridge.cpp`,
+~1000 lines): the full C ABI for init/start/stop, the framebuffer, keyboard /
+mouse / joystick input, config reflection and save-states. It has not yet been
+compiled and linked against a real DOSBox-X object tree, so the app still loads
+`StubDosboxCore` and says so in a banner across the top of the window. Two
+problems remain open before a real build is useful: audio (no backend yet) and
+clean shutdown (upstream has no teardown path); see below.
 
 ## Why this is feasible: the Game Link output
 
@@ -52,26 +53,26 @@ conversion pass. See `lib/widgets/framebuffer_view.dart`.
    and the app is honest about it -- launching a second title reports that a
    restart is needed. Fixing this properly means real teardown in the core.
 
-3. **A dummy SDL window.** `OUTPUT_GAMELINK_SetSize` still calls
-   `GFX_SetSDLWindowMode` and `SDL_GetWindowSurface` to keep a window around
-   for the menu bar. Inside a Flutter app there is no window to create, so the
-   bridge's output needs those calls removed and `SDL_VIDEODRIVER=dummy` set.
+3. **A dummy SDL window.** (Addressed.) The bridge sets
+   `SDL_VIDEODRIVER=dummy` before init (`dosbox_bridge.cpp`), and the
+   window-creation calls in the output path are removed by the bridge hook, so
+   there is no SDL window to fight over.
 
 4. **Zero-copy frames.** `FramebufferView` polls, copies and calls
    `decodeImageFromPixels`, allocating a texture per frame. The real answer is
    a Flutter `Texture` backed by an external GL/Metal texture the bridge writes
    into. That needs per-platform context sharing and is deliberately deferred.
 
-## Build layout (planned)
+## Build layout
 
 ```
 native/dosbox_core/
-  bridge/       dosbox_bridge.h  <- exists; the ABI contract
-                dosbox_bridge.c  <- the SCREEN_FLUTTER output + mailboxes
-                audio_backend_android.c / _linux.c / _ios.c
-  android/      CMakeLists.txt + build.sh -> jniLibs/<abi>/libdosboxcore.so
-  linux/        CMakeLists.txt          -> build/libdosboxcore.so
-  ios/          static lib per arch, packaged as an .xcframework
+  bridge/       dosbox_bridge.h     <- the ABI contract
+                dosbox_bridge.cpp   <- the SCREEN_FLUTTER output + mailboxes (implemented)
+                audio_backend_android.c / _linux.c / _ios.c   <- not written yet
+  android/      build.sh + patches/ -> flutter_app/.../jniLibs/<abi>/libdosboxcore.so
+  linux/        build.sh / build-core-pic.sh -> build/libdosboxcore.so
+  ios/          build-ios.sh (Docker) -> libdosboxcore.framework
 ```
 
 As in ViceMultiplatform, the bridge links against a **pre-built** DOSBox-X
@@ -79,20 +80,16 @@ object tree rather than vendoring or rebuilding one. That tree is large,
 machine-specific and not redistributable, so **CI cannot build the native
 core** -- CI can only prove the Dart layer compiles and the tests pass.
 
-## Reference material in the old repo
+## The Android patches
 
-The Java app at `~/StudioProjects/Dosbox-X-Android` carries seven patches under
-`native/patches/` that are still relevant, because they fix Android build and
-platform problems rather than UI ones:
+The nine DOSBox-X source patches that make the Android build work now live in
+this repo at `native/dosbox_core/android/patches/`, applied by
+`native/dosbox_core/android/build.sh`. They are documented per-file in
+`patches/README.md` there; the short version:
 
-- `0001-android-configure-target.patch` -- `*-*-android*` case in configure.ac;
-  bionic has no `librt`.
-- `0002-android-sdl1-cdrom-include.patch` -- `<linux/cdrom.h>` on Android.
-- `0003-android-sdlmain.patch` -- suppresses the tinyfd folder prompt that
-  hangs, and stops SDL_VIDEODRIVER being forced to x11.
-- `0007-android-native-config-gui.patch` -- the config reflection JNI. This is
-  the direct ancestor of `dosbox_core_config_*` in the header; port the C
-  logic and drop the JNI wrapper.
-
-Patches `0004`-`0006` are about SDL2 GPU scaling to an Android window surface
-and are **obsolete here**: there is no SDL window, and scaling is Flutter's job.
+- `0001` configure target for `*-*-android*` (no `librt`); `0002` SDL1 CD-ROM
+  include; `0003` suppress the tinyfd prompt and the forced x11 driver;
+  `0004`-`0006` render aspect + GPU content scaling.
+- `0007` the native config GUI (ancestor of `dosbox_core_config_*`); `0008`
+  Game Link's `shm_open` replaced (bionic has no shared memory); `0009` expose
+  the synthetic joystick before DOS startup.

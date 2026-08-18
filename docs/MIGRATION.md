@@ -1,7 +1,7 @@
 # Migration from Dosbox-X-Android
 
-This project replaces the Java/SDL Android app at
-`~/StudioProjects/Dosbox-X-Android` with a Flutter front end targeting Android,
+This project replaces the retired Java/SDL `Dosbox-X-Android` app (archived in
+this repo's history) with a Flutter front end targeting Android,
 iOS and Linux. It follows the architecture of its sibling, ViceMultiplatform:
 a plain-C bridge over the emulator core, `dart:ffi` bindings, and a Flutter UI
 that polls a framebuffer.
@@ -25,7 +25,8 @@ and is preserved deliberately.
 
 ### Done
 
-- [x] C ABI contract (`native/dosbox_core/bridge/dosbox_bridge.h`)
+- [x] C ABI + implementation (`native/dosbox_core/bridge/dosbox_bridge.h` +
+      `dosbox_bridge.cpp`)
 - [x] FFI bindings, core interface, stub core
 - [x] Config generation, ported with every compatibility workaround intact
       (`lib/services/dos_conf_builder.dart`) -- see below
@@ -41,7 +42,9 @@ and is preserved deliberately.
 
 ### Not done
 
-- [ ] **The native bridge itself.** The app runs on `StubDosboxCore`.
+- [ ] **Core build & link.** The bridge is implemented (`dosbox_bridge.cpp`)
+      but has not yet been compiled against a real DOSBox-X tree, so the app
+      still runs on `StubDosboxCore`.
 - [ ] **Audio.** See `docs/NATIVE_BUILD.md`.
 - [ ] **Save states.** The C API is designed (`dosbox_core_save_state`, slot
       based) but there is no Dart `SaveStateService` and no thumbnails yet.

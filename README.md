@@ -10,13 +10,19 @@ an emulator: DOSBox-X does all the actual work.
 ## State
 
 The Flutter app is complete and tested against a **stub core**. The native
-bridge is specified but not yet implemented, so nothing is emulated yet -- the
-app says so in a banner when it runs.
+bridge (`native/dosbox_core/bridge/dosbox_bridge.{h,cpp}`, ~1000 lines) is
+implemented — the full C ABI for init/start/stop, the framebuffer, keyboard /
+mouse / joystick input, config reflection and save-states — but it has not yet
+been compiled and linked against a real DOSBox-X object tree, so nothing is
+emulated yet and the app still loads `StubDosboxCore` (and says so in a banner).
+Audio and clean shutdown remain open.
 
-- `docs/NATIVE_BUILD.md` -- how the native core is meant to be built, why it is
-  feasible, and the four problems left to solve.
+- `docs/NATIVE_BUILD.md` -- how the native core is built, and the problems left
+  to solve (audio, shutdown, zero-copy frames).
 - `docs/MIGRATION.md` -- what moved over from the Java app, the parity
   checklist, and the per-game compatibility knowledge that must not be lost.
+- `docs/PLATFORM_STATUS.md` -- per-platform core bundling, platform-specific
+  code, and the divergences to track.
 
 ## Layout
 

@@ -10,7 +10,7 @@
 #
 # Prerequisite: native/dosbox_core/linux/build-core-pic.sh has produced
 # ~/dosbox-x-pic against the host CFLAGS. That tree is the source: this
-# script applies the bridge hook, applies the seven Android-specific
+# script applies the bridge hook, applies the nine Android-specific
 # patches from ./patches/, and reconfigures + cross-compiles for the NDK
 # target. The bridge hook lets us publish finished frames through the same
 # Game Link output the Java/SDL app uses, so the bridge needs the gamelink

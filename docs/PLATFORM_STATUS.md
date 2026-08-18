@@ -78,11 +78,11 @@ Everything below is compiled/interpreted identically on Android, iOS and Linux.
 
 ## Review notes (open items)
 
-1. **Docs are stale.** `README.md` and `docs/NATIVE_BUILD.md` both say the
-   bridge is "not implemented yet", but
-   `native/dosbox_core/bridge/dosbox_bridge.cpp` (717 lines) implements
-   `dosbox_core_init/stop/get_framebuffer/...`. The code moved ahead of the
-   prose.
+1. **Docs were stale, now fixed.** `README.md` and `docs/NATIVE_BUILD.md`
+   previously said the bridge was "not implemented"; it is implemented
+   (`dosbox_bridge.cpp`, ~1000 lines) but not yet compiled against a real
+   DOSBox-X tree. Both are corrected, and the audio/shutdown gaps are called
+   out as the remaining work.
 2. **Android is by far the most customised platform** — the SDL Java glue plus
    the manual SDL-JNI bootstrap plus 9 patches is real, load-bearing complexity
    that iOS and Linux simply do not have. Worth a second look once the core is
