@@ -33,3 +33,6 @@ native/dosbox_core/**/*.so
 dist/
 *.apk
 *.aab
+
+# Build-time shim dir (regenerated per machine).
+native/dosbox_core/**/.tmp/
