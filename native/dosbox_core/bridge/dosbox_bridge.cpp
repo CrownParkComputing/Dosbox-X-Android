@@ -47,6 +47,7 @@
 #include "cpu.h"
 
 #include "dosbox_bridge.h"
+#include "audio_backend.h"
 
 /* sdlmain.cpp; aliased to main() by the bridge patch. */
 extern "C" int dosbox_x_main(int argc, char *argv[]);
@@ -692,9 +693,10 @@ extern "C" int32_t dosbox_core_get_fps(void)
 
 extern "C" int32_t dosbox_core_get_audio_level(void)
 {
-    /* Not wired up: there is no audio backend yet (see docs/NATIVE_BUILD.md,
-     * problem 1), so reporting a level would be inventing one. */
-    return 0;
+    /* Live output peak, computed by the audio backend from the real PCM it is
+     * playing. Zero until a backend has been opened (i.e. before the first
+     * frame / while the mixer is still booting). */
+    return audio_backend_get_level();
 }
 
 extern "C" int32_t dosbox_core_get_cycles(void)

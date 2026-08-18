@@ -8,7 +8,16 @@ the same near-vanilla shape as iOS and Linux.
 
 ## 1. Finish the bridge audio + input backends → delete the SDL Java glue
 
-**The single biggest win.** Today the core links against SDL2's *Android*
+**STATUS (2026-08-18): the audio half is DONE.** `bridge/audio_backend.h` +
+`audio_backend_android.c` (AAudio) / `audio_backend_linux.c` (ALSA) /
+`audio_backend_ios.m` (CoreAudio) are written; the mixer is wired to them via
+weak-symbol hooks in `apply-bridge-hook.py`; the Android build now compiles the
+AAudio backend and links `-laaudio`, producing a valid `libdosboxcore.so`
+(link-verified, all `audio_backend_*` and `dosbox_core_*` symbols exported).
+The core no longer depends on SDL's audio driver. What remains is the deletion
+step below (and confirming HID doesn't still pull SDL in).
+
+**The biggest win.** Today the core links against SDL2's *Android*
 backend, which assumes its host activity is `org.libsdl.app.SDLActivity`. Ours
 is a `FlutterActivity`, so `MainActivity.setupSdlJni()` (~60 lines) hand-boots
 SDL's JNI, and the 11 `org/libsdl/app/*.java` stubs exist only so `JNI_OnLoad`'s
@@ -71,7 +80,7 @@ after audio, not a platform-divergence problem.
 
 | Action | Files removed | Trigger |
 |---|---|---|
-| Bridge audio + HID backends | 11 `org/libsdl/app/*.java`, ~60 lines Kotlin, 3–5 patches | finish `audio_backend_*.c` + HID |
+| Bridge audio + HID backends | 11 `org/libsdl/app/*.java`, ~60 lines Kotlin, 3–5 patches | audio done; finish HID + delete glue |
 | Shutdown teardown | `AppRestartActivity.kt`, restart channel | finish `dosbox_core_stop()` |
 | (none) | storage + gamepad stay | already minimal |
 

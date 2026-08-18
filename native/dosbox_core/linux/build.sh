@@ -88,15 +88,22 @@ g++ -c -O2 -fPIC -std=gnu++14 \
     $(sdl2-config --cflags) \
     -D_XOPEN_SOURCE=700 -D_POSIX_C_SOURCE=200809L
 
+echo "==> compiling audio backend (linux/ALSA)"
+gcc -c -O2 -fPIC -std=gnu11 \
+    -o "$OUT/audio_backend_linux.o" \
+    "$BRIDGE/audio_backend_linux.c" \
+    -I"$BRIDGE"
+
 echo "==> linking libdosboxcore.so"
 # shellcheck disable=SC2086
 g++ -shared -fPIC -o "$OUT/libdosboxcore.so" \
     "$OUT/dosbox_bridge.o" \
+    "$OUT/audio_backend_linux.o" \
     -Wl,--whole-archive \
         $ARCHIVES \
         "$PIC"/src/*.o \
     -Wl,--no-whole-archive \
-    $(sdl2-config --libs) $LIBS $EXTRA_LIBS -lpthread
+    $(sdl2-config --libs) $LIBS $EXTRA_LIBS -lasound -lpthread
 
 echo "==> checking the ABI is actually exported"
 # Symbols are dumped once rather than piped into `grep -q` per symbol: grep -q

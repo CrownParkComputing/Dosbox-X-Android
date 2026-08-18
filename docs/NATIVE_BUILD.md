@@ -7,11 +7,15 @@ The emulator is not written here. `libdosboxcore` is a thin plain-C bridge in
 
 **The bridge is implemented** (`bridge/dosbox_bridge.h` + `dosbox_bridge.cpp`,
 ~1000 lines): the full C ABI for init/start/stop, the framebuffer, keyboard /
-mouse / joystick input, config reflection and save-states. It has not yet been
-compiled and linked against a real DOSBox-X object tree, so the app still loads
-`StubDosboxCore` and says so in a banner across the top of the window. Two
-problems remain open before a real build is useful: audio (no backend yet) and
-clean shutdown (upstream has no teardown path); see below.
+mouse / joystick input, config reflection and save-states. It links against a
+real -fPIC DOSBox-X tree on Linux and cross-compiles + links for Android
+(`android/build.sh` produces a valid `libdosboxcore.so` for `arm64-v8a` and
+`x86_64`). The Flutter app still loads `StubDosboxCore` by default and says so
+in a banner across the top of the window; that is a Dart-side switch, not a
+missing core.
+
+One problem remains open before a real device build is useful: **clean
+shutdown** (upstream has no teardown path). Audio is implemented (see below).
 
 ## Why this is feasible: the Game Link output
 
@@ -38,13 +42,18 @@ conversion pass. See `lib/widgets/framebuffer_view.dart`.
 
 ## Known problems to solve, in order
 
-1. **Audio.** DOSBox-X's mixer calls `SDL_OpenAudioDevice` directly
-   (`src/hardware/mixer.cpp`). SDL2's Android audio backend needs
-   `org.libsdl.app.SDLAudioManager` and a live SDL JNI environment, neither of
-   which exists inside a Flutter host. The decided approach is a mixer output
-   feeding AAudio on Android, CoreAudio on iOS and ALSA on Linux, mirroring
-   ViceMultiplatform's `bridge/audio_backend*.c`. Until then a session is
-   silent.
+1. **Audio.** (Implemented.) `bridge/audio_backend*.{c,m}` provides a platform
+   audio backend that replaces SDL's audio output with AAudio (Android),
+   CoreAudio (iOS) and ALSA (Linux), mirroring ViceMultiplatform's ring-buffer
+   / prebuffer design. It is wired into the mixer via weak-symbol hooks in
+   `apply-bridge-hook.py`, so a plain dosbox-x build is unchanged; the mixer
+   hands freshly-mixed samples to `audio_backend_write()` instead of
+   `SDL_OpenAudioDevice`'s callback. `dosbox_core_get_audio_level()` now
+   reports the backend's live output peak. The Android build links
+   `audio_backend_android.o` with `-laaudio` and has been link-verified. The
+   Linux backend compiles clean headlessly and can capture PCM to a WAV via
+   `DOSBOX_AUDIO_WAV_CAPTURE` for verification. Not yet runtime-verified on a
+   device.
 
 2. **Shutdown.** Upstream DOSBox-X has no complete teardown path. The Java
    Android app this replaces sidestepped it by running the emulator in a
@@ -69,7 +78,8 @@ conversion pass. See `lib/widgets/framebuffer_view.dart`.
 native/dosbox_core/
   bridge/       dosbox_bridge.h     <- the ABI contract
                 dosbox_bridge.cpp   <- the SCREEN_FLUTTER output + mailboxes (implemented)
-                audio_backend_android.c / _linux.c / _ios.c   <- not written yet
+                audio_backend.h + audio_backend_android.c / _linux.c / _ios.m
+                                    <- AAudio / ALSA / CoreAudio backends (implemented)
   android/      build.sh + patches/ -> flutter_app/.../jniLibs/<abi>/libdosboxcore.so
   linux/        build.sh / build-core-pic.sh -> build/libdosboxcore.so
   ios/          build-ios.sh (Docker) -> libdosboxcore.framework

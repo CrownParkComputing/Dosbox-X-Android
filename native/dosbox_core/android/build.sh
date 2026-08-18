@@ -37,7 +37,7 @@ PIC="${DOSBOX_X_PIC:-$HOME/dosbox-x-pic}"
 OUT="${OUT:-$HERE/build}"
 TMP="${TMP:-$HERE/.tmp}"
 APPDEST_FLUTTER="$REPO_ROOT/flutter_app/android/app/src/main/jniLibs"
-APPDEST_LEGACY="$REPO_ROOT/../AndroidStudioProjects/DosBoxX/app/src/main/jniLibs"
+APPDEST_LEGACY="${APPDEST_LEGACY:-$HOME/AndroidStudioProjects/DosBoxX/app/src/main/jniLibs}"
 
 # Defaults match the Retroid Pocket family (handhelds running Android on
 # arm64-v8a) and a host emulator (x86_64). The Gradle build declares the
@@ -252,6 +252,17 @@ echo "==> compiling bridge for $ANDROID_ABI"
     -D__ANDROID__=1 -DANDROID=1 \
     -D_POSIX_C_SOURCE=200809L
 
+# Compile the audio backend. AAudio is the Android sound path so the core does
+# not depend on SDL2's audio driver (which needs the org.libsdl.app Java glue).
+echo "==> compiling audio backend (android/AAudio) for $ANDROID_ABI"
+"$CLANG" -c -O2 -fPIC -std=gnu11 \
+    -target "$TRIPLE" \
+    --sysroot "$NDK_SYSROOT" \
+    -o "$OUT/audio_backend_android.o" \
+    "$BRIDGE/audio_backend_android.c" \
+    -I"$BRIDGE" \
+    -D__ANDROID__=1 -DANDROID=1 -D_POSIX_C_SOURCE=200809L
+
 # Link. Two things to know:
 #
 # 1. DOSBox-X's own Makefile links an *executable* (dosbox-x) from one
@@ -276,7 +287,8 @@ echo "==> linking libdosboxcore.so for $ANDROID_ABI"
     # its symbols (notably `control`) are pulled in even when the linker
     # would otherwise decide no one outside libdosboxcore.so references them.
     SHARED_LINK="${LINK_CMD/ -o dosbox-x / -shared -Wl,-soname,libdosboxcore.so -o libdosboxcore.so }"
-    SHARED_LINK="${SHARED_LINK/ dosbox.o / $OUT/dosbox_bridge.o -Wl,--whole-archive dosbox.o }"
+    SHARED_LINK="${SHARED_LINK/ dosbox.o / $OUT/dosbox_bridge.o $OUT/audio_backend_android.o -Wl,--whole-archive dosbox.o }"
+    SHARED_LINK="$SHARED_LINK -laaudio"
     SHARED_LINK="${SHARED_LINK/ libs\/decoders\/internal\/libopusint.a / libs/decoders/internal/libopusint.a -Wl,--no-whole-archive }"
 
     # Deduplicate .a archives. Walk the tokens, drop any .a we have seen
@@ -317,7 +329,13 @@ done
 # is intentionally compiled with -fvisibility=hidden, so this should resolve
 # inside libdosboxcore.so but must not be required as part of the public Dart
 # FFI ABI checked above.
-if ! nm --defined-only "$OUT/libdosboxcore.so" | grep -q " dosbox_x_main\$"; then
+#
+# Dump to a file rather than piping `nm | grep -q`: grep -q exits at the first
+# match, nm then dies of SIGPIPE (141), and under `set -o pipefail` the pipeline
+# reports failure even though the symbol was found -- which reads exactly like a
+# missing symbol. (Same trap the linux build.sh documents and avoids.)
+nm --defined-only "$OUT/libdosboxcore.so" > "$OUT/all.syms"
+if ! grep -q " dosbox_x_main$" "$OUT/all.syms"; then
     echo "error: dosbox_x_main is missing -- the bridge hook did not apply" >&2
     exit 1
 fi

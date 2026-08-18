@@ -1,6 +1,6 @@
 #!/bin/sh
 SDLINC="/home/jon/dosbox-x-pic/vs/sdl2/include"
-LIBDIR="/home/jon/DosboxMultiplatform/native/dosbox_core/android/.tmp/lib-arm64-v8a"
+LIBDIR="/home/jon/StudioProjects/DosboxMultiplatform/native/dosbox_core/android/.tmp/lib-arm64-v8a"
 case "$1" in
   --cflags)        echo "-I$SDLINC -D_REENTRANT" ;;
   --libs|--static-libs) echo "-L$LIBDIR -lSDL2" ;;
