@@ -1,38 +1,35 @@
 # Third-Party Notices
 
-DOSBox-X Android is distributed under the GNU General Public License version 2.
+DOSBox-X Multiplatform is distributed under the GNU General Public License version 2.
 See [LICENSE](LICENSE).
 
 ## DOSBox-X
 
-This app includes a modified Android build of DOSBox-X.
+This app includes a build of DOSBox-X, linked through the plain-C bridge in
+`native/dosbox_core/`.
 
 - Project: https://dosbox-x.com/
 - Source: https://github.com/joncampbell123/dosbox-x
-- Upstream source snapshot: [native/dosbox-x](native/dosbox-x)
-- License: GNU General Public License version 2, see
-  [native/dosbox-x/COPYING](native/dosbox-x/COPYING)
+- License: GNU General Public License version 2
 
 DOSBox-X itself is based on DOSBox and contains additional third-party
-components and credits. See [native/dosbox-x/CREDITS.md](native/dosbox-x/CREDITS.md)
-and license files under [native/dosbox-x](native/dosbox-x).
+components and credits.
 
 ## Bundled Native Libraries
 
-The Android package includes native shared libraries built from or used by the
-DOSBox-X Android port:
+The platform packages include native shared libraries built from the DOSBox-X
+core via the `native/dosbox_core/` bridge:
 
-- `libmain.so`: DOSBox-X Android native code, GPLv2 as part of this project
+- `libdosboxcore.so`: the bridge plus the DOSBox-X core, GPLv2 as part of this project
 - `libSDL2.so`: SDL 2.0, zlib license
 - `libpng16.so`: libpng license
-- `libc++_shared.so`: Android NDK C++ runtime
 
 ## Source Availability
 
-The complete corresponding source for this app, including the Android launcher,
-native integration, build scripts, and DOSBox-X submodule, is published at:
+The complete corresponding source for this app, including the Flutter front
+end, the native bridge, and the build scripts, is published at:
 
-https://github.com/CrownParkComputing/Dosbox-X-Android
+https://github.com/CrownParkComputing/DosboxMultiplatform
 
 If you receive a binary copy of this app, you may copy, modify, and redistribute
 it under the GPLv2. The GPL permits charging for copies, but recipients keep the
