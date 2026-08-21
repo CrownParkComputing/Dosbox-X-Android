@@ -513,6 +513,10 @@ class _WorkbenchScreenState extends State<WorkbenchScreen>
           // process boundary and are read here - the counter proved it - and
           // none of it is on screen, because the emulator view is never built.
           _tab = WorkbenchTab.running;
+          // A launched title goes fullscreen. Not persisted: this is how the
+          // session is presented, not a change to how the user likes their
+          // library, and it is put back when the session ends.
+          _sidebarHidden = true;
         });
         // AFTER the session is set, not before.
         //
@@ -557,6 +561,7 @@ class _WorkbenchScreenState extends State<WorkbenchScreen>
       _pendingArchiveSetup = archiveSetup;
       _launchError = null;
       _tab = WorkbenchTab.running;
+      _sidebarHidden = true;
     });
   }
 
@@ -600,6 +605,7 @@ class _WorkbenchScreenState extends State<WorkbenchScreen>
         _pausedSession = null;
         _tab = WorkbenchTab.games;
       });
+      unawaited(_restoreSidebarPreference());
       return;
     }
 
@@ -613,6 +619,7 @@ class _WorkbenchScreenState extends State<WorkbenchScreen>
       _pausedSession = null;
       _tab = WorkbenchTab.games;
     });
+    unawaited(_restoreSidebarPreference());
   }
 
   /// Pauses the running session and returns to the library.
@@ -647,6 +654,7 @@ class _WorkbenchScreenState extends State<WorkbenchScreen>
       _pausedSession = session;
       _tab = WorkbenchTab.games;
     });
+    unawaited(_restoreSidebarPreference());
   }
 
   /// Resumes the paused session and jumps back to the emulator screen.
@@ -669,7 +677,20 @@ class _WorkbenchScreenState extends State<WorkbenchScreen>
       _session = paused;
       _pausedSession = null;
       _tab = WorkbenchTab.running;
+      _sidebarHidden = true;
     });
+  }
+
+  /// Puts the rail back the way the user keeps it.
+  ///
+  /// A session hides it to go fullscreen without touching the stored
+  /// preference, so leaving one has to read that preference back rather than
+  /// assume: someone who keeps the rail hidden in the library should not have
+  /// it forced open by having played a game.
+  Future<void> _restoreSidebarPreference() async {
+    final hidden = await AppPrefs.getSidebarHidden();
+    if (!mounted) return;
+    setState(() => _sidebarHidden = hidden);
   }
 
   /// Shows the in-game chrome and restarts its countdown.
@@ -715,7 +736,15 @@ class _WorkbenchScreenState extends State<WorkbenchScreen>
     // A running machine takes the whole screen: no rail, no status row, no
     // panel border. Those are library furniture, and a 4:3 picture on a wide
     // handheld has no height to lend them.
-    final fullscreen = _session != null && _tab == WorkbenchTab.running;
+    //
+    // It is the EXISTING hide-the-rail switch that says so, rather than a
+    // second one of its own. Launching a title hides the rail, which is what
+    // makes a session fullscreen; the toolbar's menu button brings it back,
+    // and with it the status row and the panel, while the game keeps running
+    // inside. One flag, one meaning, and the button in the toolbar behaves
+    // exactly like the one on the status row it replaces.
+    final fullscreen =
+        _session != null && _tab == WorkbenchTab.running && _sidebarHidden;
     WidgetsBinding.instance
         .addPostFrameCallback((_) => _syncImmersive(fullscreen));
     if (fullscreen) return _fullscreenSession();
@@ -875,6 +904,8 @@ class _WorkbenchScreenState extends State<WorkbenchScreen>
                       padding: const EdgeInsets.all(8),
                       child: EmulatorControlStrip(
                         ui: _emulatorUi,
+                        onShowSidebar: () =>
+                            setState(() => _sidebarHidden = false),
                         onPause: _onSessionPause,
                         onExit: _onSessionExit,
                         onInteract: _pokeChrome,
