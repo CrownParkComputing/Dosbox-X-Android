@@ -41,7 +41,26 @@ class GamesFolder {
   /// Linux/desktop: the user's home, because a desktop user expects their
   /// games where they can reach them, not buried in an app-support tree.
   static Future<String> defaultPath() async {
-    if (Platform.isIOS || Platform.isAndroid) {
+    // Android: the app's EXTERNAL files directory, not its documents
+    // directory. getApplicationDocumentsDirectory lands in
+    // /data/user/0/<pkg>/app_flutter - internal storage, which no PC sees
+    // over USB and no file manager shows. A games folder there is one nobody
+    // can put games into.
+    //
+    // The external app folder - Android/data/<pkg>/files - is reachable over
+    // USB and needs no permission at all, which is the point: dosbox-x mounts
+    // a real directory with `mount c`, so the folder has to be somewhere the
+    // app can genuinely read, and shared storage is not that without
+    // all-files access.
+    if (Platform.isAndroid) {
+      final external = await getExternalStorageDirectory();
+      if (external != null) return p.join(external.path, folderName);
+      // No external storage at all (no SD emulation): the internal documents
+      // directory still works, it is just harder to fill.
+      final docs = await getApplicationDocumentsDirectory();
+      return p.join(docs.path, folderName);
+    }
+    if (Platform.isIOS) {
       final docs = await getApplicationDocumentsDirectory();
       return p.join(docs.path, folderName);
     }

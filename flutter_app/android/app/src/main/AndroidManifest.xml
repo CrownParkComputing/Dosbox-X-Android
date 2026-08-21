@@ -3,8 +3,20 @@
          None of those are media types, so READ_MEDIA_* does not cover them and
          all-files access is the only permission that allows reading a games
          folder the user chose. Requested at runtime via the
-         dosbox_multiplatform/storage_permissions channel, not granted here. -->
-    <uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE"/>
+         com.crownpark.retrodosbox/storage_permissions channel, not granted here. -->
+    <!--
+      MANAGE_EXTERNAL_STORAGE ("All files access") is deliberately NOT
+      requested. Play treats it as a sensitive permission: undeclared it
+      blocks the release outright, declared it means a review aimed at file
+      managers, backup and antivirus apps. This app replaces a published one,
+      which is not a thing to gate on that review.
+
+      dosbox-x mounts a directory, so games have to live somewhere the app can
+      genuinely read - its own external folder, Android/data/<pkg>/files,
+      which needs no permission and is reachable over USB. A collection
+      elsewhere is brought in through the system folder picker. See
+      MediaFolderAccess.kt.
+    -->
     <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE"
         android:maxSdkVersion="32"/>
     <uses-permission android:name="android.permission.VIBRATE"/>
@@ -27,7 +39,7 @@
     <uses-feature android:name="android.hardware.type.pc" android:required="false"/>
 
     <application
-        android:label="DOSBox-X"
+        android:label="Retro-Dosbox"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher">
         <activity
@@ -52,17 +64,6 @@
                 <category android:name="android.intent.category.LAUNCHER"/>
             </intent-filter>
         </activity>
-        <!-- Runs outside the one-shot DOSBox process. X hands foreground to
-             this tiny activity, kills the emulator, then this launches a fresh
-             MainActivity so another game can start immediately. -->
-        <activity
-            android:name=".AppRestartActivity"
-            android:exported="false"
-            android:excludeFromRecents="true"
-            android:noHistory="true"
-            android:process=":restart"
-            android:taskAffinity="com.dosboxmultiplatform.restart"
-            android:theme="@android:style/Theme.Translucent.NoTitleBar" />
         <!-- Don't delete the meta-data below.
              This is used by the Flutter tool to generate GeneratedPluginRegistrant.java -->
         <meta-data
