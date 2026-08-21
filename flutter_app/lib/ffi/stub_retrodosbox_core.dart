@@ -64,6 +64,16 @@ class StubRetroDosboxCore implements RetroDosboxCore {
   }
 
   @override
+  bool attachSharedFrameIfPossible(String path) {
+    // Nothing to attach to: the stub has no engine anywhere, in this process
+    // or any other.
+    return false;
+  }
+
+  @override
+  void detachSharedFrameIfAttached() {}
+
+  @override
   bool get isRunning => _running;
 
   @override

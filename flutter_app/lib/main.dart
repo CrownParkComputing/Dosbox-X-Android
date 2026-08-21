@@ -6,6 +6,16 @@
 // shared, long-lived state in this app is the emulator core, and a core is a
 // process-wide native resource with a single owner, not something that benefits
 // from a reactive graph.
+// Imported so the emulator process's entrypoint survives into the release
+// snapshot. Release builds are AOT-compiled from what is reachable, and a file
+// nothing imports is not compiled at all - so dosboxCoreMain existed in the
+// source, was annotated as an entry point, and still could not be resolved:
+// "Could not resolve main entrypoint function". Same reason Retro-Amiga's
+// main.dart imports its overlay entrypoint.
+import 'dart:async';
+
+import 'core_process_main.dart' show dosboxCoreMain;
+import 'services/app_restart_service.dart';
 import 'package:flutter/material.dart';
 
 import 'ffi/retrodosbox_bindings.dart';
@@ -17,6 +27,15 @@ import 'screens/workbench_screen.dart';
 import 'services/app_prefs.dart';
 import 'services/video_settings.dart';
 import 'theme/retrodosbox_theme.dart';
+
+/// Referenced so the emulator process's entrypoint cannot be tree-shaken.
+///
+/// The import alone is not proof of use, and an unused import is exactly what
+/// the analyzer offers to delete. This is never called: it exists so the
+/// function is reachable, which is what puts it in the snapshot the service's
+/// FlutterEngine looks it up by name in.
+// ignore: unused_element
+const _keepCoreEntrypoint = dosboxCoreMain;
 
 void main() {
   runApp(const RetroDosboxApp());
@@ -102,6 +121,9 @@ class _DosboxAppState extends State<RetroDosboxApp> with WidgetsBindingObserver 
       // then refuses to un-pause and the core stays frozen for good.
       if (_pausedByLifecycle) {
         core.setPaused(false);
+        // And the engine itself, which lives in another process now: this
+        // process's core object is not the one running the game.
+        unawaited(EmulatorProcess.setPaused(false));
         _pausedByLifecycle = false;
       }
     } else {
@@ -110,6 +132,7 @@ class _DosboxAppState extends State<RetroDosboxApp> with WidgetsBindingObserver 
       // nothing.
       if (!_pausedByLifecycle && !core.isPaused) {
         core.setPaused(true);
+        unawaited(EmulatorProcess.setPaused(true));
         _pausedByLifecycle = true;
       }
     }

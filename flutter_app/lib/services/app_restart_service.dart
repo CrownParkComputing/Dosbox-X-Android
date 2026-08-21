@@ -35,17 +35,76 @@ class EmulatorProcess {
   /// Starts [confPath] in the emulator process. Returns false if the host has
   /// no such mechanism, so the caller can fall back rather than appear to
   /// ignore the tap.
-  static Future<bool> launch(String confPath) async {
+  static Future<bool> launch(
+    String confPath, {
+    required String sharedFramePath,
+    int maxWidth = 1024,
+    int maxHeight = 768,
+  }) async {
     if (!isSupported) return false;
     try {
       return await _channel.invokeMethod<bool>('launchEmulator', <String, Object>{
             'confPath': confPath,
+            'sharedFramePath': sharedFramePath,
+            'maxWidth': maxWidth,
+            'maxHeight': maxHeight,
           }) ??
           false;
     } on PlatformException {
       return false;
     } on MissingPluginException {
       return false;
+    }
+  }
+
+  /// Pauses or resumes the engine in the emulator process.
+  static Future<void> setPaused(bool paused) async {
+    if (!isSupported) return;
+    try {
+      await _channel.invokeMethod<bool>('setEmulatorPaused', <String, Object>{
+        'paused': paused,
+      });
+    } on PlatformException {
+      // Nothing running.
+    } on MissingPluginException {
+      // Not this host.
+    }
+  }
+
+  /// Sends one input event to the running session.
+  ///
+  /// Fire-and-forget by design: input is continuous, and awaiting a reply per
+  /// keypress would put a binder round trip between a held direction and the
+  /// game reacting to it. A dropped event during teardown is the right
+  /// outcome, so failures are swallowed rather than reported.
+  static void sendInput(
+    String kind, {
+    int a = 0,
+    int b = 0,
+    double x = 0,
+    double y = 0,
+    bool down = false,
+  }) {
+    if (!isSupported) return;
+    _channel.invokeMethod<bool>('emulatorInput', <String, Object>{
+      'kind': kind,
+      'a': a,
+      'b': b,
+      'x': x,
+      'y': y,
+      'down': down,
+    }).catchError((Object _) => false);
+  }
+
+  /// Ends the session by ending the process.
+  static Future<void> stop() async {
+    if (!isSupported) return;
+    try {
+      await _channel.invokeMethod<bool>('stopEmulator');
+    } on PlatformException {
+      // Nothing running.
+    } on MissingPluginException {
+      // Not this host.
     }
   }
 }

@@ -22,6 +22,7 @@ import 'package:file_picker/file_picker.dart';
 import '../services/game_importer.dart';
 import '../services/media_folder.dart';
 import '../services/zip_runner.dart';
+import '../services/emulator_input.dart';
 import '../services/gamepad_service.dart';
 import '../services/library_scanner.dart';
 import '../theme/retrodosbox_theme.dart';
@@ -102,6 +103,11 @@ class _WorkbenchScreenState extends State<WorkbenchScreen>
   ArchiveRunSetup? _pendingArchiveSetup;
 
   final GamepadService _gamepads = GamepadService();
+
+  /// Where input goes: the core here on desktop, the :dosbox process on
+  /// Android. See EmulatorInput.
+  late final EmulatorInput _input =
+      EmulatorInput.forSession(core: widget.core);
   StreamSubscription<JoystickState>? _gamepadSub;
   bool _controllerConnected = false;
   bool _sidebarHidden = false;
@@ -132,7 +138,7 @@ class _WorkbenchScreenState extends State<WorkbenchScreen>
       // titles (Uridium, flight sims) read the X/Y axes. Passing only the
       // mask is what made Uridium require constant re-tapping -- the game
       // saw the press once, but never a held position.
-      widget.core.joystick(0, state.mask, axisX: state.axisX, axisY: state.axisY);
+      _input.joystick(0, state.mask, axisX: state.axisX, axisY: state.axisY);
     });
     // The service polls for connection changes rather than exposing a one-shot
     // value, so the shell has to follow it: the Input screen and the
@@ -188,6 +194,37 @@ class _WorkbenchScreenState extends State<WorkbenchScreen>
     _gamepads.connected.removeListener(_onControllerChanged);
     _gamepads.dispose();
     super.dispose();
+  }
+
+  /// Attaches to the emulator process's frame mapping once it exists.
+  ///
+  /// Bounded: a mapping that never appears means the other process failed to
+  /// start, and retrying forever would just hide that.
+  Future<void> _attachWhenReady(String path) async {
+    for (var i = 0; i < 100; i++) { // 100 x 100ms = 10s
+      if (!mounted || _session == null) return;
+      // Retry until the attach SUCCEEDS, not until the file appears.
+      //
+      // The writer creates the file and only then sizes it, so there is a
+      // window where it exists at zero length. An attach in that window is
+      // refused - correctly, the header is not there yet - and giving up on
+      // the first failure left the panel black while the game ran perfectly
+      // with sound, which is exactly how it presented.
+      if (File(path).existsSync() &&
+          widget.core.attachSharedFrameIfPossible(path)) {
+        // Kept: an attach that takes suspiciously long, or never happens, is
+        // the difference between a black panel and a working one, and it is
+        // not visible from anywhere else.
+        debugPrint('dosbox: attached shared frame after ${i * 100}ms');
+        return;
+      }
+      await Future<void>.delayed(const Duration(milliseconds: 100));
+    }
+    if (!mounted) return;
+    setState(
+      () => _launchError =
+          'The emulator process did not start. Try again, or restart the app.',
+    );
   }
 
   /// Launches whatever was chosen before the process was replaced.
@@ -382,9 +419,11 @@ class _WorkbenchScreenState extends State<WorkbenchScreen>
       launcher: launcher,
       archiveSetup: archiveSetup,
       captureRoot: captureRoot.path,
-      // A window when the core runs in its own process, offscreen when it
-      // runs in this one.
-      windowed: EmulatorProcess.isSupported,
+      // Always offscreen. The engine has no window of its own any more, in
+      // either process: it publishes finished frames through the gamelink
+      // output the bridge hooks, and whoever is drawing - this process or
+      // another one - reads them from there.
+      windowed: false,
     );
 
     // One conf file per title rather than a single shared one, so a crashed
@@ -415,13 +454,57 @@ class _WorkbenchScreenState extends State<WorkbenchScreen>
     // launcher going anywhere. Everything the one-shot core problem used to
     // cost - the wedged engine, the app restart - goes with it.
     if (EmulatorProcess.isSupported) {
-      if (await EmulatorProcess.launch(file.path)) {
+      // One mapping, reused: the emulator process publishes into it and this
+      // one draws from it. In the app's own support directory rather than the
+      // cache, because a mapping the system may delete underneath a running
+      // engine is a picture that stops for no visible reason.
+      final shared =
+          '${(await RetroDosboxNativePaths.captureRoot()).path}/frame.shm';
+
+      // Start from nothing, every time.
+      //
+      // The mapping outlives the process that made it, so a stale one from the
+      // last session is still on disk - and attaching to THAT succeeds
+      // instantly, against a file the new engine has not touched yet. The
+      // panel then polls a counter that never moves, which reads as a game
+      // that renders nothing while running perfectly. Deleting it first makes
+      // "the file exists" mean "this session's engine created it".
+      final staleFrame = File(shared);
+      if (staleFrame.existsSync()) staleFrame.deleteSync();
+
+      // And the previous engine has to be gone before a new one starts: the
+      // core is one-shot, so a second start in a surviving process is refused
+      // outright (ALREADY_STARTED).
+      await EmulatorProcess.stop();
+      if (await EmulatorProcess.launch(file.path, sharedFramePath: shared)) {
+        // Attach on this side too, so the panel draws what the other process
+        // renders. Everything above the accessors is unchanged: the view still
+        // polls a counter and copies a frame.
+        //
+        // Retried, because the mapping does not exist yet when launch()
+        // returns: the other process has to start a Flutter engine and reach
+        // the core before it creates the file. A single attempt here fails
+        // silently and the panel stays black with the session apparently
+        // running - which is exactly what it looked like.
         if (!mounted) return;
         setState(() {
           _session = entry;
           _pendingArchiveSetup = archiveSetup;
           _launchError = null;
+          // The panel has to actually show the machine. Without this the
+          // workbench stays on the library: the engine runs, frames cross the
+          // process boundary and are read here - the counter proved it - and
+          // none of it is on screen, because the emulator view is never built.
+          _tab = WorkbenchTab.running;
         });
+        // AFTER the session is set, not before.
+        //
+        // unawaited() starts the loop synchronously, and its first act is to
+        // give up if there is no session - so starting it first meant it read
+        // a _session that setState had not assigned yet and returned on
+        // iteration zero. No attach, and no timeout either, which is why the
+        // panel stayed black in silence.
+        unawaited(_attachWhenReady(shared));
         return;
       }
       if (!mounted) return;
@@ -433,25 +516,17 @@ class _WorkbenchScreenState extends State<WorkbenchScreen>
 
     var result = widget.core.start(file.path);
     if (result == RetroDosboxResult.alreadyStarted) {
-      // A second game means a second process. DOSBox-X cannot start twice in
-      // one: its globals have no teardown, and the Quit that stop() queues is
-      // delivered through the frame-publish hook, which a core that has
-      // stopped rendering never reaches - so stop() times out and the core
-      // stays wedged. Rather than fight that, remember the choice, replace the
-      // process, and start the title on the way back in.
-      await AppPrefs.setPendingLaunch(entry.slug);
+      // In-process only, which now means desktop: the core is one-shot, so a
+      // second start in the same process is refused outright and there is no
+      // teardown that would make it possible. Android does not reach here -
+      // it runs the engine in its own process, where ending a session is
+      // ending that process.
       _emulatorUi.reset();
-      if (await AppRestartService.restart()) return; // process is going away
-
-      // No restart mechanism: say what is actually true rather than blaming
-      // the user for the tap.
-      await AppPrefs.takePendingLaunch();
       if (!mounted) return;
       setState(
         () => _launchError =
-            'A session is already running, and this build cannot replace the '
-            'app process to start another. Close the app and reopen it to '
-            'play ${entry.title}.',
+            'A session is already running. Close it before starting '
+            '${entry.title}.',
       );
       return;
     }
@@ -488,18 +563,28 @@ class _WorkbenchScreenState extends State<WorkbenchScreen>
     }
     if (!mounted) return;
 
-    // Replace the process rather than ask the core to stop.
-    //
-    // stop() cannot work here: the Quit it queues is delivered through the
-    // frame-publish hook, and a core that has stopped rendering never reaches
-    // it. The call times out and leaves the core wedged - started,
-    // unstoppable, and refusing every later launch, which is what "a session
-    // is already running" actually was. A fresh process is the only reliable
-    // way back to a usable core, and it is what this app was built to do
-    // before the mechanism was dropped.
     _emulatorUi.reset();
-    final restarting = await AppRestartService.restart();
-    if (restarting) return; // the process is going away; no state to update
+
+    // Stop the ENGINE's process, not this one.
+    //
+    // Restarting the whole app was the right answer only while the core lived
+    // in here: a one-shot core with no teardown could not be freed any other
+    // way. Now it runs in :dosbox, so ending a session is ending that service
+    // - Android reclaims whatever the engine leaked, the next game gets a
+    // fresh core, and the launcher never goes anywhere. Closing a game should
+    // not close the launcher with it.
+    if (EmulatorProcess.isSupported) {
+      await EmulatorProcess.stop();
+      widget.core.detachSharedFrameIfAttached();
+      if (!mounted) return;
+      setState(() {
+        _session = null;
+        _pendingArchiveSetup = null;
+        _pausedSession = null;
+        _tab = WorkbenchTab.games;
+      });
+      return;
+    }
 
     // No restart mechanism (desktop, or the host refused): fall back to the
     // old attempt so there is at least a chance, and say so if it fails.
@@ -513,27 +598,28 @@ class _WorkbenchScreenState extends State<WorkbenchScreen>
     });
   }
 
-  /// Snapshots the running session and returns to the library.
+  /// Pauses the running session and returns to the library.
   ///
-  /// The core stays up but paused, holding the saved state in slot 0, so
-  /// resuming is a loadState rather than a fresh boot. [_pausedSession] is set
-  /// so the library can offer a Resume affordance, and [_session] is cleared
-  /// so the emulator screen is no longer drawn.
+  /// The engine stays up, stopped where it was, and [_pausedSession] gives the
+  /// library its Resume affordance while [_session] clears so the emulator
+  /// screen is no longer drawn.
   ///
-  /// This used to say the snapshot could not survive stopping the engine,
-  /// because the slots were in-process. They are not: DOSBox-X writes them to
-  /// `<captures>/../save/<slot>.sav` on disk (savestates.cpp), which is why
-  /// launching a different title can now snapshot this one and take the
-  /// engine down instead of refusing.
+  /// No save state is taken on Android, and that is not a shortcut. The engine
+  /// is a live process of its own there, so pausing it IS the snapshot -- the
+  /// whole machine sits exactly where it was, which is better than any slot.
+  /// Writing one would only have been a way of surviving the process going
+  /// away, which was the old restart-the-app design, and the call was reaching
+  /// this launcher's idle core object and doing nothing anyway. Desktop still
+  /// takes one, because there the core and the app share a fate.
   Future<void> _onSessionPause() async {
     final session = _session;
     if (session == null) return;
-    // saveState requires a running core (per the stub and the bridge
-    // comment). The bridge writes the engine snapshot to slot 0; the result
-    // code is ignored because the only failure mode is "core not running",
-    // which cannot happen here.
-    widget.core.saveState(0);
-    widget.core.setPaused(true);
+    if (EmulatorProcess.isSupported) {
+      await EmulatorProcess.setPaused(true);
+    } else {
+      widget.core.saveState(0);
+      widget.core.setPaused(true);
+    }
     // Trackpad mouse and the keyboard are per-session: coming back to a
     // different title in a mode you did not choose is a puzzle, not a
     // convenience.
@@ -546,20 +632,21 @@ class _WorkbenchScreenState extends State<WorkbenchScreen>
     });
   }
 
-  /// Restores a snapshotted session and jumps back to the emulator screen.
+  /// Resumes the paused session and jumps back to the emulator screen.
   ///
-  /// The core is still running and paused from [_onSessionPause], so a fresh
-  /// [core.start] is unnecessary -- loadState brings the engine back to the
-  /// snapshotted point in time and unpausing resumes it. The same single
-  /// [core.start]/[core.stop] pair per process applies as before; this
-  /// method neither starts nor stops.
+  /// Nothing is started and nothing is restored: the engine has been sitting
+  /// paused since [_onSessionPause], so resuming is simply letting it run
+  /// again. On desktop the saved slot is loaded first, because there the pause
+  /// and the snapshot are the same gesture.
   void _onResumePaused() {
     final paused = _pausedSession;
     if (paused == null) return;
-    // Ignore the result code: notRunning means "someone killed it under us",
-    // which is a bug rather than something the UI can recover from.
-    widget.core.loadState(0);
-    widget.core.setPaused(false);
+    if (EmulatorProcess.isSupported) {
+      unawaited(EmulatorProcess.setPaused(false));
+    } else {
+      widget.core.loadState(0);
+      widget.core.setPaused(false);
+    }
     if (!mounted) return;
     setState(() {
       _session = paused;
@@ -879,6 +966,7 @@ class _WorkbenchScreenState extends State<WorkbenchScreen>
           return EmulatorScreen(
             ui: _emulatorUi,
             core: widget.core,
+            input: _input,
             title: session.title,
             controllerConnected: _controllerConnected,
             onExit: () => unawaited(_onSessionExit()),

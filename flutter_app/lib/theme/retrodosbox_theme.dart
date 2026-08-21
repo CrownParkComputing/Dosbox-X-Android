@@ -46,9 +46,18 @@ class RetroDosboxMetrics {
   /// label on wide devices.
   static const double sidebarMinWidth = 118.0;
 
+  /// Never below [sidebarMinWidth], because this is a clamp's upper bound.
+  ///
+  /// A quarter of a narrow screen is less than the minimum - under about
+  /// 472dp - and clamp(min, max) throws outright when max < min. That threw
+  /// inside Sidebar.build, which takes the whole workbench subtree with it:
+  /// the symptom was a panel that never drew while the emulator ran perfectly,
+  /// sound and all, because the failure was in the launcher's UI rather than
+  /// anywhere near the emulator.
   static double sidebarMaxWidth(double screenWidth) {
     final quarter = screenWidth * 0.25;
-    return quarter < 190.0 ? quarter : 190.0;
+    final capped = quarter < 190.0 ? quarter : 190.0;
+    return capped < sidebarMinWidth ? sidebarMinWidth : capped;
   }
 
   /// A floor, not a fixed height: the row grows with the platform text scale,

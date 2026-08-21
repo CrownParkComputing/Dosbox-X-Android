@@ -16,6 +16,7 @@ import 'package:flutter/services.dart';
 
 import '../ffi/retrodosbox_core.dart';
 import '../services/app_prefs.dart';
+import '../services/emulator_input.dart';
 import '../theme/retrodosbox_theme.dart';
 import '../widgets/assignable_action_button.dart';
 import '../widgets/framebuffer_view.dart';
@@ -32,6 +33,11 @@ class EmulatorScreen extends StatefulWidget {
   /// on-screen pad is drawn in `auto` mode.
   final bool controllerConnected;
 
+  /// Where input goes. Not [core]: on Android the live engine is in another
+  /// process, and this screen's core object is an idle handle whose input
+  /// calls reach nothing. See EmulatorInput.
+  final EmulatorInput input;
+
   final VoidCallback? onExit;
 
   /// Snapshot the running state and return to the library. The owning shell
@@ -46,6 +52,7 @@ class EmulatorScreen extends StatefulWidget {
   const EmulatorScreen({
     super.key,
     required this.core,
+    required this.input,
     required this.title,
     this.controllerConnected = false,
     this.onExit,
@@ -85,6 +92,11 @@ class _EmulatorScreenState extends State<EmulatorScreen> {
   @override
   void initState() {
     super.initState();
+    // The toolbar's keyboard, mouse, and pad buttons live on the workbench's
+    // status row and change state this screen draws from, so it has to follow
+    // that state. It used to arrive only via the half-second status timer
+    // below, which made every toggle look like a laggy button.
+    widget.ui.addListener(_onUiChanged);
     _loadPrefs();
     // Keep this lightweight telemetry visible. A blank frame can mean either
     // a slow game startup or a failed DOS command; showing the core's frame,
@@ -110,10 +122,43 @@ class _EmulatorScreenState extends State<EmulatorScreen> {
       _buttonAScancode = a;
       _buttonBScancode = b;
     });
+    _applyPadDefault();
+  }
+
+  /// Hands the saved preference to the shared state, which ignores it once the
+  /// player has used the toolbar button.
+  void _applyPadDefault() {
+    widget.ui.applyPadDefault(
+      _padMode.visibleWith(controllerConnected: widget.controllerConnected),
+    );
+  }
+
+  @override
+  void didUpdateWidget(EmulatorScreen old) {
+    super.didUpdateWidget(old);
+    // `auto` means "pad unless a controller is connected", and a controller
+    // can be plugged in mid-game.
+    if (old.controllerConnected != widget.controllerConnected) {
+      _applyPadDefault();
+    }
+  }
+
+  void _onUiChanged() {
+    if (!mounted) return;
+    // Asking for the pad is asking for a joystick. Without this the toolbar
+    // button would be inert for anyone who had never opened Input settings:
+    // the pad only draws when PC joystick emulation is on, and a button that
+    // does nothing reads as a broken button rather than a missing setting.
+    if (widget.ui.padVisible && !_joystickEnabled) {
+      _joystickEnabled = true;
+      unawaited(AppPrefs.setJoystickEnabled(true));
+    }
+    setState(() {});
   }
 
   @override
   void dispose() {
+    widget.ui.removeListener(_onUiChanged);
     _statusTimer?.cancel();
     _focusNode.dispose();
     super.dispose();
@@ -122,7 +167,7 @@ class _EmulatorScreenState extends State<EmulatorScreen> {
   // --- Input plumbing ------------------------------------------------------
 
   void _pushJoystick() {
-    widget.core.joystick(0, _joyMask, axisX: _joyAxisX, axisY: _joyAxisY);
+    widget.input.joystick(0, _joyMask, axisX: _joyAxisX, axisY: _joyAxisY);
   }
 
   void _onStick(int mask, double axisX, double axisY) {
@@ -142,7 +187,7 @@ class _EmulatorScreenState extends State<EmulatorScreen> {
         _joyMask = pressed ? (_joyMask | bit) : (_joyMask & ~bit);
         _pushJoystick();
       case KeyActionBinding(scancode: final scancode):
-        widget.core.keyEvent(scancode, pressed);
+        widget.input.keyEvent(scancode, pressed);
     }
   }
 
@@ -171,15 +216,16 @@ class _EmulatorScreenState extends State<EmulatorScreen> {
     final scancode = _physicalToScancode(event.physicalKey);
     if (scancode == null) return KeyEventResult.ignored;
     if (event is KeyRepeatEvent) return KeyEventResult.handled;
-    widget.core.keyEvent(scancode, event is KeyDownEvent);
+    widget.input.keyEvent(scancode, event is KeyDownEvent);
     return KeyEventResult.handled;
   }
 
   @override
   Widget build(BuildContext context) {
-    final showPad =
-        _joystickEnabled &&
-        _padMode.visibleWith(controllerConnected: widget.controllerConnected);
+    // The live answer, not the preference: the toolbar's pad button can
+    // override it for this session, and the state it toggles lives on the
+    // workbench because the button does. See EmulatorUiState.padVisible.
+    final showPad = _joystickEnabled && widget.ui.padVisible;
 
     return Focus(
       focusNode: _focusNode,
@@ -220,11 +266,11 @@ class _EmulatorScreenState extends State<EmulatorScreen> {
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
       onPanUpdate: (d) =>
-          widget.core.mouseMotion(d.delta.dx.round(), d.delta.dy.round()),
-      onTapDown: (_) => widget.core.mouseButton(0, true),
-      onTapUp: (_) => widget.core.mouseButton(0, false),
-      onLongPressStart: (_) => widget.core.mouseButton(1, true),
-      onLongPressEnd: (_) => widget.core.mouseButton(1, false),
+          widget.input.mouseMotion(d.delta.dx.round(), d.delta.dy.round()),
+      onTapDown: (_) => widget.input.mouseButton(0, true),
+      onTapUp: (_) => widget.input.mouseButton(0, false),
+      onLongPressStart: (_) => widget.input.mouseButton(1, true),
+      onLongPressEnd: (_) => widget.input.mouseButton(1, false),
       child: view,
     );
   }
@@ -305,7 +351,7 @@ class _EmulatorScreenState extends State<EmulatorScreen> {
       right: 0,
       bottom: 0,
       child: OnScreenKeyboard(
-        onKey: widget.core.keyEvent,
+        onKey: widget.input.keyEvent,
         extraKeys: _customButtons,
       ),
     );

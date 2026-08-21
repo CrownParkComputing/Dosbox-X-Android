@@ -64,6 +64,14 @@
                 <category android:name="android.intent.category.LAUNCHER"/>
             </intent-filter>
         </activity>
+        <!-- The emulator's process. Stopping this service kills it, which is
+             what a one-shot core needs: the process going away IS the
+             teardown. No window of its own - it renders offscreen and
+             publishes frames into a mapping the launcher draws from. -->
+        <service
+            android:name=".DosboxCoreService"
+            android:exported="false"
+            android:process=":dosbox" />
         <!-- The emulator, in a process of its own.
              Ending a session ends this process, which is what makes the core
              one-shot problem go away: Android reclaims whatever the engine

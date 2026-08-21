@@ -43,6 +43,9 @@ typedef _JoystickDart = void Function(
 typedef _Int32StrNative = Int32 Function(Pointer<Utf8> s);
 typedef _Int32StrDart = int Function(Pointer<Utf8> s);
 
+typedef _SetSharedFrameNative = Int32 Function(Pointer<Utf8>, Int32, Int32);
+typedef _SetSharedFrameDart = int Function(Pointer<Utf8>, int, int);
+
 typedef _AttachSharedNative = Int32 Function(Pointer<Utf8>);
 typedef _AttachSharedDart = int Function(Pointer<Utf8>);
 
@@ -114,6 +117,7 @@ class RetroDosboxCoreBindings implements RetroDosboxCore {
   // The shared mapping the emulator process publishes into. Same shapes as the
   // in-process pair above, deliberately: a reader should not have to care
   // which side of a process boundary the frame came from.
+  late final _SetSharedFrameDart _setSharedFrame;
   late final _AttachSharedDart _sharedAttach;
   late final _GetFramebufferDart _sharedGet;
   late final _Uint64VoidDart _sharedCounter;
@@ -181,6 +185,10 @@ class RetroDosboxCoreBindings implements RetroDosboxCore {
     _getFramebuffer = _lib
         .lookup<NativeFunction<_GetFramebufferNative>>(
             'dosbox_core_get_framebuffer')
+        .asFunction();
+    _setSharedFrame = _lib
+        .lookup<NativeFunction<_SetSharedFrameNative>>(
+            'dosbox_core_set_shared_frame')
         .asFunction();
     _sharedAttach = _lib
         .lookup<NativeFunction<_AttachSharedNative>>(
@@ -391,6 +399,26 @@ class RetroDosboxCoreBindings implements RetroDosboxCore {
     final s = _readStringBuffer(_getStatusLine);
     return (s == null || s.isEmpty) ? null : s;
   }
+
+  /// Publishes this process's frames into [path], for another process to draw.
+  ///
+  /// Call before start(): the engine publishes its first frame during boot,
+  /// and a mapping set up afterwards would miss it - which looks like a
+  /// machine that never started rather than a picture that arrived late.
+  bool setSharedFrame(String path, int maxWidth, int maxHeight) {
+    final p = path.toNativeUtf8();
+    try {
+      return _setSharedFrame(p, maxWidth, maxHeight) == 0;
+    } finally {
+      malloc.free(p);
+    }
+  }
+
+  @override
+  bool attachSharedFrameIfPossible(String path) => attachSharedFrame(path);
+
+  @override
+  void detachSharedFrameIfAttached() => detachSharedFrame();
 
   /// Reads frames from [path] instead of this process's own core.
   ///

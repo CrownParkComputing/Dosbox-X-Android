@@ -36,6 +36,17 @@ abstract class RetroDosboxCore {
   /// second [start] will succeed.
   int stop();
 
+  /// Draw frames another process is publishing into [path], if this core can.
+  ///
+  /// A no-op on the stub, and on any core built before the shared-frame API:
+  /// the launcher then simply draws nothing, which is what it would have done
+  /// anyway.
+  bool attachSharedFrameIfPossible(String path) => false;
+
+  /// Stops reading a mapping whose writer has gone. Holding one open would
+  /// leave the last frame of a closed session on screen as if it were live.
+  void detachSharedFrameIfAttached() {}
+
   bool get isRunning;
 
   /// Whether the UI has asked the core to pause. Tracked on the Dart side

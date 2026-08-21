@@ -3,7 +3,8 @@ import 'package:flutter/material.dart';
 import '../data/emulator_ui_state.dart';
 import '../theme/retrodosbox_theme.dart';
 
-/// The in-game control strip: keyboard, trackpad mouse, and the ways out.
+/// The in-game control strip: the on-screen pad, keyboard, trackpad mouse,
+/// and the ways out.
 ///
 /// It sits OUTSIDE the content panel, on the right-hand end of the status row
 /// that already carries the rail toggle and the loaded title -- the same place
@@ -41,6 +42,12 @@ class EmulatorControlStrip extends StatelessWidget {
       builder: (context, _) => Row(
         mainAxisSize: MainAxisSize.min,
         children: [
+          _StripButton(
+            icon: Icons.videogame_asset,
+            active: ui.padVisible,
+            tooltip: 'On-screen joypad',
+            onTap: ui.togglePad,
+          ),
           _StripButton(
             icon: Icons.keyboard,
             active: ui.keyboardVisible,

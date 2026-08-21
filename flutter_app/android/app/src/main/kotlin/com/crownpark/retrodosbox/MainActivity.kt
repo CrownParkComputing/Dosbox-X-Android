@@ -1,13 +1,19 @@
 package com.crownpark.retrodosbox
 
+import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
+import android.content.ServiceConnection
 import android.hardware.input.InputManager
 import android.net.Uri
 import android.os.Build
 import android.os.Looper
 import android.os.Bundle
 import android.os.Handler
+import android.os.IBinder
+import android.os.Message
+import android.os.Messenger
+import android.os.RemoteException
 import android.util.Log
 import android.view.KeyEvent
 import android.view.MotionEvent
@@ -30,6 +36,30 @@ import org.flame_engine.gamepads_android.GamepadsCompatibleActivity
  * Activity's own input dispatch, which is what it expects.
  */
 class MainActivity : FlutterActivity(), GamepadsCompatibleActivity {
+    /**
+     * The emulator process's input inbox, while a session is bound.
+     *
+     * Input has to cross a process boundary now that the core runs in
+     * :dosbox. Everything the player touches -- the on-screen pad, the
+     * keyboard, the trackpad, a physical controller -- is seen by THIS
+     * process, and the engine that should receive it is in another one.
+     * Before this binding those events were handed to the launcher's own idle
+     * core object and went nowhere, which is a game that renders and plays
+     * sound but cannot be controlled.
+     */
+    private var emulatorInbox: Messenger? = null
+    private var emulatorBound = false
+
+    private val emulatorConnection = object : ServiceConnection {
+        override fun onServiceConnected(name: ComponentName?, binder: IBinder?) {
+            emulatorInbox = binder?.let { Messenger(it) }
+        }
+
+        override fun onServiceDisconnected(name: ComponentName?) {
+            emulatorInbox = null
+        }
+    }
+
     private var keyEventHandler: ((KeyEvent) -> Boolean)? = null
     private var motionEventHandler: ((MotionEvent) -> Boolean)? = null
 
@@ -181,15 +211,64 @@ class MainActivity : FlutterActivity(), GamepadsCompatibleActivity {
                 // get a fresh one.
                 "launchEmulator" -> {
                     val conf = call.argument<String>("confPath")
-                    if (conf.isNullOrEmpty()) {
-                        result.error("bad_args", "launchEmulator needs confPath", null)
-                    } else {
-                        startActivity(
-                            Intent(this, DosboxEmulatorActivity::class.java)
-                                .putExtra(DosboxEmulatorActivity.EXTRA_CONF_PATH, conf)
+                    val shm = call.argument<String>("sharedFramePath")
+                    if (conf.isNullOrEmpty() || shm.isNullOrEmpty()) {
+                        result.error(
+                            "bad_args",
+                            "launchEmulator needs confPath and sharedFramePath",
+                            null,
                         )
+                    } else {
+                        // A service, not an activity: the engine has no window,
+                        // it publishes frames into the mapping and the launcher
+                        // draws them in its own panel. An activity would cover
+                        // the very UI it is meant to be drawing inside.
+                        startService(
+                            Intent(this, DosboxCoreService::class.java)
+                                .putExtra(DosboxCoreService.EXTRA_CONF_PATH, conf)
+                                .putExtra(DosboxCoreService.EXTRA_SHARED_FRAME, shm)
+                                .putExtra(
+                                    DosboxCoreService.EXTRA_MAX_WIDTH,
+                                    call.argument<Int>("maxWidth") ?: 1024,
+                                )
+                                .putExtra(
+                                    DosboxCoreService.EXTRA_MAX_HEIGHT,
+                                    call.argument<Int>("maxHeight") ?: 768,
+                                )
+                        )
+                        bindEmulator()
                         result.success(true)
                     }
+                }
+
+                // A key, mouse, or joystick event for the running session.
+                "emulatorInput" -> {
+                    result.success(sendEmulatorInput(call))
+                }
+
+                // Pausing has to reach the OTHER process now.
+                //
+                // Android stops this one when the user leaves, but :dosbox is
+                // a separate process and carries on - which is how a minimised
+                // launcher kept playing a game, with sound, out of a pocket.
+                "setEmulatorPaused" -> {
+                    startService(
+                        Intent(this, DosboxCoreService::class.java)
+                            .putExtra(
+                                DosboxCoreService.EXTRA_PAUSED,
+                                call.argument<Boolean>("paused") ?: false,
+                            )
+                    )
+                    result.success(true)
+                }
+
+                // Ending the session ends the process. There is nothing to ask
+                // the core to do first: it has no teardown path, which is why
+                // it lives out there.
+                "stopEmulator" -> {
+                    unbindEmulator()
+                    stopService(Intent(this, DosboxCoreService::class.java))
+                    result.success(true)
                 }
 
                 // The one-shot core's way out. See restartApp.
@@ -232,6 +311,52 @@ class MainActivity : FlutterActivity(), GamepadsCompatibleActivity {
         }, PROCESS_EXIT_DELAY_MS)
     }
 
+    private fun bindEmulator() {
+        if (emulatorBound) return
+        // No BIND_AUTO_CREATE: the session is started by startService and ends
+        // by stopService. A binding that could create the service would let a
+        // stray input event resurrect an engine nobody asked for.
+        emulatorBound = bindService(
+            Intent(this, DosboxCoreService::class.java),
+            emulatorConnection,
+            0,
+        )
+    }
+
+    private fun unbindEmulator() {
+        if (!emulatorBound) return
+        emulatorBound = false
+        emulatorInbox = null
+        try {
+            unbindService(emulatorConnection)
+        } catch (_: IllegalArgumentException) {
+            // Already gone with its process.
+        }
+    }
+
+    /** Returns false when no session is bound, so Dart can fall back. */
+    private fun sendEmulatorInput(call: io.flutter.plugin.common.MethodCall): Boolean {
+        val inbox = emulatorInbox ?: return false
+        val message = Message.obtain(null, DosboxCoreService.MSG_INPUT)
+        message.data = Bundle().apply {
+            putString("kind", call.argument<String>("kind"))
+            putInt("a", call.argument<Int>("a") ?: 0)
+            putInt("b", call.argument<Int>("b") ?: 0)
+            putDouble("x", call.argument<Double>("x") ?: 0.0)
+            putDouble("y", call.argument<Double>("y") ?: 0.0)
+            putBoolean("down", call.argument<Boolean>("down") ?: false)
+        }
+        return try {
+            inbox.send(message)
+            true
+        } catch (_: RemoteException) {
+            // The emulator process has gone. Drop the event rather than
+            // taking the launcher down with it.
+            emulatorInbox = null
+            false
+        }
+    }
+
     companion object {
         private const val PROCESS_EXIT_DELAY_MS = 100L
         private const val TAG = "RetroDosbox"
@@ -266,7 +391,9 @@ class MainActivity : FlutterActivity(), GamepadsCompatibleActivity {
         // calls core.init() at app start. We don't depend on that ordering here:
         // System.loadLibrary("SDL2") is idempotent and pre-loads it if the .so
         // hasn't been pulled in yet.
-        private fun setupSdlJni(ctx: Context) {
+        /** Also used by DosboxCoreService: the emulator process needs the
+         *  same JNI wiring, and there is no activity out there to do it. */
+        fun setupSdlJni(ctx: Context) {
             if (sdlInitialized) return
             // Three distinct failure modes have to be distinguishable in
             // logcat, not all swallowed silently -- otherwise a missing
