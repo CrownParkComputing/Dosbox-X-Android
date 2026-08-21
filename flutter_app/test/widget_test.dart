@@ -71,6 +71,7 @@ void main() {
 
     test('mounts C: and runs the launcher', () {
       final conf = RetroDosboxConfBuilder.build(
+        captureRoot: '/tmp/captures',
         entry: folderEntry(),
         settings: const GameSettings(),
       );
@@ -82,6 +83,7 @@ void main() {
 
     test('keeps memsize below the DOS/4GW 64MB limit', () {
       final conf = RetroDosboxConfBuilder.build(
+        captureRoot: '/tmp/captures',
         entry: folderEntry(),
         settings: const GameSettings(),
       );
@@ -141,6 +143,7 @@ void main() {
       // window surface nothing reads, so the app shows a black screen with no
       // error anywhere. Both lines are load-bearing.
       final conf = RetroDosboxConfBuilder.build(
+        captureRoot: '/tmp/captures',
         entry: GameEntry(
           path: '/games/Keen1',
           kind: GameKind.dosFolder,
@@ -156,6 +159,7 @@ void main() {
       // The bug this guards: run from the C: root, IndyCar asks DOS/4GW for
       // its own path, gets an empty string, and dies.
       final conf = RetroDosboxConfBuilder.build(
+        captureRoot: '/tmp/captures',
         entry: GameEntry(
           path: '/games/IndyCar2',
           kind: GameKind.dosFolder,
@@ -169,6 +173,7 @@ void main() {
 
     test('gives setup programs a fixed clock, not auto', () {
       final conf = RetroDosboxConfBuilder.build(
+        captureRoot: '/tmp/captures',
         entry: folderEntry(launchers: const ['/games/X/SETUP.EXE']),
         settings: const GameSettings(),
         launcher: '/games/X/SETUP.EXE',
@@ -178,6 +183,7 @@ void main() {
 
     test("Screamer's setup gets its own lower clock and vesa_nolfb", () {
       final conf = RetroDosboxConfBuilder.build(
+        captureRoot: '/tmp/captures',
         entry: folderEntry(title: 'Screamer'),
         settings: const GameSettings(),
         launcher: '/games/Screamer/SETUP.EXE',
@@ -188,6 +194,7 @@ void main() {
 
     test('an explicit preset overrides the heuristics', () {
       final conf = RetroDosboxConfBuilder.build(
+        captureRoot: '/tmp/captures',
         entry: folderEntry(),
         settings: const GameSettings(preset: CpuPreset.era80s),
         launcher: '/games/DOOM/SETUP.EXE',
@@ -199,6 +206,7 @@ void main() {
 
     test('3dfx executables enable the Voodoo and a bigger audio buffer', () {
       final conf = RetroDosboxConfBuilder.build(
+        captureRoot: '/tmp/captures',
         entry: folderEntry(launchers: const ['/games/X/GAME3DFX.EXE']),
         settings: const GameSettings(),
         launcher: '/games/X/GAME3DFX.EXE',
@@ -209,6 +217,7 @@ void main() {
 
     test('groups multiple discs onto one drive letter as a swap set', () {
       final conf = RetroDosboxConfBuilder.build(
+        captureRoot: '/tmp/captures',
         entry: folderEntry(
           discs: const ['/games/DOOM/cd1.iso', '/games/DOOM/cd2.iso'],
         ),
@@ -224,6 +233,7 @@ void main() {
     test('separates raw .bin tracks from .iso images', () {
       // Different -t handling, so they must not share a mount command.
       final conf = RetroDosboxConfBuilder.build(
+        captureRoot: '/tmp/captures',
         entry: folderEntry(
           discs: const ['/games/X/a.iso', '/games/X/b.bin'],
         ),
@@ -235,6 +245,7 @@ void main() {
 
     test('boot images boot rather than mounting C:', () {
       final conf = RetroDosboxConfBuilder.build(
+        captureRoot: '/tmp/captures',
         entry: const GameEntry(
           path: '/games/win98.img',
           kind: GameKind.bootImage,
@@ -252,6 +263,7 @@ void main() {
 
     test('falls back to a prompt with a listing when nothing is runnable', () {
       final conf = RetroDosboxConfBuilder.build(
+        captureRoot: '/tmp/captures',
         entry: folderEntry(launchers: const []),
         settings: const GameSettings(),
       );
@@ -261,6 +273,7 @@ void main() {
 
     test('disabling the joystick emits joysticktype=none, not an omission', () {
       final conf = RetroDosboxConfBuilder.build(
+        captureRoot: '/tmp/captures',
         entry: folderEntry(),
         settings: const GameSettings(joystick: false),
       );
@@ -269,6 +282,7 @@ void main() {
 
     test('quotes paths containing spaces', () {
       final conf = RetroDosboxConfBuilder.build(
+        captureRoot: '/tmp/captures',
         entry: GameEntry(
           path: '/storage/emulated/0/My Games/Alone in the Dark',
           kind: GameKind.dosFolder,

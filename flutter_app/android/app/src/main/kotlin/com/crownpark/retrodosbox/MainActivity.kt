@@ -175,12 +175,48 @@ class MainActivity : FlutterActivity(), GamepadsCompatibleActivity {
                     }
                 }
 
+                // The one-shot core's way out. See restartApp.
+                "restartApp" -> {
+                    // Answer BEFORE restarting: the channel goes away with the
+                    // process, and a caller awaiting a reply that can never
+                    // arrive hangs instead of finishing its own teardown.
+                    result.success(true)
+                    restartApp()
+                }
+
                 else -> result.notImplemented()
             }
         }
     }
 
+    /**
+     * Replaces this process with a fresh one, returning to the library.
+     *
+     * DOSBox-X cannot be torn down and started again safely in one process:
+     * its upstream globals have no complete teardown path, and the Quit that
+     * dosbox_core_stop relies on is delivered through the frame-publish hook,
+     * which a core that has stopped rendering never reaches. Asking it to stop
+     * therefore times out and leaves the core wedged - started, unstoppable,
+     * and refusing every later launch.
+     *
+     * So closing a game replaces the process instead. AppRestartActivity runs
+     * in :restart and is a foreground activity, which is what lets it start
+     * MainActivity after this process has gone; an alarm or a PendingIntent
+     * would be refused by background-start rules.
+     */
+    private fun restartApp() {
+        startActivity(
+            Intent(this, AppRestartActivity::class.java)
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        )
+        Handler(mainLooper).postDelayed({
+            finishAndRemoveTask()
+            android.os.Process.killProcess(android.os.Process.myPid())
+        }, PROCESS_EXIT_DELAY_MS)
+    }
+
     companion object {
+        private const val PROCESS_EXIT_DELAY_MS = 100L
         private const val TAG = "RetroDosbox"
         private const val STORAGE_CHANNEL = "com.crownpark.retrodosbox/storage_permissions"
 

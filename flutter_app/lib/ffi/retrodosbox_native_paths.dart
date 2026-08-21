@@ -146,4 +146,20 @@ class RetroDosboxNativePaths {
     if (!dir.existsSync()) await dir.create(recursive: true);
     return dir;
   }
+
+  /// Where per-title capture directories live.
+  ///
+  /// The save slots hang off this: DOSBox-X writes a state to
+  /// `<capture>/../save/<slot>.sav`, so a capture directory per title is what
+  /// gives each title its own slot 0. With one shared directory, starting a
+  /// second game overwrites the first one's snapshot.
+  ///
+  /// Support rather than cache: a snapshot the user can come back to must not
+  /// be something the system deletes when it wants space.
+  static Future<Directory> captureRoot() async {
+    final supportDir = await getApplicationSupportDirectory();
+    final dir = Directory(p.join(supportDir.path, 'captures'));
+    if (!dir.existsSync()) await dir.create(recursive: true);
+    return dir;
+  }
 }

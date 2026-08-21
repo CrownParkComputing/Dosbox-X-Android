@@ -13,6 +13,7 @@ import '../data/game_entry.dart';
 import '../ffi/retrodosbox_core.dart';
 import '../ffi/retrodosbox_native_paths.dart';
 import '../services/app_prefs.dart';
+import '../services/app_restart_service.dart';
 import '../services/retrodosbox_conf_builder.dart';
 import '../services/game_settings_store.dart';
 import '../services/games_folder.dart';
@@ -24,6 +25,8 @@ import '../services/zip_runner.dart';
 import '../services/gamepad_service.dart';
 import '../services/library_scanner.dart';
 import '../theme/retrodosbox_theme.dart';
+import '../data/emulator_ui_state.dart';
+import '../widgets/emulator_control_strip.dart';
 import '../widgets/sidebar.dart';
 import '../widgets/sidebar_style.dart';
 import 'about_screen.dart';
@@ -40,17 +43,25 @@ import 'video_settings_screen.dart';
 /// has an Engine tab and no Music tab, and that is the only difference a user
 /// should notice.
 enum WorkbenchTab {
-  games('\u{1F3AE}', 'Games'),
-  running('\u{25B6}\u{FE0F}', 'Running'),
-  video('\u{1F4FA}', 'Video'),
-  input('\u{1F579}\u{FE0F}', 'Input'),
-  engine('\u{2699}\u{FE0F}', 'Engine'),
-  paths('\u{1F4C2}', 'Paths'),
-  about('\u{2139}\u{FE0F}', 'About');
+  // The same rail shape as the Amiga and C64 front ends, so the family reads
+  // as one: what you play at the top, how the machine is set up in the middle,
+  // the reference-y things at the bottom. The groups are what the rail draws
+  // its hairlines between; About is pinned to the far end the way it always is.
+  games('\u{1F3AE}', 'Games', 0),
+  running('\u{25B6}\u{FE0F}', 'Running', 0),
+  video('\u{1F4FA}', 'Video', 1),
+  input('\u{1F579}\u{FE0F}', 'Input', 1),
+  engine('\u{2699}\u{FE0F}', 'Engine', 1),
+  paths('\u{1F4C2}', 'Paths', 1),
+  about('\u{2139}\u{FE0F}', 'About', 2);
 
   final String icon;
   final String title;
-  const WorkbenchTab(this.icon, this.title);
+
+  /// Which band of the rail this sits in. See the Sidebar's group handling.
+  final int group;
+
+  const WorkbenchTab(this.icon, this.title, this.group);
 }
 
 class WorkbenchScreen extends StatefulWidget {
@@ -95,10 +106,17 @@ class _WorkbenchScreenState extends State<WorkbenchScreen>
   bool _controllerConnected = false;
   bool _sidebarHidden = false;
 
+  /// Keyboard and trackpad-mouse state. Owned here rather than in the
+  /// emulator screen because the buttons that toggle them are on the status
+  /// row below the picture, in a different subtree.
+  final EmulatorUiState _emulatorUi = EmulatorUiState();
+
   @override
   void initState() {
     super.initState();
-    _rescan();
+    // The scan first, then anything the last process asked us to launch: the
+    // entry has to exist in _library before it can be found by slug.
+    _rescan().then((_) => _resumePendingLaunch());
     _startGamepads();
     AppPrefs.getSidebarHidden().then((hidden) {
       if (mounted) setState(() => _sidebarHidden = hidden);
@@ -170,6 +188,27 @@ class _WorkbenchScreenState extends State<WorkbenchScreen>
     _gamepads.connected.removeListener(_onControllerChanged);
     _gamepads.dispose();
     super.dispose();
+  }
+
+  /// Launches whatever was chosen before the process was replaced.
+  ///
+  /// Switching games restarts the app - DOSBox-X cannot start twice in one
+  /// process - so the choice is parked in prefs and picked up here, once the
+  /// library has been scanned and the entry can be found again.
+  Future<void> _resumePendingLaunch() async {
+    final slug = await AppPrefs.takePendingLaunch();
+    if (slug == null || !mounted) return;
+    GameEntry? entry;
+    for (final e in _entries) {
+      if (e.slug == slug) {
+        entry = e;
+        break;
+      }
+    }
+    // A title that has since been deleted or renamed simply does not launch;
+    // the pending choice is already cleared, so it cannot haunt the next run.
+    if (entry == null || !mounted) return;
+    await _launch(entry);
   }
 
   Future<void> _rescan() async {
@@ -336,11 +375,13 @@ class _WorkbenchScreenState extends State<WorkbenchScreen>
       }
     }
 
+    final captureRoot = await RetroDosboxNativePaths.captureRoot();
     final conf = RetroDosboxConfBuilder.build(
       entry: entry,
       settings: settings,
       launcher: launcher,
       archiveSetup: archiveSetup,
+      captureRoot: captureRoot.path,
     );
 
     // One conf file per title rather than a single shared one, so a crashed
@@ -350,21 +391,47 @@ class _WorkbenchScreenState extends State<WorkbenchScreen>
     final file = File('${dir.path}/${entry.slug}.conf');
     await file.writeAsString(conf, flush: true);
 
-    final result = widget.core.start(file.path);
-    if (!mounted) return;
-
+    // Try to start; if a session is in the way, snapshot it, take it down and
+    // try once more.
+    //
+    // Asking first was the obvious shape and it does not work. The core keeps
+    // two flags: g_running, true only while the engine mainloop is executing,
+    // and g_started, true from start() until teardown. isRunning reports
+    // g_running, but start() refuses on g_started - so during startup, or
+    // after the mainloop has returned, the two disagree and a guard on
+    // isRunning skips the teardown while start() still says "already
+    // started". Letting the core answer removes the guesswork: it is the only
+    // thing that knows its own state.
+    //
+    // The snapshot survives the teardown because DOSBox-X writes save states
+    // to disk - `<captures>/../save/<slot>.sav` - rather than holding them in
+    // the running core, and each title now has its own captures directory, so
+    // slot 0 is that title's slot rather than a shared one.
+    var result = widget.core.start(file.path);
     if (result == RetroDosboxResult.alreadyStarted) {
-      // Honest about the real constraint: DOSBox-X has no working teardown, so
-      // one session per app launch is all the core can currently deliver.
-      // Saying so beats appearing to ignore the tap.
+      // A second game means a second process. DOSBox-X cannot start twice in
+      // one: its globals have no teardown, and the Quit that stop() queues is
+      // delivered through the frame-publish hook, which a core that has
+      // stopped rendering never reaches - so stop() times out and the core
+      // stays wedged. Rather than fight that, remember the choice, replace the
+      // process, and start the title on the way back in.
+      await AppPrefs.setPendingLaunch(entry.slug);
+      _emulatorUi.reset();
+      if (await AppRestartService.restart()) return; // process is going away
+
+      // No restart mechanism: say what is actually true rather than blaming
+      // the user for the tap.
+      await AppPrefs.takePendingLaunch();
+      if (!mounted) return;
       setState(
         () => _launchError =
-            'A session is already running. Because DOSBox-X cannot be shut '
-            'down and restarted in-process, launching another title needs the '
-            'app to be restarted.',
+            'A session is already running, and this build cannot replace the '
+            'app process to start another. Close the app and reopen it to '
+            'play ${entry.title}.',
       );
       return;
     }
+    if (!mounted) return;
     if (result != RetroDosboxResult.ok) {
       setState(() => _launchError = 'Failed to start ${entry.title}.');
       return;
@@ -397,7 +464,23 @@ class _WorkbenchScreenState extends State<WorkbenchScreen>
     }
     if (!mounted) return;
 
+    // Replace the process rather than ask the core to stop.
+    //
+    // stop() cannot work here: the Quit it queues is delivered through the
+    // frame-publish hook, and a core that has stopped rendering never reaches
+    // it. The call times out and leaves the core wedged - started,
+    // unstoppable, and refusing every later launch, which is what "a session
+    // is already running" actually was. A fresh process is the only reliable
+    // way back to a usable core, and it is what this app was built to do
+    // before the mechanism was dropped.
+    _emulatorUi.reset();
+    final restarting = await AppRestartService.restart();
+    if (restarting) return; // the process is going away; no state to update
+
+    // No restart mechanism (desktop, or the host refused): fall back to the
+    // old attempt so there is at least a chance, and say so if it fails.
     widget.core.stop();
+    if (!mounted) return;
     setState(() {
       _session = null;
       _pendingArchiveSetup = null;
@@ -408,13 +491,16 @@ class _WorkbenchScreenState extends State<WorkbenchScreen>
 
   /// Snapshots the running session and returns to the library.
   ///
-  /// DOSBox-X's save slots are in-process in the running core, so we cannot
-  /// stop the engine and still keep the snapshot -- the core stays up but
-  /// paused, holding the saved state in slot 0. [_pausedSession] is set so
-  /// the library can offer a Resume affordance, and [_session] is cleared so
-  /// the emulator screen is no longer drawn. The user has to either resume
-  /// this session or kill it before launching another title; the existing
-  /// alreadyStarted check covers the launch path.
+  /// The core stays up but paused, holding the saved state in slot 0, so
+  /// resuming is a loadState rather than a fresh boot. [_pausedSession] is set
+  /// so the library can offer a Resume affordance, and [_session] is cleared
+  /// so the emulator screen is no longer drawn.
+  ///
+  /// This used to say the snapshot could not survive stopping the engine,
+  /// because the slots were in-process. They are not: DOSBox-X writes them to
+  /// `<captures>/../save/<slot>.sav` on disk (savestates.cpp), which is why
+  /// launching a different title can now snapshot this one and take the
+  /// engine down instead of refusing.
   Future<void> _onSessionPause() async {
     final session = _session;
     if (session == null) return;
@@ -424,6 +510,10 @@ class _WorkbenchScreenState extends State<WorkbenchScreen>
     // which cannot happen here.
     widget.core.saveState(0);
     widget.core.setPaused(true);
+    // Trackpad mouse and the keyboard are per-session: coming back to a
+    // different title in a mode you did not choose is a puzzle, not a
+    // convenience.
+    _emulatorUi.reset();
     if (!mounted) return;
     setState(() {
       _session = null;
@@ -476,12 +566,17 @@ class _WorkbenchScreenState extends State<WorkbenchScreen>
                         child: Sidebar(
                           destinations: [
                             for (final tab in WorkbenchTab.values)
-                              SidebarDestination(tab.title, icon: tab.icon),
+                              SidebarDestination(
+                                tab.title,
+                                icon: tab.icon,
+                                group: tab.group,
+                              ),
                           ],
                           selectedIndex: _tab.index,
                           onSelected: (i) =>
                               setState(() => _tab = WorkbenchTab.values[i]),
                           style: retroDosboxSidebarStyle,
+                          pinLastGroupToBottom: true,
                         ),
                       ),
                       const SizedBox(width: RetroDosboxMetrics.contentLeftMargin),
@@ -511,7 +606,12 @@ class _WorkbenchScreenState extends State<WorkbenchScreen>
     final session = _session;
     final paused = _pausedSession;
     final shown = session ?? paused;
-    return Row(
+    // A little taller while a machine is running - the buttons are still
+    // finger sized - but only a little: every pixel this row takes is a pixel
+    // the picture does not get. Same treatment as the Amiga strip.
+    return SizedBox(
+      height: session != null ? 36 : 28,
+      child: Row(
       children: [
         IconButton(
           onPressed: () {
@@ -550,7 +650,18 @@ class _WorkbenchScreenState extends State<WorkbenchScreen>
               ),
             ),
           ),
+        // Right-hand end of the row, and only while a machine is actually
+        // running: the strip is the in-game chrome, not a permanent fixture.
+        if (session != null) ...[
+          const Spacer(),
+          EmulatorControlStrip(
+            ui: _emulatorUi,
+            onPause: _onSessionPause,
+            onExit: _onSessionExit,
+          ),
+        ],
       ],
+      ),
     );
   }
 
@@ -742,6 +853,7 @@ class _WorkbenchScreenState extends State<WorkbenchScreen>
         final session = _session;
         if (session != null) {
           return EmulatorScreen(
+            ui: _emulatorUi,
             core: widget.core,
             title: session.title,
             controllerConnected: _controllerConnected,

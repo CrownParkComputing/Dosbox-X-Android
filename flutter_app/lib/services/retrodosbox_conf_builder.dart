@@ -37,6 +37,9 @@ class RetroDosboxConfBuilder {
     String? launcher,
     String? globalAdvanced,
     ArchiveRunSetup? archiveSetup,
+    /// Where per-title capture directories live. The save slots hang off
+    /// this, so it has to be somewhere writable that survives the session.
+    required String captureRoot,
   }) {
     final program =
         launcher ??
@@ -60,6 +63,7 @@ class RetroDosboxConfBuilder {
       mixer: _mixerFor(programName),
       voodoo: settings.voodoo || _defaultVoodoo(programName),
       joystick: settings.joystick,
+      capturesDir: p.join(captureRoot, entry.slug),
       advanced: [
         settings.advanced,
         globalAdvanced ?? '',
@@ -78,6 +82,7 @@ class RetroDosboxConfBuilder {
     required bool voodoo,
     required bool joystick,
     required String advanced,
+    required String capturesDir,
   }) {
     final sb = StringBuffer();
 
@@ -116,6 +121,14 @@ class RetroDosboxConfBuilder {
     sb.writeln('[dosbox]');
     sb.writeln('machine=$machine');
     sb.writeln('memsize=32');
+    // A capture directory per title, because the save slots hang off it.
+    //
+    // DOSBox-X writes a save state to <capture>/../save/<slot>.sav, so with
+    // one shared capture directory every title shares slot 0 and starting a
+    // second game silently overwrites the first one's snapshot. Per-title
+    // means slot 0 is that title's slot, and switching games can snapshot
+    // what it leaves behind instead of destroying it.
+    sb.writeln('captures=${_quote(capturesDir)}');
     sb.writeln();
 
     sb.writeln('[cpu]');

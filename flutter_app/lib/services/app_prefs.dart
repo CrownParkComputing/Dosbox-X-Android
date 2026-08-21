@@ -154,6 +154,25 @@ class AppPrefs {
     await prefs.setBool(_keySidebarHidden, value);
   }
 
+  /// The title to launch once the app comes back from a restart.
+  ///
+  /// Switching games means replacing the process - DOSBox-X cannot start twice
+  /// in one - so the choice has to outlive it. Cleared as soon as it is read,
+  /// because a stale one would hijack the next ordinary launch.
+  static const String _keyPendingLaunch = 'pending_launch_slug';
+
+  static Future<String?> takePendingLaunch() async {
+    final prefs = await SharedPreferences.getInstance();
+    final slug = prefs.getString(_keyPendingLaunch);
+    if (slug != null) await prefs.remove(_keyPendingLaunch);
+    return slug;
+  }
+
+  static Future<void> setPendingLaunch(String slug) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_keyPendingLaunch, slug);
+  }
+
   /// Extra on-screen buttons the user has added, in the order they were
   /// added (which is the order they appear on screen), as SDL scancodes.
   ///

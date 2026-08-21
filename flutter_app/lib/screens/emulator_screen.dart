@@ -10,6 +10,8 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+
+import '../data/emulator_ui_state.dart';
 import 'package:flutter/services.dart';
 
 import '../ffi/retrodosbox_core.dart';
@@ -37,6 +39,10 @@ class EmulatorScreen extends StatefulWidget {
   /// just a trigger.
   final VoidCallback? onPause;
 
+  /// Keyboard and trackpad-mouse state, owned by the workbench because the
+  /// buttons that toggle them live on its status row.
+  final EmulatorUiState ui;
+
   const EmulatorScreen({
     super.key,
     required this.core,
@@ -44,6 +50,7 @@ class EmulatorScreen extends StatefulWidget {
     this.controllerConnected = false,
     this.onExit,
     this.onPause,
+    required this.ui,
   });
 
   @override
@@ -60,8 +67,10 @@ class _EmulatorScreenState extends State<EmulatorScreen> {
   int? _buttonAScancode;
   int? _buttonBScancode;
 
-  bool _showKeyboard = false;
-  bool _mouseMode = false;
+  // Owned by the workbench, because the buttons that toggle them are on its
+  // status row rather than in here. See EmulatorUiState.
+  bool get _showKeyboard => widget.ui.keyboardVisible;
+  bool get _mouseMode => widget.ui.mouseMode;
   final bool _showStatus = true;
 
   /// Accumulated joystick bits from every source (on-screen stick, action
@@ -178,11 +187,22 @@ class _EmulatorScreenState extends State<EmulatorScreen> {
       onKeyEvent: _onKey,
       child: Container(
         color: Colors.black,
+        // No strip here. The tool buttons live on the workbench's status row,
+        // below the panel, alongside the rail toggle and the loaded title -
+        // the same place the Amiga and C64 front ends put theirs.
+        //
+        // Sharing that row rather than taking a band of its own is the point:
+        // the row is already on screen, and a second band comes straight out
+        // of the picture's height, which a 4:3 machine on a wide handheld has
+        // none of to spare. Drawn ON the picture they covered the corner where
+        // DOS titles put their own UI.
+        //
+        // The pad and keyboard stay here: those belong over the picture,
+        // because they are how you play it.
         child: Stack(
           children: [
             Positioned.fill(child: _picture()),
             if (_showStatus) _statusOverlay(),
-            _toolbar(),
             if (showPad) _pad(),
             if (_showKeyboard) _keyboard(),
           ],
@@ -232,42 +252,6 @@ class _EmulatorScreenState extends State<EmulatorScreen> {
           detail,
           style: RetroDosboxTextStyles.statusLine,
         ),
-      ),
-    );
-  }
-
-  Widget _toolbar() {
-    return Positioned(
-      right: 8,
-      top: 8,
-      child: Column(
-        children: [
-          _ToolButton(
-            icon: Icons.keyboard,
-            active: _showKeyboard,
-            tooltip: 'On-screen keys',
-            onTap: () => setState(() => _showKeyboard = !_showKeyboard),
-          ),
-          _ToolButton(
-            icon: Icons.mouse,
-            active: _mouseMode,
-            tooltip: 'Trackpad mouse',
-            onTap: () => setState(() => _mouseMode = !_mouseMode),
-          ),
-          _ToolButton(
-            icon: Icons.pause,
-            active: false,
-            tooltip: 'Pause and return to library (snapshot saved)',
-            onTap: widget.onPause ?? () {},
-          ),
-          if (widget.onExit != null)
-            _ToolButton(
-              icon: Icons.close,
-              active: false,
-              tooltip: 'Close game',
-              onTap: widget.onExit!,
-            ),
-        ],
       ),
     );
   }
@@ -330,48 +314,3 @@ class _EmulatorScreenState extends State<EmulatorScreen> {
 
 /// One of the small overlay buttons down the right-hand side of the picture
 /// (keyboard, mouse mode, pause, exit).
-class _ToolButton extends StatelessWidget {
-  const _ToolButton({
-    required this.icon,
-    required this.active,
-    required this.tooltip,
-    required this.onTap,
-  });
-
-  final IconData icon;
-  final bool active;
-  final String tooltip;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 6),
-      child: Tooltip(
-        message: tooltip,
-        child: InkWell(
-          onTap: onTap,
-          borderRadius: BorderRadius.circular(6),
-          child: Container(
-            width: 38,
-            height: 38,
-            decoration: BoxDecoration(
-              color: active
-                  ? RetroDosboxColors.selectedFill
-                  : Colors.black.withValues(alpha: 0.5),
-              borderRadius: BorderRadius.circular(6),
-              border: Border.all(
-                color: active ? RetroDosboxColors.accentAmber : RetroDosboxColors.panelStroke,
-              ),
-            ),
-            child: Icon(
-              icon,
-              size: 19,
-              color: active ? RetroDosboxColors.accentAmber : Colors.white70,
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}

@@ -36,6 +36,13 @@ class Sidebar extends StatelessWidget {
   /// means the rail ends after the last button.
   final Widget? footer;
 
+  /// Pins the highest-numbered [SidebarDestination.group] to the bottom of
+  /// the rail instead of letting it scroll with the rest. The reference-y
+  /// destinations (Music, History, About) belong at the far end of the rail
+  /// the way About always does -- and a band that drifts up the rail as the
+  /// list above it grows or shrinks stops being a landmark.
+  final bool pinLastGroupToBottom;
+
   final SidebarStyle style;
 
   const Sidebar({
@@ -45,10 +52,38 @@ class Sidebar extends StatelessWidget {
     required this.onSelected,
     required this.style,
     this.footer,
+    this.pinLastGroupToBottom = false,
   });
 
   static const double _iconColumnWidth = 22.0;
   static const double _iconGap = 10.0;
+
+  /// Destinations [from, to), with a hairline wherever the group changes.
+  List<Widget> _buttons({
+    required int from,
+    required int to,
+    required double rowHeight,
+    required TextStyle textStyle,
+    required bool hasIcons,
+  }) {
+    final out = <Widget>[];
+    for (var i = from; i < to; i++) {
+      if (i > from && destinations[i].group != destinations[i - 1].group) {
+        out.add(_GroupRule(color: style.panelStroke));
+      }
+      out.add(_SidebarButton(
+        destination: destinations[i],
+        selected: i == selectedIndex,
+        onTap: () => onSelected(i),
+        height: rowHeight,
+        titleStyle: textStyle,
+        style: style,
+        iconWidth: hasIcons ? _iconColumnWidth : 0,
+        iconGap: hasIcons ? _iconGap : 0,
+      ));
+    }
+    return out;
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -62,10 +97,17 @@ class Sidebar extends StatelessWidget {
 
     // Widest title decides the rail width, so no label is ever clipped and
     // there is no dead space beyond one consistent right margin.
+    //
+    // Measured in the SELECTED weight, which is the widest a row ever gets.
+    // Measuring the regular weight and painting the selected one semi-bold is
+    // what turned "Settings" into "Settin..." the moment it was picked -- and
+    // only for the longer labels, which reads as a random clip rather than as
+    // a width that is one weight too small.
+    final measureStyle = textStyle.copyWith(fontWeight: FontWeight.w600);
     double widest = 0;
     for (final dest in destinations) {
       final painter = TextPainter(
-        text: TextSpan(text: dest.title, style: textStyle),
+        text: TextSpan(text: dest.title, style: measureStyle),
         textDirection: Directionality.of(context),
         maxLines: 1,
       )..layout();
@@ -74,7 +116,7 @@ class Sidebar extends StatelessWidget {
 
     // Only reserve the icon column if something actually has an icon --
     // otherwise a rail of plain labels carries a permanent empty gutter.
-    final hasIcons = destinations.any((d) => d.icon != null);
+    final hasIcons = destinations.any((d) => d.hasIcon);
     final iconAllowance = hasIcons ? _iconColumnWidth + _iconGap : 0.0;
 
     final screenWidth = MediaQuery.sizeOf(context).width;
@@ -86,6 +128,16 @@ class Sidebar extends StatelessWidget {
     // than a comfortable touch target.
     final rowHeight = (titleSize * 1.15 + style.buttonVerticalPadding * 2)
         .clamp(style.buttonHeight, 72.0);
+
+    // Where the scrolling part of the list ends. With no pinned band that is
+    // simply "all of them".
+    final lastGroup =
+        destinations.isEmpty ? 0 : destinations.last.group;
+    final pinnedFrom = pinLastGroupToBottom
+        ? destinations.indexWhere((d) => d.group == lastGroup)
+        : -1;
+    final scrollingCount =
+        pinnedFrom >= 0 ? pinnedFrom : destinations.length;
 
     return Container(
       width: railWidth,
@@ -110,22 +162,26 @@ class Sidebar extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 mainAxisSize: MainAxisSize.min,
-                children: [
-                  for (var i = 0; i < destinations.length; i++)
-                    _SidebarButton(
-                      destination: destinations[i],
-                      selected: i == selectedIndex,
-                      onTap: () => onSelected(i),
-                      height: rowHeight,
-                      titleStyle: textStyle,
-                      style: style,
-                      iconWidth: hasIcons ? _iconColumnWidth : 0,
-                      iconGap: hasIcons ? _iconGap : 0,
-                    ),
-                ],
+                children: _buttons(
+                  from: 0,
+                  to: scrollingCount,
+                  rowHeight: rowHeight,
+                  textStyle: textStyle,
+                  hasIcons: hasIcons,
+                ),
               ),
             ),
           ),
+          if (pinnedFrom >= 0 && pinnedFrom < destinations.length) ...[
+            _GroupRule(color: style.panelStroke),
+            ..._buttons(
+              from: pinnedFrom,
+              to: destinations.length,
+              rowHeight: rowHeight,
+              textStyle: textStyle,
+              hasIcons: hasIcons,
+            ),
+          ],
           if (footer != null)
             Padding(
               padding: EdgeInsets.only(
@@ -142,12 +198,31 @@ class Sidebar extends StatelessWidget {
 }
 
 /// One entry in the side nav. [icon] is an optional emoji shown in a fixed
-/// column to the left of the title.
+/// column to the left of the title; [iconData] is the same column drawn as a
+/// Material icon instead. The apps differ here on purpose -- the C64 rail's
+/// emoji are part of that machine's look, the Amiga's line icons are part of
+/// its -- and one rail supporting both is what keeps this file identical
+/// everywhere.
+///
+/// [group] sorts the rail into bands. Entries keep the order they are given
+/// in; the rail draws a hairline wherever the group changes, so the bands
+/// read as "where you go", "how it is set up" and "everything else" rather
+/// than as one undifferentiated list of nine. Leave it at 0 and the rail
+/// behaves exactly as it did before groups existed.
 class SidebarDestination {
   final String title;
   final String? icon;
+  final IconData? iconData;
+  final int group;
 
-  const SidebarDestination(this.title, {this.icon});
+  const SidebarDestination(
+    this.title, {
+    this.icon,
+    this.iconData,
+    this.group = 0,
+  });
+
+  bool get hasIcon => icon != null || iconData != null;
 }
 
 /// The per-app colours and metrics the rail needs. Each front end builds one
@@ -190,6 +265,23 @@ class SidebarStyle {
     required this.navPadding,
     required this.maxWidth,
   });
+}
+
+/// The band separator: a hairline with air either side. Deliberately not a
+/// Divider -- Divider's own inset and 16px default height are tuned for
+/// lists, and both are wrong inside a 456dp-tall rail.
+class _GroupRule extends StatelessWidget {
+  final Color color;
+
+  const _GroupRule({required this.color});
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 6),
+      child: Container(height: 1, color: color),
+    );
+  }
 }
 
 class _SidebarButton extends StatelessWidget {
@@ -237,11 +329,19 @@ class _SidebarButton extends StatelessWidget {
                 if (iconWidth > 0) ...[
                   SizedBox(
                     width: iconWidth,
-                    child: Text(
-                      destination.icon ?? '',
-                      style: TextStyle(fontSize: titleStyle.fontSize),
-                      textAlign: TextAlign.center,
-                    ),
+                    child: destination.iconData != null
+                        ? Icon(
+                            destination.iconData,
+                            size: (titleStyle.fontSize ?? 14) + 2,
+                            color: selected
+                                ? style.labelSelected
+                                : style.labelIdle,
+                          )
+                        : Text(
+                            destination.icon ?? '',
+                            style: TextStyle(fontSize: titleStyle.fontSize),
+                            textAlign: TextAlign.center,
+                          ),
                   ),
                   SizedBox(width: iconGap),
                 ],
