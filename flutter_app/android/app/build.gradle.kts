@@ -79,7 +79,8 @@ android {
     // on the build machine happens to default to, which is how Play
     // compliance ends up depending on which laptop or runner did the build.
     compileSdk = 36
-    ndkVersion = flutter.ndkVersion
+    // The NDK the prebuilt cores were compiled with.
+    ndkVersion = "28.2.13676358"
 
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
