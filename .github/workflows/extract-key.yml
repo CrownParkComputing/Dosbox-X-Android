@@ -1,0 +1,54 @@
+name: Extract signing key
+
+# One-shot, and DELETE THIS FILE after use.
+#
+# The Play upload key for com.dosboxx.app lives only as this repo's ANDROID_*
+# secrets, and GitHub secrets are write-only - there is no way to read one
+# back through the API. The Flutter rewrite that replaces this app has to be
+# signed with the SAME key or Play treats it as a different app and refuses
+# the upload, so the key has to move to the new repo's CI.
+#
+# This emits it as a private, one-day artifact. Runs in seconds.
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - "extractkey-*"
+
+permissions:
+  contents: read
+
+jobs:
+  extract:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Emit keystore and credentials
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          mkdir -p out
+          printf '%s' "$ANDROID_KEYSTORE_BASE64" > out/keystore.b64
+          echo "$ANDROID_KEYSTORE_BASE64" | base64 --decode > out/release.jks
+          {
+            echo "storePassword=$ANDROID_KEYSTORE_PASSWORD"
+            echo "keyAlias=$ANDROID_KEY_ALIAS"
+            echo "keyPassword=$ANDROID_KEY_PASSWORD"
+          } > out/creds.properties
+          echo "jks bytes: $(wc -c < out/release.jks)"
+          # The fingerprint is the whole point: it has to match what Play
+          # holds for com.dosboxx.app, and this is the only chance to see it.
+          keytool -list -v -keystore out/release.jks \
+            -storepass "$ANDROID_KEYSTORE_PASSWORD" 2>/dev/null \
+            | grep -E "SHA1:|SHA256:|Alias" | head -4 || true
+      - name: Upload
+        uses: actions/upload-artifact@v4
+        with:
+          name: signing-key
+          path: out/
+          if-no-files-found: error
+          retention-days: 1
