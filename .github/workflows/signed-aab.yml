@@ -1,5 +1,11 @@
 name: Build signed Android App Bundle
 
+# Builds the Flutter app, which now lives on main. This workflow was written
+# for the Java app it replaces - gradlew at the repo root, output under
+# app/build - and both moved: gradlew is flutter_app/android/gradlew, and the
+# bundle is produced by `flutter build appbundle` rather than a bare Gradle
+# task, so the Dart and asset steps of the build actually run.
+
 on:
   workflow_dispatch:
   push:
@@ -27,6 +33,13 @@ jobs:
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
 
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          flutter-version: "3.41.9"
+          cache: true
+
       - name: Validate signing secrets
         env:
           ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
@@ -52,12 +65,22 @@ jobs:
           ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
           ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
           ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
-        run: ./gradlew bundleRelease
+        working-directory: flutter_app
+        run: flutter build appbundle --release
+
+      - name: Print signing fingerprint
+        # The bundle has to be signed as the app it replaces: com.dosboxx.app
+        # is already on Play, and a different key is a different app as far as
+        # the Console is concerned. This is the cheap place to catch that.
+        run: |
+          keytool -printcert -jarfile \
+            flutter_app/build/app/outputs/bundle/release/app-release.aab \
+            | grep -E "SHA1:|SHA256:" || true
 
       - name: Upload signed AAB
         uses: actions/upload-artifact@v4
         with:
           name: dosbox-multiplatform-release-aab
-          path: app/build/outputs/bundle/release/app-release.aab
+          path: flutter_app/build/app/outputs/bundle/release/app-release.aab
           if-no-files-found: error
           retention-days: 2
