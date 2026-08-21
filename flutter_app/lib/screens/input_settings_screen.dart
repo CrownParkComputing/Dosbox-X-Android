@@ -10,17 +10,17 @@
 // The load is asynchronous, so this is a StatefulWidget with a loading pass.
 import 'package:flutter/material.dart';
 
-import '../data/dos_scancodes.dart';
-import '../ffi/dosbox_core.dart';
+import '../data/retrodosbox_scancodes.dart';
+import '../ffi/retrodosbox_core.dart';
 import '../services/app_prefs.dart';
-import '../theme/dosbox_theme.dart';
+import '../theme/retrodosbox_theme.dart';
 import '../widgets/custom_key_button.dart';
 
 class InputSettingsScreen extends StatefulWidget {
   /// Used only to fire a short test key press when the user taps one of their
   /// custom buttons here, so a binding can be checked without leaving the
   /// settings tab. Nothing on this screen configures the core itself.
-  final DosboxCore core;
+  final RetroDosboxCore core;
 
   /// Live external-gamepad state, owned by the workbench (GamepadService).
   final bool controllerConnected;
@@ -131,9 +131,9 @@ class _InputSettingsScreenState extends State<InputSettingsScreen> {
       child: Container(
         padding: const EdgeInsets.all(12),
         decoration: BoxDecoration(
-          color: DosColors.cardFill,
+          color: RetroDosboxColors.cardFill,
           borderRadius: BorderRadius.circular(8),
-          border: Border.all(color: DosColors.cardStroke),
+          border: Border.all(color: RetroDosboxColors.cardStroke),
         ),
         child: child,
       ),
@@ -143,7 +143,7 @@ class _InputSettingsScreenState extends State<InputSettingsScreen> {
   Widget _actionButtonRow(String button, int? scancode) {
     final label = scancode == null
         ? 'Default joystick button'
-        : DosKeyCatalogue.labelFor(scancode);
+        : RetroDosboxKeyCatalogue.labelFor(scancode);
     return Padding(
       padding: const EdgeInsets.only(top: 10),
       child: Row(
@@ -152,7 +152,7 @@ class _InputSettingsScreenState extends State<InputSettingsScreen> {
             width: 28,
             child: Text(button.toUpperCase(),
                 style: const TextStyle(
-                    color: DosColors.accentAmber,
+                    color: RetroDosboxColors.accentAmber,
                     fontSize: 15,
                     fontWeight: FontWeight.bold)),
           ),
@@ -163,7 +163,7 @@ class _InputSettingsScreenState extends State<InputSettingsScreen> {
           TextButton(
             onPressed: () => _pickActionButtonKey(button),
             child: const Text('Change key',
-                style: TextStyle(color: DosColors.accentTeal)),
+                style: TextStyle(color: RetroDosboxColors.accentTeal)),
           ),
           // Only offered when a key is bound: with no binding there is
           // nothing to reset to, and a live-but-inert button is confusing.
@@ -171,7 +171,7 @@ class _InputSettingsScreenState extends State<InputSettingsScreen> {
             TextButton(
               onPressed: () => _setActionButton(button, null),
               child: const Text('Reset',
-                  style: TextStyle(color: DosColors.textMuted)),
+                  style: TextStyle(color: RetroDosboxColors.textMuted)),
             ),
         ],
       ),
@@ -182,7 +182,7 @@ class _InputSettingsScreenState extends State<InputSettingsScreen> {
   Widget build(BuildContext context) {
     if (_loading) {
       return const Center(
-          child: CircularProgressIndicator(color: DosColors.accentAmber));
+          child: CircularProgressIndicator(color: RetroDosboxColors.accentAmber));
     }
 
     return ListView(
@@ -221,14 +221,14 @@ class _InputSettingsScreenState extends State<InputSettingsScreen> {
                           'titles want. Turn it on for a game you know has '
                           'joystick support.',
                           style: TextStyle(
-                              color: DosColors.textMuted2, fontSize: 12),
+                              color: RetroDosboxColors.textMuted2, fontSize: 12),
                         ),
                       ],
                     ),
                   ),
                   Switch(
                     value: _joystickEnabled,
-                    activeThumbColor: DosColors.accentAmber,
+                    activeThumbColor: RetroDosboxColors.accentAmber,
                     onChanged: _setJoystickEnabled,
                   ),
                 ],
@@ -258,7 +258,7 @@ class _InputSettingsScreenState extends State<InputSettingsScreen> {
               // emulator screen acts on.
               Text(_padMode.description,
                   style: const TextStyle(
-                      color: DosColors.textMuted2, fontSize: 12)),
+                      color: RetroDosboxColors.textMuted2, fontSize: 12)),
             ],
           ),
         ),
@@ -278,14 +278,14 @@ class _InputSettingsScreenState extends State<InputSettingsScreen> {
                       'the action buttons to the bottom-left. Direction '
                       'mapping is unchanged.',
                       style: TextStyle(
-                          color: DosColors.textMuted2, fontSize: 12),
+                          color: RetroDosboxColors.textMuted2, fontSize: 12),
                     ),
                   ],
                 ),
               ),
               Switch(
                 value: _leftHanded,
-                activeThumbColor: DosColors.accentAmber,
+                activeThumbColor: RetroDosboxColors.accentAmber,
                 onChanged: _setLeftHanded,
               ),
             ],
@@ -302,7 +302,7 @@ class _InputSettingsScreenState extends State<InputSettingsScreen> {
                 'A and B fire the emulated joystick by default. Bind either '
                 'of them to a keyboard key for the many games that expect '
                 'Ctrl, Alt or Space as their fire button.',
-                style: TextStyle(color: DosColors.textMuted2, fontSize: 12),
+                style: TextStyle(color: RetroDosboxColors.textMuted2, fontSize: 12),
               ),
               _actionButtonRow('a', _buttonA),
               _actionButtonRow('b', _buttonB),
@@ -321,7 +321,7 @@ class _InputSettingsScreenState extends State<InputSettingsScreen> {
                 'for the keys DOS games ask for constantly -- Esc to skip a '
                 'cutscene, F2 to save, a keypad key to steer. Tap a button '
                 'here to send a test press to the running game.',
-                style: TextStyle(color: DosColors.textMuted2, fontSize: 12),
+                style: TextStyle(color: RetroDosboxColors.textMuted2, fontSize: 12),
               ),
               const SizedBox(height: 10),
               if (_customButtons.isEmpty)
@@ -329,7 +329,7 @@ class _InputSettingsScreenState extends State<InputSettingsScreen> {
                   padding: EdgeInsets.only(bottom: 8),
                   child: Text('No extra buttons yet.',
                       style:
-                          TextStyle(color: DosColors.textMuted, fontSize: 12)),
+                          TextStyle(color: RetroDosboxColors.textMuted, fontSize: 12)),
                 )
               else
                 Wrap(
@@ -338,11 +338,11 @@ class _InputSettingsScreenState extends State<InputSettingsScreen> {
                   children: [
                     for (int i = 0; i < _customButtons.length; i++)
                       InputChip(
-                        label: Text(DosKeyCatalogue.labelFor(
+                        label: Text(RetroDosboxKeyCatalogue.labelFor(
                             _customButtons[i])),
-                        backgroundColor: DosColors.coverFill,
+                        backgroundColor: RetroDosboxColors.coverFill,
                         labelStyle: const TextStyle(color: Colors.white),
-                        deleteIconColor: DosColors.textMuted,
+                        deleteIconColor: RetroDosboxColors.textMuted,
                         onPressed: () => _testKey(_customButtons[i]),
                         onDeleted: () {
                           // Index-based removal, not value-based: the same
@@ -361,8 +361,8 @@ class _InputSettingsScreenState extends State<InputSettingsScreen> {
                   icon: const Icon(Icons.add, size: 18),
                   label: const Text('Add button'),
                   style: OutlinedButton.styleFrom(
-                    foregroundColor: DosColors.accentTeal,
-                    side: const BorderSide(color: DosColors.accentTeal),
+                    foregroundColor: RetroDosboxColors.accentTeal,
+                    side: const BorderSide(color: RetroDosboxColors.accentTeal),
                   ),
                   onPressed: _addCustomButton,
                 ),
@@ -378,8 +378,8 @@ class _InputSettingsScreenState extends State<InputSettingsScreen> {
                     ? Icons.sports_esports
                     : Icons.sports_esports_outlined,
                 color: widget.controllerConnected
-                    ? DosColors.accentTeal
-                    : DosColors.textMuted,
+                    ? RetroDosboxColors.accentTeal
+                    : RetroDosboxColors.textMuted,
                 size: 22,
               ),
               const SizedBox(width: 12),
@@ -399,7 +399,7 @@ class _InputSettingsScreenState extends State<InputSettingsScreen> {
                           : 'None detected. Plug one in at any time -- no '
                               'restart needed.',
                       style: const TextStyle(
-                          color: DosColors.textMuted2, fontSize: 12),
+                          color: RetroDosboxColors.textMuted2, fontSize: 12),
                     ),
                   ],
                 ),

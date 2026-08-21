@@ -2,7 +2,7 @@
 import 'package:flutter/material.dart';
 
 import '../data/game_entry.dart';
-import '../theme/dosbox_theme.dart';
+import '../theme/retrodosbox_theme.dart';
 import '../widgets/media_card.dart';
 
 class LibraryGrid extends StatefulWidget {
@@ -144,20 +144,20 @@ class _LibraryGridState extends State<LibraryGrid> {
             decoration: InputDecoration(
               isDense: true,
               hintText: 'Search',
-              hintStyle: const TextStyle(color: DosColors.textMuted),
+              hintStyle: const TextStyle(color: RetroDosboxColors.textMuted),
               prefixIcon: const Icon(Icons.search,
-                  size: 18, color: DosColors.textMuted),
+                  size: 18, color: RetroDosboxColors.textMuted),
               filled: true,
-              fillColor: DosColors.cardFill,
+              fillColor: RetroDosboxColors.cardFill,
               contentPadding:
                   const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
               border: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(6),
-                borderSide: const BorderSide(color: DosColors.cardStroke),
+                borderSide: const BorderSide(color: RetroDosboxColors.cardStroke),
               ),
               enabledBorder: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(6),
-                borderSide: const BorderSide(color: DosColors.cardStroke),
+                borderSide: const BorderSide(color: RetroDosboxColors.cardStroke),
               ),
             ),
           ),
@@ -167,7 +167,7 @@ class _LibraryGridState extends State<LibraryGrid> {
           IconButton(
             onPressed: widget.onAddGame,
             icon: const Icon(Icons.add, size: 20),
-            color: DosColors.textMuted2,
+            color: RetroDosboxColors.textMuted2,
             tooltip: 'Add a game (zip or folder)',
           ),
         ],
@@ -176,7 +176,7 @@ class _LibraryGridState extends State<LibraryGrid> {
           IconButton(
             onPressed: widget.onRescan,
             icon: const Icon(Icons.refresh, size: 20),
-            color: DosColors.textMuted2,
+            color: RetroDosboxColors.textMuted2,
             tooltip: 'Rescan games folder',
           ),
         ],
@@ -247,8 +247,8 @@ class _LibraryGridState extends State<LibraryGrid> {
       style: TextStyle(
         fontSize: 11,
         color: widget.unreadable.isEmpty
-            ? DosColors.textMuted
-            : DosColors.warning,
+            ? RetroDosboxColors.textMuted
+            : RetroDosboxColors.warning,
       ),
     );
   }
@@ -267,14 +267,14 @@ class _LibraryGridState extends State<LibraryGrid> {
             Icon(
               filtering ? Icons.filter_alt_off : Icons.folder_open,
               size: 40,
-              color: DosColors.textMuted,
+              color: RetroDosboxColors.textMuted,
             ),
             const SizedBox(height: 12),
             Text(
               filtering
                   ? 'No titles match this search.'
                   : 'No games found.',
-              style: const TextStyle(color: DosColors.textMuted2),
+              style: const TextStyle(color: RetroDosboxColors.textMuted2),
             ),
             const SizedBox(height: 6),
             Text(
@@ -284,7 +284,7 @@ class _LibraryGridState extends State<LibraryGrid> {
                       'rescan. A game is normally a folder containing its '
                       'EXE files, or a CD image.',
               textAlign: TextAlign.center,
-              style: const TextStyle(color: DosColors.textMuted, fontSize: 12),
+              style: const TextStyle(color: RetroDosboxColors.textMuted, fontSize: 12),
             ),
           ],
         ),
@@ -299,7 +299,7 @@ class _LibraryGridState extends State<LibraryGrid> {
         // handhelds and desktop windows, and a fixed column count is wrong on
         // all but one of them.
         final columns =
-            (constraints.maxWidth / DosMetrics.mediaCardCell).floor().clamp(1, 12);
+            (constraints.maxWidth / RetroDosboxMetrics.mediaCardCell).floor().clamp(1, 12);
         return GridView.builder(
           padding: const EdgeInsets.only(top: 4, bottom: 12),
           gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
@@ -307,7 +307,7 @@ class _LibraryGridState extends State<LibraryGrid> {
             mainAxisSpacing: 6,
             crossAxisSpacing: 6,
             childAspectRatio:
-                DosMetrics.mediaCardWidth / DosMetrics.mediaCardHeight,
+                RetroDosboxMetrics.mediaCardWidth / RetroDosboxMetrics.mediaCardHeight,
           ),
           itemCount: entries.length,
           itemBuilder: (context, index) {
@@ -373,18 +373,18 @@ class _KindChip extends StatelessWidget {
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
         decoration: BoxDecoration(
-          color: selected ? DosColors.selectedFill : DosColors.cardFill,
+          color: selected ? RetroDosboxColors.selectedFill : RetroDosboxColors.cardFill,
           borderRadius: BorderRadius.circular(4),
           border: Border.all(
             color:
-                selected ? DosColors.selectedStroke : DosColors.cardStroke,
+                selected ? RetroDosboxColors.selectedStroke : RetroDosboxColors.cardStroke,
           ),
         ),
         child: Text(
           label,
           style: TextStyle(
             fontSize: 12,
-            color: selected ? Colors.white : DosColors.textMuted,
+            color: selected ? Colors.white : RetroDosboxColors.textMuted,
           ),
         ),
       ),
@@ -414,11 +414,11 @@ class _LetterChip extends StatelessWidget {
         width: 26,
         alignment: Alignment.center,
         decoration: BoxDecoration(
-          color: selected ? DosColors.selectedFill : DosColors.cardFill,
+          color: selected ? RetroDosboxColors.selectedFill : RetroDosboxColors.cardFill,
           borderRadius: BorderRadius.circular(4),
           border: Border.all(
             color:
-                selected ? DosColors.selectedStroke : DosColors.cardStroke,
+                selected ? RetroDosboxColors.selectedStroke : RetroDosboxColors.cardStroke,
           ),
         ),
         child: Text(
@@ -426,7 +426,7 @@ class _LetterChip extends StatelessWidget {
           style: TextStyle(
             fontSize: 11,
             fontWeight: selected ? FontWeight.w600 : FontWeight.normal,
-            color: selected ? Colors.white : DosColors.textMuted,
+            color: selected ? Colors.white : RetroDosboxColors.textMuted,
           ),
         ),
       ),

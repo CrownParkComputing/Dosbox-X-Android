@@ -5,7 +5,7 @@ import '../services/app_prefs.dart';
 import '../services/games_folder.dart';
 import '../services/permissions_service.dart';
 import '../services/storage_access.dart';
-import '../theme/dosbox_theme.dart';
+import '../theme/retrodosbox_theme.dart';
 
 class PathsSettingsScreen extends StatefulWidget {
   /// Called after the games folder changes, so the shell can rescan.
@@ -136,9 +136,9 @@ class _PathsSettingsScreenState extends State<PathsSettingsScreen> {
       margin: const EdgeInsets.only(bottom: 8),
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: DosColors.cardFill,
+        color: RetroDosboxColors.cardFill,
         borderRadius: BorderRadius.circular(6),
-        border: Border.all(color: DosColors.cardStroke),
+        border: Border.all(color: RetroDosboxColors.cardStroke),
       ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -160,14 +160,14 @@ class _PathsSettingsScreenState extends State<PathsSettingsScreen> {
                   body,
                   style: TextStyle(
                     color: bodyMuted
-                        ? DosColors.warning
-                        : DosColors.textMuted2,
+                        ? RetroDosboxColors.warning
+                        : RetroDosboxColors.textMuted2,
                     fontSize: 12,
                   ),
                 ),
                 if (note != null) ...[
                   const SizedBox(height: 6),
-                  Text(note, style: DosTextStyles.statusLine),
+                  Text(note, style: RetroDosboxTextStyles.statusLine),
                 ],
               ],
             ),

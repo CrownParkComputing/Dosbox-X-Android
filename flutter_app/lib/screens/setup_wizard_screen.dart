@@ -11,7 +11,7 @@ import 'package:flutter/material.dart';
 
 import '../services/app_prefs.dart';
 import '../services/storage_access.dart';
-import '../theme/dosbox_theme.dart';
+import '../theme/retrodosbox_theme.dart';
 
 class SetupWizardScreen extends StatefulWidget {
   final VoidCallback onComplete;
@@ -130,11 +130,11 @@ class _SetupWizardScreenState extends State<SetupWizardScreen> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     for (final line in _done)
-                      Text(line, style: DosTextStyles.terminal),
+                      Text(line, style: RetroDosboxTextStyles.terminal),
                     if (_current.isNotEmpty)
                       Text(
                         _current.substring(0, _charIndex),
-                        style: DosTextStyles.terminal,
+                        style: RetroDosboxTextStyles.terminal,
                       ),
                     if (_awaitingFolder) ...[
                       const SizedBox(height: 8),
@@ -142,7 +142,7 @@ class _SetupWizardScreenState extends State<SetupWizardScreen> {
                         _gamesFolder == null
                             ? 'C:\\> _'
                             : 'C:\\> SET GAMES=$_gamesFolder',
-                        style: DosTextStyles.terminal,
+                        style: RetroDosboxTextStyles.terminal,
                       ),
                     ],
                   ],
@@ -171,8 +171,8 @@ class _SetupWizardScreenState extends State<SetupWizardScreen> {
           OutlinedButton(
             onPressed: _chooseFolder,
             style: OutlinedButton.styleFrom(
-              foregroundColor: DosColors.accentAmber,
-              side: const BorderSide(color: DosColors.accentAmber),
+              foregroundColor: RetroDosboxColors.accentAmber,
+              side: const BorderSide(color: RetroDosboxColors.accentAmber),
             ),
             child: Text(
                 _gamesFolder == null ? 'Choose games folder' : 'Change folder'),
@@ -184,7 +184,7 @@ class _SetupWizardScreenState extends State<SetupWizardScreen> {
             onPressed: _finish,
             child: Text(
               _gamesFolder == null ? 'Skip for now' : 'Continue',
-              style: const TextStyle(color: DosColors.textMuted2),
+              style: const TextStyle(color: RetroDosboxColors.textMuted2),
             ),
           ),
         ],

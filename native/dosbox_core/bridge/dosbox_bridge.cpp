@@ -23,6 +23,10 @@
  * point. The framebuffer is copied into bridge-owned memory in the same hook,
  * so a reader can never see a half-drawn frame from the scaler.
  */
+/* _GNU_SOURCE for pthread_timedjoin_np (a GNU extension stop() uses to bound
+ * the engine teardown). Must precede every libc include, so it comes first. */
+#define _GNU_SOURCE
+
 #include "config.h"
 
 #include <SDL.h>
@@ -35,6 +39,7 @@
 #include <string>
 #include <vector>
 #include <pthread.h>
+#include <time.h>
 #include <unistd.h>
 
 #include "dosbox.h"
@@ -55,6 +60,10 @@ extern "C" int dosbox_x_main(int argc, char *argv[]);
 /* The name of the DOS program executing, as the engine tracks it. */
 extern std::string RunningProgram;
 
+/* sdlmain.cpp; the kill switch sets this before throwing so late DOS-side
+ * memory writes during teardown log rather than crash. */
+extern bool warn_on_mem_write;
+
 /* ------------------------------------------------------------------------ */
 /* State                                                                    */
 /* ------------------------------------------------------------------------ */
@@ -64,7 +73,7 @@ namespace {
 /* One queued request for the mainloop to perform at a frame boundary. */
 struct Request {
     enum Kind {
-        Key, MouseMotion, MouseButton, Joystick, SaveState_, LoadState_
+        Key, MouseMotion, MouseButton, Joystick, SaveState_, LoadState_, Quit
     } kind;
     int32_t a, b, c, d;
 };
@@ -181,15 +190,28 @@ void run_request(const Request &r)
         g_reply_pending.store(0);
         break;
     }
+    case Request::Quit:
+        /* The kill switch (sdlmain.cpp's KillSwitch / Ctrl+F9), minus
+         * CheckQuit: that shows a host message box, and there is no host UI.
+         * Throwing 1 unwinds out of DOSBOX_RunMachine into sdlmain's catch,
+         * which runs the full engine teardown, after which dosbox_x_main
+         * returns and the mainloop thread exits. This hook runs on that
+         * thread (via the frame-publish path), exactly like the mapper's own
+         * kill-switch handler. */
+        warn_on_mem_write = true;
+        throw 1;
     }
 }
 
 void *mainloop_thread(void *)
 {
-    /* argv must outlive the call: DOSBox-X keeps pointers into it. */
-    static std::string conf = g_conf_path;
-    static char arg0[] = "dosbox-x";
-    static char argconf[] = "-conf";
+    /* argv must outlive the dosbox_x_main call: DOSBox-X keeps pointers into
+     * it. These are plain locals of the thread function -- they live exactly
+     * as long as the call. They must NOT be static: a second start (after a
+     * clean stop) would otherwise relaunch with the FIRST session's conf. */
+    const std::string conf = g_conf_path;
+    char arg0[] = "dosbox-x";
+    char argconf[] = "-conf";
     std::vector<char> confbuf(conf.begin(), conf.end());
     confbuf.push_back('\0');
 
@@ -217,6 +239,13 @@ void *mainloop_thread(void *)
     g_running.store(true);
     dosbox_x_main(3, argv);
     g_running.store(false);
+
+    /* The engine ran its teardown and returned -- the kill-switch Quit did
+     * its job. dosbox_core_stop joins on this, but clear the one-shot flags
+     * here too so a crashed/never-joined exit still leaves sane state. */
+    g_started.store(false);
+    g_joystick_attached.store(false);
+    g_fps.store(0);
     return nullptr;
 }
 
@@ -314,19 +343,51 @@ extern "C" int32_t dosbox_core_start(const char *conf_path)
         g_started.store(false);
         return DOSBOX_ERR;
     }
-    pthread_detach(g_thread);
+    /* Joinable, not detached: stop() joins so the engine's teardown has
+     * finished before the app returns to the library and offers another
+     * launch. */
     return DOSBOX_OK;
 }
 
 extern "C" int32_t dosbox_core_stop(void)
 {
-    /* Documented limitation, not an oversight: upstream DOSBox-X has no
-     * complete teardown path, and this process cannot use the old Android
-     * app's trick of killing a separate ":emu" process. Unpause so the caller
-     * is not left with a mainloop parked in the publish hook, and report
-     * honestly that the core is still up. */
+    if (!g_started.load()) {
+        return DOSBOX_ERR; /* nothing to stop */
+    }
+    /* Unpause first: the publish hook parks in its pause wait ahead of the
+     * request drain, and the Quit request has to be drained to take effect. */
     g_paused.store(false);
-    return DOSBOX_ERR;
+    {
+        std::lock_guard<std::mutex> guard(g_lock);
+        g_pending.push_back(Request{Request::Quit, 0, 0, 0, 0});
+    }
+
+    /* Teardown can take a moment (the engine closes drives, devices, the
+     * mapper and SDL), but it must not be allowed to wedge the caller: on a
+     * stuck mainloop the app still has the process-restart fallback, which
+     * only works if this call returns. */
+    struct timespec deadline;
+    clock_gettime(CLOCK_REALTIME, &deadline);
+    deadline.tv_sec += 5;
+    if (pthread_timedjoin_np(g_thread, nullptr, &deadline) != 0) {
+        return DOSBOX_ERR;
+    }
+
+    /* Back to the just-launched state so the next start() builds a fresh
+     * session: no frames, no stick, no leftover input. */
+    {
+        std::lock_guard<std::mutex> guard(g_lock);
+        g_pending.clear();
+        g_frame.clear();
+    }
+    g_width = 0;
+    g_height = 0;
+    g_pitch = 0;
+    g_frame_counter.store(0);
+    g_aspect_x1000.store(0);
+    g_started.store(false);
+    g_joystick_attached.store(false);
+    return DOSBOX_OK;
 }
 
 extern "C" int32_t dosbox_core_is_running(void)

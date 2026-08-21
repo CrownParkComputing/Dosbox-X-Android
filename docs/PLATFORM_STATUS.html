@@ -46,8 +46,9 @@
 <p class="sub">One Flutter front end over the DOSBox-X core, on Android, iOS and Linux.
 This page records, per platform, how the native core is bundled, what code is
 platform-specific, and where the three builds diverge.</p>
-<p class="muted" style="font-size:13px">Last updated: 2026-08-18. Re-check after the native core
-is wired up; the build scripts exist but a shipped, core-backed build has not been cut yet.</p>
+<p class="muted" style="font-size:13px">Last updated: 2026-08-19. The native core is built and
+ABI-verified on all three platforms; a shipped, core-backed APK/IPA/App has not been cut yet,
+and audio is not yet runtime-verified on a device. See PLATFORM_STATUS.md for the detail.</p>
 
 <h2>Shared across all three platforms</h2>
 <div class="card">
@@ -140,9 +141,15 @@ the highest-risk parts and should not grow.</div>
 <code>android/res</code>, <code>ios/*.storyboard</code>, or <code>linux/</code> carries
 layout; all screens and widgets are in <code>lib/</code>.</div>
 
-<div class="note"><b>4.</b> <b>Core is not yet bundled in a shipped build</b> — the
-per-platform build scripts exist and the bridge is implemented, but a core-backed
-APK/IPA/App has not been produced.</div>
+<div class="note"><b>4.</b> <b>Cores built on all three platforms, no shipped app yet</b> —
+Linux (<code>linux/build/libdosboxcore.so</code>, boot-tested), Android (arm64-v8a + x86_64 in
+<code>jniLibs/</code>), iOS (<code>ios/build/out/libdosboxcore</code>, arm64 Mach-O). A
+core-backed APK/IPA/App has not been produced, and no device has booted one.</div>
+<div class="note"><b>5.</b> <b>The shared <code>~/dosbox-x-pic</code> tree is single-config</b> —
+Android reconfigures it in place for the NDK; <code>build-core-pic.sh</code> now detects a cross
+config or foreign-arch objects and reconfigures + cleans before a host build. Run it before
+<code>linux/build.sh</code> whenever the tree was last used by Android. iOS clones its own tree
+in the container and is unaffected.</div>
 
 </div>
 </body>

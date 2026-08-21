@@ -2,7 +2,7 @@
 //
 // This screen has no equivalent in the VICE front end, and it is not a
 // hand-written list of settings. Everything on it is generated from what the
-// running engine reflects back through DosboxCore.configSections() and
+// running engine reflects back through RetroDosboxCore.configSections() and
 // configSectionProperties(): the name, type, current value, default, help text
 // and legal values of every property DOSBox-X itself knows about.
 //
@@ -15,22 +15,22 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
-import '../ffi/dosbox_core.dart';
-import '../theme/dosbox_theme.dart';
+import '../ffi/retrodosbox_core.dart';
+import '../theme/retrodosbox_theme.dart';
 
-class DosConfigScreen extends StatefulWidget {
-  final DosboxCore core;
+class RetroDosboxConfigScreen extends StatefulWidget {
+  final RetroDosboxCore core;
 
-  const DosConfigScreen({super.key, required this.core});
+  const RetroDosboxConfigScreen({super.key, required this.core});
 
   @override
-  State<DosConfigScreen> createState() => _DosConfigScreenState();
+  State<RetroDosboxConfigScreen> createState() => _DosConfigScreenState();
 }
 
-class _DosConfigScreenState extends State<DosConfigScreen> {
+class _DosConfigScreenState extends State<RetroDosboxConfigScreen> {
   List<String> _sections = const [];
   String? _section;
-  List<DosConfigProperty> _properties = const [];
+  List<RetroDosboxConfigProperty> _properties = const [];
 
   /// Text controllers for the free-text properties of the CURRENT section
   /// only, keyed by property name. Held rather than created inline because a
@@ -80,7 +80,7 @@ class _DosConfigScreenState extends State<DosConfigScreen> {
   void _reloadProperties() {
     final section = _section;
     final props = section == null
-        ? const <DosConfigProperty>[]
+        ? const <RetroDosboxConfigProperty>[]
         : widget.core.configSectionProperties(section);
     _disposeControllers();
     setState(() => _properties = props);
@@ -93,7 +93,7 @@ class _DosConfigScreenState extends State<DosConfigScreen> {
     _controllers.clear();
   }
 
-  TextEditingController _controllerFor(DosConfigProperty property) {
+  TextEditingController _controllerFor(RetroDosboxConfigProperty property) {
     final existing = _controllers[property.name];
     if (existing != null) return existing;
     final created = TextEditingController(text: property.value);
@@ -115,7 +115,7 @@ class _DosConfigScreenState extends State<DosConfigScreen> {
   /// always the engine's opinion of the value rather than the one typed --
   /// DOSBox-X normalises some values (case, units, clamped ranges) even when
   /// it accepts them.
-  void _apply(DosConfigProperty property, String value) {
+  void _apply(RetroDosboxConfigProperty property, String value) {
     final section = _section;
     if (section == null) return;
     final ok = widget.core.configSet(section, property.name, value);
@@ -146,16 +146,16 @@ class _DosConfigScreenState extends State<DosConfigScreen> {
       child: Container(
         padding: const EdgeInsets.all(12),
         decoration: BoxDecoration(
-          color: DosColors.cardFill,
+          color: RetroDosboxColors.cardFill,
           borderRadius: BorderRadius.circular(8),
-          border: Border.all(color: DosColors.cardStroke),
+          border: Border.all(color: RetroDosboxColors.cardStroke),
         ),
         child: child,
       ),
     );
   }
 
-  Widget _propertyEditor(DosConfigProperty property) {
+  Widget _propertyEditor(RetroDosboxConfigProperty property) {
     if (property.isBool) {
       // DOSBox-X spells booleans "true"/"false" in its config, so that is
       // what goes back to configSet -- not Dart's bool.toString() by luck,
@@ -165,7 +165,7 @@ class _DosConfigScreenState extends State<DosConfigScreen> {
           property.value.toLowerCase() == 'on';
       return Switch(
         value: on,
-        activeThumbColor: DosColors.accentAmber,
+        activeThumbColor: RetroDosboxColors.accentAmber,
         onChanged: (v) => _apply(property, v ? 'true' : 'false'),
       );
     }
@@ -182,9 +182,9 @@ class _DosConfigScreenState extends State<DosConfigScreen> {
       return DropdownButton<String>(
         value: property.value,
         isDense: true,
-        dropdownColor: DosColors.cardFill,
+        dropdownColor: RetroDosboxColors.cardFill,
         style: const TextStyle(color: Colors.white, fontSize: 13),
-        underline: Container(height: 1, color: DosColors.cardStroke),
+        underline: Container(height: 1, color: RetroDosboxColors.cardStroke),
         items: [
           for (final value in items)
             DropdownMenuItem(
@@ -223,10 +223,10 @@ class _DosConfigScreenState extends State<DosConfigScreen> {
           isDense: true,
           contentPadding: EdgeInsets.symmetric(horizontal: 8, vertical: 8),
           enabledBorder: OutlineInputBorder(
-            borderSide: BorderSide(color: DosColors.cardStroke),
+            borderSide: BorderSide(color: RetroDosboxColors.cardStroke),
           ),
           focusedBorder: OutlineInputBorder(
-            borderSide: BorderSide(color: DosColors.accentAmber),
+            borderSide: BorderSide(color: RetroDosboxColors.accentAmber),
           ),
         ),
         // Committed on submit rather than on every keystroke: pushing a
@@ -237,7 +237,7 @@ class _DosConfigScreenState extends State<DosConfigScreen> {
     );
   }
 
-  Widget _propertyRow(DosConfigProperty property) {
+  Widget _propertyRow(RetroDosboxConfigProperty property) {
     final modified = property.value != property.defaultValue;
     final rejected = _rejected.contains(property.name);
 
@@ -268,7 +268,7 @@ class _DosConfigScreenState extends State<DosConfigScreen> {
                           const SizedBox(width: 8),
                           const Text('modified',
                               style: TextStyle(
-                                  color: DosColors.accentAmber,
+                                  color: RetroDosboxColors.accentAmber,
                                   fontSize: 10,
                                   letterSpacing: 0.8)),
                         ],
@@ -277,7 +277,7 @@ class _DosConfigScreenState extends State<DosConfigScreen> {
                     if (property.help.isNotEmpty) ...[
                       const SizedBox(height: 4),
                       Text(property.help,
-                          style: DosTextStyles.statusLine
+                          style: RetroDosboxTextStyles.statusLine
                               .copyWith(height: 1.35)),
                     ],
                   ],
@@ -301,7 +301,7 @@ class _DosConfigScreenState extends State<DosConfigScreen> {
                   'Reset to default '
                   '(${property.defaultValue.isEmpty ? 'empty' : property.defaultValue})',
                   style: const TextStyle(
-                      color: DosColors.textMuted, fontSize: 11),
+                      color: RetroDosboxColors.textMuted, fontSize: 11),
                 ),
               ),
             ),
@@ -312,8 +312,8 @@ class _DosConfigScreenState extends State<DosConfigScreen> {
                 'The engine kept its current value for this property. Some '
                 'settings can only be applied when the machine boots; change '
                 'it and save, then restart the session.',
-                style: DosTextStyles.statusLine
-                    .copyWith(color: DosColors.warning),
+                style: RetroDosboxTextStyles.statusLine
+                    .copyWith(color: RetroDosboxColors.warning),
               ),
             ),
         ],
@@ -334,16 +334,16 @@ class _DosConfigScreenState extends State<DosConfigScreen> {
         Container(
           padding: const EdgeInsets.all(14),
           decoration: BoxDecoration(
-            color: DosColors.cardFill,
+            color: RetroDosboxColors.cardFill,
             borderRadius: BorderRadius.circular(8),
-            border: Border.all(color: DosColors.cardStroke),
+            border: Border.all(color: RetroDosboxColors.cardStroke),
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               const Text('No running session',
                   style: TextStyle(
-                      color: DosColors.accentAmber,
+                      color: RetroDosboxColors.accentAmber,
                       fontSize: 15,
                       fontWeight: FontWeight.bold)),
               const SizedBox(height: 8),
@@ -353,15 +353,15 @@ class _DosConfigScreenState extends State<DosConfigScreen> {
                 'a machine is running. Start a game or a DOS prompt from the '
                 'library and come back -- the full set of sections and '
                 'properties for that session will appear here.',
-                style: TextStyle(color: DosColors.textMuted2, height: 1.4),
+                style: TextStyle(color: RetroDosboxColors.textMuted2, height: 1.4),
               ),
               const SizedBox(height: 12),
               OutlinedButton.icon(
                 icon: const Icon(Icons.refresh, size: 18),
                 label: const Text('Check again'),
                 style: OutlinedButton.styleFrom(
-                  foregroundColor: DosColors.accentTeal,
-                  side: const BorderSide(color: DosColors.accentTeal),
+                  foregroundColor: RetroDosboxColors.accentTeal,
+                  side: const BorderSide(color: RetroDosboxColors.accentTeal),
                 ),
                 onPressed: _reloadSections,
               ),
@@ -393,7 +393,7 @@ class _DosConfigScreenState extends State<DosConfigScreen> {
               IconButton(
                 tooltip: 'Re-read from the engine',
                 icon: const Icon(Icons.refresh,
-                    color: DosColors.textMuted, size: 20),
+                    color: RetroDosboxColors.textMuted, size: 20),
                 onPressed: _reloadSections,
               ),
             ],
@@ -405,7 +405,7 @@ class _DosConfigScreenState extends State<DosConfigScreen> {
             'Live settings from the running engine. Changes take effect '
             'immediately where the emulator allows it; use Save to keep them '
             'in the session\'s .conf file.',
-            style: TextStyle(color: DosColors.textMuted2, fontSize: 12),
+            style: TextStyle(color: RetroDosboxColors.textMuted2, fontSize: 12),
           ),
         ),
         _card(
@@ -419,9 +419,9 @@ class _DosConfigScreenState extends State<DosConfigScreen> {
                   value: section,
                   isExpanded: true,
                   isDense: true,
-                  dropdownColor: DosColors.cardFill,
+                  dropdownColor: RetroDosboxColors.cardFill,
                   style: const TextStyle(color: Colors.white, fontSize: 13),
-                  underline: Container(height: 1, color: DosColors.cardStroke),
+                  underline: Container(height: 1, color: RetroDosboxColors.cardStroke),
                   items: [
                     for (final name in _sections)
                       DropdownMenuItem(value: name, child: Text('[$name]')),
@@ -439,7 +439,7 @@ class _DosConfigScreenState extends State<DosConfigScreen> {
           _card(
             child: const Text(
               'This section reflects no properties.',
-              style: TextStyle(color: DosColors.textMuted, fontSize: 12),
+              style: TextStyle(color: RetroDosboxColors.textMuted, fontSize: 12),
             ),
           )
         else
@@ -449,7 +449,7 @@ class _DosConfigScreenState extends State<DosConfigScreen> {
               children: [
                 for (int i = 0; i < _properties.length; i++) ...[
                   if (i > 0)
-                    const Divider(height: 1, color: DosColors.cardStroke),
+                    const Divider(height: 1, color: RetroDosboxColors.cardStroke),
                   _propertyRow(_properties[i]),
                 ],
               ],
@@ -463,8 +463,8 @@ class _DosConfigScreenState extends State<DosConfigScreen> {
                 icon: const Icon(Icons.save_outlined, size: 18),
                 label: const Text('Save to config file'),
                 style: OutlinedButton.styleFrom(
-                  foregroundColor: DosColors.accentTeal,
-                  side: const BorderSide(color: DosColors.accentTeal),
+                  foregroundColor: RetroDosboxColors.accentTeal,
+                  side: const BorderSide(color: RetroDosboxColors.accentTeal),
                 ),
                 onPressed: _save,
               ),
@@ -476,8 +476,8 @@ class _DosConfigScreenState extends State<DosConfigScreen> {
             padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
             child: Text(
               _saveMessage!,
-              style: DosTextStyles.statusLine.copyWith(
-                color: _saveFailed ? DosColors.warning : DosColors.accentTeal,
+              style: RetroDosboxTextStyles.statusLine.copyWith(
+                color: _saveFailed ? RetroDosboxColors.warning : RetroDosboxColors.accentTeal,
               ),
             ),
           ),

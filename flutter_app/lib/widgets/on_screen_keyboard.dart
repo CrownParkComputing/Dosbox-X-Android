@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 
-import '../data/dos_scancodes.dart';
-import '../theme/dosbox_theme.dart';
+import '../data/retrodosbox_scancodes.dart';
+import '../theme/retrodosbox_theme.dart';
 
 /// A full PC keyboard, drawn across the bottom of the emulator screen.
 ///
@@ -52,97 +52,97 @@ class _OnScreenKeyboardState extends State<OnScreenKeyboard> {
   final Set<int> _locked = <int>{};
 
   static const _modifiers = {
-    DosScancode.lctrl,
-    DosScancode.lalt,
-    DosScancode.lshift,
+    RetroDosboxScancode.lctrl,
+    RetroDosboxScancode.lalt,
+    RetroDosboxScancode.lshift,
   };
 
   List<List<_Key>> get _rows => [
         const [
-          _Key('Esc', DosScancode.escape),
-          _Key('F1', DosScancode.f1),
-          _Key('F2', DosScancode.f2),
-          _Key('F3', DosScancode.f3),
-          _Key('F4', DosScancode.f4),
-          _Key('F5', DosScancode.f5),
-          _Key('F6', DosScancode.f6),
-          _Key('F7', DosScancode.f7),
-          _Key('F8', DosScancode.f8),
-          _Key('F9', DosScancode.f9),
-          _Key('F10', DosScancode.f10),
-          _Key('F11', DosScancode.f11),
-          _Key('F12', DosScancode.f12),
+          _Key('Esc', RetroDosboxScancode.escape),
+          _Key('F1', RetroDosboxScancode.f1),
+          _Key('F2', RetroDosboxScancode.f2),
+          _Key('F3', RetroDosboxScancode.f3),
+          _Key('F4', RetroDosboxScancode.f4),
+          _Key('F5', RetroDosboxScancode.f5),
+          _Key('F6', RetroDosboxScancode.f6),
+          _Key('F7', RetroDosboxScancode.f7),
+          _Key('F8', RetroDosboxScancode.f8),
+          _Key('F9', RetroDosboxScancode.f9),
+          _Key('F10', RetroDosboxScancode.f10),
+          _Key('F11', RetroDosboxScancode.f11),
+          _Key('F12', RetroDosboxScancode.f12),
         ],
         const [
-          _Key('`', DosScancode.grave),
-          _Key('1', DosScancode.n1),
-          _Key('2', DosScancode.n2),
-          _Key('3', DosScancode.n3),
-          _Key('4', DosScancode.n4),
-          _Key('5', DosScancode.n5),
-          _Key('6', DosScancode.n6),
-          _Key('7', DosScancode.n7),
-          _Key('8', DosScancode.n8),
-          _Key('9', DosScancode.n9),
-          _Key('0', DosScancode.n0),
-          _Key('-', DosScancode.minus),
-          _Key('=', DosScancode.equals),
-          _Key('Bksp', DosScancode.backspace, flex: 3),
+          _Key('`', RetroDosboxScancode.grave),
+          _Key('1', RetroDosboxScancode.n1),
+          _Key('2', RetroDosboxScancode.n2),
+          _Key('3', RetroDosboxScancode.n3),
+          _Key('4', RetroDosboxScancode.n4),
+          _Key('5', RetroDosboxScancode.n5),
+          _Key('6', RetroDosboxScancode.n6),
+          _Key('7', RetroDosboxScancode.n7),
+          _Key('8', RetroDosboxScancode.n8),
+          _Key('9', RetroDosboxScancode.n9),
+          _Key('0', RetroDosboxScancode.n0),
+          _Key('-', RetroDosboxScancode.minus),
+          _Key('=', RetroDosboxScancode.equals),
+          _Key('Bksp', RetroDosboxScancode.backspace, flex: 3),
         ],
         const [
-          _Key('Tab', DosScancode.tab, flex: 3),
-          _Key('Q', DosScancode.q),
-          _Key('W', DosScancode.w),
-          _Key('E', DosScancode.e),
-          _Key('R', DosScancode.r),
-          _Key('T', DosScancode.t),
-          _Key('Y', DosScancode.y),
-          _Key('U', DosScancode.u),
-          _Key('I', DosScancode.i),
-          _Key('O', DosScancode.o),
-          _Key('P', DosScancode.p),
-          _Key('[', DosScancode.leftBracket),
-          _Key(']', DosScancode.rightBracket),
-          _Key(r'\', DosScancode.backslash),
+          _Key('Tab', RetroDosboxScancode.tab, flex: 3),
+          _Key('Q', RetroDosboxScancode.q),
+          _Key('W', RetroDosboxScancode.w),
+          _Key('E', RetroDosboxScancode.e),
+          _Key('R', RetroDosboxScancode.r),
+          _Key('T', RetroDosboxScancode.t),
+          _Key('Y', RetroDosboxScancode.y),
+          _Key('U', RetroDosboxScancode.u),
+          _Key('I', RetroDosboxScancode.i),
+          _Key('O', RetroDosboxScancode.o),
+          _Key('P', RetroDosboxScancode.p),
+          _Key('[', RetroDosboxScancode.leftBracket),
+          _Key(']', RetroDosboxScancode.rightBracket),
+          _Key(r'\', RetroDosboxScancode.backslash),
         ],
         const [
-          _Key('Caps', DosScancode.capsLock, flex: 3),
-          _Key('A', DosScancode.a),
-          _Key('S', DosScancode.s),
-          _Key('D', DosScancode.d),
-          _Key('F', DosScancode.f),
-          _Key('G', DosScancode.g),
-          _Key('H', DosScancode.h),
-          _Key('J', DosScancode.j),
-          _Key('K', DosScancode.k),
-          _Key('L', DosScancode.l),
-          _Key(';', DosScancode.semicolon),
-          _Key("'", DosScancode.apostrophe),
-          _Key('Enter', DosScancode.enter, flex: 4),
+          _Key('Caps', RetroDosboxScancode.capsLock, flex: 3),
+          _Key('A', RetroDosboxScancode.a),
+          _Key('S', RetroDosboxScancode.s),
+          _Key('D', RetroDosboxScancode.d),
+          _Key('F', RetroDosboxScancode.f),
+          _Key('G', RetroDosboxScancode.g),
+          _Key('H', RetroDosboxScancode.h),
+          _Key('J', RetroDosboxScancode.j),
+          _Key('K', RetroDosboxScancode.k),
+          _Key('L', RetroDosboxScancode.l),
+          _Key(';', RetroDosboxScancode.semicolon),
+          _Key("'", RetroDosboxScancode.apostrophe),
+          _Key('Enter', RetroDosboxScancode.enter, flex: 4),
         ],
         const [
-          _Key('Shift', DosScancode.lshift, flex: 4),
-          _Key('Z', DosScancode.z),
-          _Key('X', DosScancode.x),
-          _Key('C', DosScancode.c),
-          _Key('V', DosScancode.v),
-          _Key('B', DosScancode.b),
-          _Key('N', DosScancode.n),
-          _Key('M', DosScancode.m),
-          _Key(',', DosScancode.comma),
-          _Key('.', DosScancode.period),
-          _Key('/', DosScancode.slash),
-          _Key('↑', DosScancode.up),
-          _Key('PgUp', DosScancode.pageUp, flex: 3),
+          _Key('Shift', RetroDosboxScancode.lshift, flex: 4),
+          _Key('Z', RetroDosboxScancode.z),
+          _Key('X', RetroDosboxScancode.x),
+          _Key('C', RetroDosboxScancode.c),
+          _Key('V', RetroDosboxScancode.v),
+          _Key('B', RetroDosboxScancode.b),
+          _Key('N', RetroDosboxScancode.n),
+          _Key('M', RetroDosboxScancode.m),
+          _Key(',', RetroDosboxScancode.comma),
+          _Key('.', RetroDosboxScancode.period),
+          _Key('/', RetroDosboxScancode.slash),
+          _Key('↑', RetroDosboxScancode.up),
+          _Key('PgUp', RetroDosboxScancode.pageUp, flex: 3),
         ],
         const [
-          _Key('Ctrl', DosScancode.lctrl, flex: 3),
-          _Key('Alt', DosScancode.lalt, flex: 3),
-          _Key('Space', DosScancode.space, flex: 10),
-          _Key('←', DosScancode.left),
-          _Key('↓', DosScancode.down),
-          _Key('→', DosScancode.right),
-          _Key('PgDn', DosScancode.pageDown, flex: 3),
+          _Key('Ctrl', RetroDosboxScancode.lctrl, flex: 3),
+          _Key('Alt', RetroDosboxScancode.lalt, flex: 3),
+          _Key('Space', RetroDosboxScancode.space, flex: 10),
+          _Key('←', RetroDosboxScancode.left),
+          _Key('↓', RetroDosboxScancode.down),
+          _Key('→', RetroDosboxScancode.right),
+          _Key('PgDn', RetroDosboxScancode.pageDown, flex: 3),
         ],
       ];
 
@@ -186,12 +186,20 @@ class _OnScreenKeyboardState extends State<OnScreenKeyboard> {
     final rows = _rows;
     final extras = widget.extraKeys;
 
-    return Container(
+    // The outer Material gives the whole keyboard a stable surface for hit
+    // testing. Without it the translucent Container can sit between a tap
+    // and the InkWells inside the keys under unusual Stack layouts, with
+    // the InkWell then registering on the picture's GestureDetector (mouse
+    // mode) rather than the keyboard itself. The Material here is in
+    // addition to -- not instead of -- the per-key Material each _KeyCap
+    // owns for its ripple.
+    return Material(
       color: Colors.black.withValues(alpha: 0.72),
-      padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 6),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
+      child: Container(
+        padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 6),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
           for (final row in rows)
             Padding(
               padding: const EdgeInsets.only(bottom: 4),
@@ -221,7 +229,7 @@ class _OnScreenKeyboardState extends State<OnScreenKeyboard> {
                 for (final code in extras)
                   Expanded(
                     child: _KeyCap(
-                      label: DosKeyCatalogue.labelFor(code),
+                      label: RetroDosboxKeyCatalogue.labelFor(code),
                       active: false,
                       locked: false,
                       onTap: () => _tap(code),
@@ -229,7 +237,8 @@ class _OnScreenKeyboardState extends State<OnScreenKeyboard> {
                   ),
               ],
             ),
-        ],
+          ],
+        ),
       ),
     );
   }
@@ -253,7 +262,7 @@ class _KeyCap extends StatelessWidget {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 2),
       child: Material(
-        color: active ? DosColors.selectedFill : DosColors.panelFill,
+        color: active ? RetroDosboxColors.selectedFill : RetroDosboxColors.panelFill,
         borderRadius: BorderRadius.circular(6),
         child: InkWell(
           onTap: onTap,
@@ -268,10 +277,10 @@ class _KeyCap extends StatelessWidget {
                 // "Ctrl is held down" and "Ctrl applies to the next key" are
                 // different states and the player has to be able to tell.
                 color: locked
-                    ? DosColors.accentAmber
+                    ? RetroDosboxColors.accentAmber
                     : active
-                        ? DosColors.selectedStroke
-                        : DosColors.panelStroke,
+                        ? RetroDosboxColors.selectedStroke
+                        : RetroDosboxColors.panelStroke,
                 width: locked ? 2 : 1,
               ),
             ),
@@ -284,7 +293,7 @@ class _KeyCap extends StatelessWidget {
                   maxLines: 1,
                   style: const TextStyle(
                     fontSize: 12,
-                    color: DosColors.sidebarLabelSelected,
+                    color: RetroDosboxColors.sidebarLabelSelected,
                   ),
                 ),
               ),

@@ -1,5 +1,5 @@
-name: dosbox_multiplatform
-description: "DOSBox-X front end for Android, iOS and Linux."
+name: retro_dosbox
+description: "Retro-Dosbox front end for Android, iOS and Linux -- DOSBox-X wrapped in Flutter."
 # The following line prevents the package from being accidentally published to
 # pub.dev using `flutter pub publish`. This is preferred for private packages.
 publish_to: 'none' # Remove this line if you wish to publish to pub.dev
@@ -76,9 +76,9 @@ flutter:
   # DOSBox-X opens its own data files (fonts, translations, the shipped
   # dosbox-x.conf template, glshaders/) by path, so on Android these get
   # extracted out of the APK to real files on first launch -- see
-  # DosboxNativePaths.extractResourceDir.
+  # RetroDosboxNativePaths.extractResourceDir.
   assets:
-    - assets/dosbox/
+    - assets/retrodosbox/
 
   # An image asset can refer to one or more resolution-specific "variants", see
   # https://flutter.dev/to/resolution-aware-images

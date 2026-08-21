@@ -10,8 +10,8 @@
 // Values are from SDL's SDL_scancode.h and must match the SDL2 that the
 // native core is linked against, since dosbox_core_key_event feeds them
 // straight into MAPPER_CheckEvent.
-class DosScancode {
-  DosScancode._();
+class RetroDosboxScancode {
+  RetroDosboxScancode._();
 
   // Letters (SDL_SCANCODE_A == 4, contiguous through Z).
   static const int a = 4;
@@ -129,11 +129,11 @@ class DosScancode {
 
 /// A named key, for the on-screen keyboard and the "assign a key to this
 /// button" picker.
-class DosKey {
+class RetroDosboxKey {
   /// Label drawn on the key cap.
   final String label;
 
-  /// [DosScancode] value sent to the core.
+  /// [RetroDosboxScancode] value sent to the core.
   final int scancode;
 
   /// Label for the shifted face of the key, drawn small. Presentation only --
@@ -141,138 +141,138 @@ class DosKey {
   /// different scancode for it.
   final String? shiftLabel;
 
-  const DosKey(this.label, this.scancode, {this.shiftLabel});
+  const RetroDosboxKey(this.label, this.scancode, {this.shiftLabel});
 }
 
 /// Keys grouped for the on-screen key picker, mirroring the way the VICE app's
 /// C64KeyCatalogue is grouped. "Common" is first and deliberately short: it is
 /// the set a DOS game actually needs bound to a touch button.
-class DosKeyCatalogue {
-  DosKeyCatalogue._();
+class RetroDosboxKeyCatalogue {
+  RetroDosboxKeyCatalogue._();
 
-  static const List<DosKey> common = [
-    DosKey('Enter', DosScancode.enter),
-    DosKey('Esc', DosScancode.escape),
-    DosKey('Space', DosScancode.space),
-    DosKey('Ctrl', DosScancode.lctrl),
-    DosKey('Alt', DosScancode.lalt),
-    DosKey('Shift', DosScancode.lshift),
-    DosKey('Tab', DosScancode.tab),
-    DosKey('Y', DosScancode.y),
-    DosKey('N', DosScancode.n),
+  static const List<RetroDosboxKey> common = [
+    RetroDosboxKey('Enter', RetroDosboxScancode.enter),
+    RetroDosboxKey('Esc', RetroDosboxScancode.escape),
+    RetroDosboxKey('Space', RetroDosboxScancode.space),
+    RetroDosboxKey('Ctrl', RetroDosboxScancode.lctrl),
+    RetroDosboxKey('Alt', RetroDosboxScancode.lalt),
+    RetroDosboxKey('Shift', RetroDosboxScancode.lshift),
+    RetroDosboxKey('Tab', RetroDosboxScancode.tab),
+    RetroDosboxKey('Y', RetroDosboxScancode.y),
+    RetroDosboxKey('N', RetroDosboxScancode.n),
   ];
 
-  static const List<DosKey> arrows = [
-    DosKey('Up', DosScancode.up),
-    DosKey('Down', DosScancode.down),
-    DosKey('Left', DosScancode.left),
-    DosKey('Right', DosScancode.right),
+  static const List<RetroDosboxKey> arrows = [
+    RetroDosboxKey('Up', RetroDosboxScancode.up),
+    RetroDosboxKey('Down', RetroDosboxScancode.down),
+    RetroDosboxKey('Left', RetroDosboxScancode.left),
+    RetroDosboxKey('Right', RetroDosboxScancode.right),
   ];
 
-  static const List<DosKey> letters = [
-    DosKey('A', DosScancode.a),
-    DosKey('B', DosScancode.b),
-    DosKey('C', DosScancode.c),
-    DosKey('D', DosScancode.d),
-    DosKey('E', DosScancode.e),
-    DosKey('F', DosScancode.f),
-    DosKey('G', DosScancode.g),
-    DosKey('H', DosScancode.h),
-    DosKey('I', DosScancode.i),
-    DosKey('J', DosScancode.j),
-    DosKey('K', DosScancode.k),
-    DosKey('L', DosScancode.l),
-    DosKey('M', DosScancode.m),
-    DosKey('N', DosScancode.n),
-    DosKey('O', DosScancode.o),
-    DosKey('P', DosScancode.p),
-    DosKey('Q', DosScancode.q),
-    DosKey('R', DosScancode.r),
-    DosKey('S', DosScancode.s),
-    DosKey('T', DosScancode.t),
-    DosKey('U', DosScancode.u),
-    DosKey('V', DosScancode.v),
-    DosKey('W', DosScancode.w),
-    DosKey('X', DosScancode.x),
-    DosKey('Y', DosScancode.y),
-    DosKey('Z', DosScancode.z),
+  static const List<RetroDosboxKey> letters = [
+    RetroDosboxKey('A', RetroDosboxScancode.a),
+    RetroDosboxKey('B', RetroDosboxScancode.b),
+    RetroDosboxKey('C', RetroDosboxScancode.c),
+    RetroDosboxKey('D', RetroDosboxScancode.d),
+    RetroDosboxKey('E', RetroDosboxScancode.e),
+    RetroDosboxKey('F', RetroDosboxScancode.f),
+    RetroDosboxKey('G', RetroDosboxScancode.g),
+    RetroDosboxKey('H', RetroDosboxScancode.h),
+    RetroDosboxKey('I', RetroDosboxScancode.i),
+    RetroDosboxKey('J', RetroDosboxScancode.j),
+    RetroDosboxKey('K', RetroDosboxScancode.k),
+    RetroDosboxKey('L', RetroDosboxScancode.l),
+    RetroDosboxKey('M', RetroDosboxScancode.m),
+    RetroDosboxKey('N', RetroDosboxScancode.n),
+    RetroDosboxKey('O', RetroDosboxScancode.o),
+    RetroDosboxKey('P', RetroDosboxScancode.p),
+    RetroDosboxKey('Q', RetroDosboxScancode.q),
+    RetroDosboxKey('R', RetroDosboxScancode.r),
+    RetroDosboxKey('S', RetroDosboxScancode.s),
+    RetroDosboxKey('T', RetroDosboxScancode.t),
+    RetroDosboxKey('U', RetroDosboxScancode.u),
+    RetroDosboxKey('V', RetroDosboxScancode.v),
+    RetroDosboxKey('W', RetroDosboxScancode.w),
+    RetroDosboxKey('X', RetroDosboxScancode.x),
+    RetroDosboxKey('Y', RetroDosboxScancode.y),
+    RetroDosboxKey('Z', RetroDosboxScancode.z),
   ];
 
-  static const List<DosKey> numbers = [
-    DosKey('1', DosScancode.n1, shiftLabel: '!'),
-    DosKey('2', DosScancode.n2, shiftLabel: '@'),
-    DosKey('3', DosScancode.n3, shiftLabel: '#'),
-    DosKey('4', DosScancode.n4, shiftLabel: r'$'),
-    DosKey('5', DosScancode.n5, shiftLabel: '%'),
-    DosKey('6', DosScancode.n6, shiftLabel: '^'),
-    DosKey('7', DosScancode.n7, shiftLabel: '&'),
-    DosKey('8', DosScancode.n8, shiftLabel: '*'),
-    DosKey('9', DosScancode.n9, shiftLabel: '('),
-    DosKey('0', DosScancode.n0, shiftLabel: ')'),
+  static const List<RetroDosboxKey> numbers = [
+    RetroDosboxKey('1', RetroDosboxScancode.n1, shiftLabel: '!'),
+    RetroDosboxKey('2', RetroDosboxScancode.n2, shiftLabel: '@'),
+    RetroDosboxKey('3', RetroDosboxScancode.n3, shiftLabel: '#'),
+    RetroDosboxKey('4', RetroDosboxScancode.n4, shiftLabel: r'$'),
+    RetroDosboxKey('5', RetroDosboxScancode.n5, shiftLabel: '%'),
+    RetroDosboxKey('6', RetroDosboxScancode.n6, shiftLabel: '^'),
+    RetroDosboxKey('7', RetroDosboxScancode.n7, shiftLabel: '&'),
+    RetroDosboxKey('8', RetroDosboxScancode.n8, shiftLabel: '*'),
+    RetroDosboxKey('9', RetroDosboxScancode.n9, shiftLabel: '('),
+    RetroDosboxKey('0', RetroDosboxScancode.n0, shiftLabel: ')'),
   ];
 
-  static const List<DosKey> function = [
-    DosKey('F1', DosScancode.f1),
-    DosKey('F2', DosScancode.f2),
-    DosKey('F3', DosScancode.f3),
-    DosKey('F4', DosScancode.f4),
-    DosKey('F5', DosScancode.f5),
-    DosKey('F6', DosScancode.f6),
-    DosKey('F7', DosScancode.f7),
-    DosKey('F8', DosScancode.f8),
-    DosKey('F9', DosScancode.f9),
-    DosKey('F10', DosScancode.f10),
-    DosKey('F11', DosScancode.f11),
-    DosKey('F12', DosScancode.f12),
+  static const List<RetroDosboxKey> function = [
+    RetroDosboxKey('F1', RetroDosboxScancode.f1),
+    RetroDosboxKey('F2', RetroDosboxScancode.f2),
+    RetroDosboxKey('F3', RetroDosboxScancode.f3),
+    RetroDosboxKey('F4', RetroDosboxScancode.f4),
+    RetroDosboxKey('F5', RetroDosboxScancode.f5),
+    RetroDosboxKey('F6', RetroDosboxScancode.f6),
+    RetroDosboxKey('F7', RetroDosboxScancode.f7),
+    RetroDosboxKey('F8', RetroDosboxScancode.f8),
+    RetroDosboxKey('F9', RetroDosboxScancode.f9),
+    RetroDosboxKey('F10', RetroDosboxScancode.f10),
+    RetroDosboxKey('F11', RetroDosboxScancode.f11),
+    RetroDosboxKey('F12', RetroDosboxScancode.f12),
   ];
 
   /// The keypad matters more than its obscurity suggests: it is the primary
   /// control surface for a large share of DOS flight and space sims.
-  static const List<DosKey> keypad = [
-    DosKey('Num 0', DosScancode.kp0),
-    DosKey('Num 1', DosScancode.kp1),
-    DosKey('Num 2', DosScancode.kp2),
-    DosKey('Num 3', DosScancode.kp3),
-    DosKey('Num 4', DosScancode.kp4),
-    DosKey('Num 5', DosScancode.kp5),
-    DosKey('Num 6', DosScancode.kp6),
-    DosKey('Num 7', DosScancode.kp7),
-    DosKey('Num 8', DosScancode.kp8),
-    DosKey('Num 9', DosScancode.kp9),
-    DosKey('Num .', DosScancode.kpPeriod),
-    DosKey('Num +', DosScancode.kpPlus),
-    DosKey('Num -', DosScancode.kpMinus),
-    DosKey('Num *', DosScancode.kpMultiply),
-    DosKey('Num /', DosScancode.kpDivide),
-    DosKey('Num Enter', DosScancode.kpEnter),
+  static const List<RetroDosboxKey> keypad = [
+    RetroDosboxKey('Num 0', RetroDosboxScancode.kp0),
+    RetroDosboxKey('Num 1', RetroDosboxScancode.kp1),
+    RetroDosboxKey('Num 2', RetroDosboxScancode.kp2),
+    RetroDosboxKey('Num 3', RetroDosboxScancode.kp3),
+    RetroDosboxKey('Num 4', RetroDosboxScancode.kp4),
+    RetroDosboxKey('Num 5', RetroDosboxScancode.kp5),
+    RetroDosboxKey('Num 6', RetroDosboxScancode.kp6),
+    RetroDosboxKey('Num 7', RetroDosboxScancode.kp7),
+    RetroDosboxKey('Num 8', RetroDosboxScancode.kp8),
+    RetroDosboxKey('Num 9', RetroDosboxScancode.kp9),
+    RetroDosboxKey('Num .', RetroDosboxScancode.kpPeriod),
+    RetroDosboxKey('Num +', RetroDosboxScancode.kpPlus),
+    RetroDosboxKey('Num -', RetroDosboxScancode.kpMinus),
+    RetroDosboxKey('Num *', RetroDosboxScancode.kpMultiply),
+    RetroDosboxKey('Num /', RetroDosboxScancode.kpDivide),
+    RetroDosboxKey('Num Enter', RetroDosboxScancode.kpEnter),
   ];
 
-  static const List<DosKey> editing = [
-    DosKey('Backspace', DosScancode.backspace),
-    DosKey('Delete', DosScancode.delete),
-    DosKey('Insert', DosScancode.insert),
-    DosKey('Home', DosScancode.home),
-    DosKey('End', DosScancode.end),
-    DosKey('PgUp', DosScancode.pageUp),
-    DosKey('PgDn', DosScancode.pageDown),
+  static const List<RetroDosboxKey> editing = [
+    RetroDosboxKey('Backspace', RetroDosboxScancode.backspace),
+    RetroDosboxKey('Delete', RetroDosboxScancode.delete),
+    RetroDosboxKey('Insert', RetroDosboxScancode.insert),
+    RetroDosboxKey('Home', RetroDosboxScancode.home),
+    RetroDosboxKey('End', RetroDosboxScancode.end),
+    RetroDosboxKey('PgUp', RetroDosboxScancode.pageUp),
+    RetroDosboxKey('PgDn', RetroDosboxScancode.pageDown),
   ];
 
-  static const List<DosKey> symbols = [
-    DosKey('-', DosScancode.minus, shiftLabel: '_'),
-    DosKey('=', DosScancode.equals, shiftLabel: '+'),
-    DosKey('[', DosScancode.leftBracket, shiftLabel: '{'),
-    DosKey(']', DosScancode.rightBracket, shiftLabel: '}'),
-    DosKey(r'\', DosScancode.backslash, shiftLabel: '|'),
-    DosKey(';', DosScancode.semicolon, shiftLabel: ':'),
-    DosKey("'", DosScancode.apostrophe, shiftLabel: '"'),
-    DosKey('`', DosScancode.grave, shiftLabel: '~'),
-    DosKey(',', DosScancode.comma, shiftLabel: '<'),
-    DosKey('.', DosScancode.period, shiftLabel: '>'),
-    DosKey('/', DosScancode.slash, shiftLabel: '?'),
+  static const List<RetroDosboxKey> symbols = [
+    RetroDosboxKey('-', RetroDosboxScancode.minus, shiftLabel: '_'),
+    RetroDosboxKey('=', RetroDosboxScancode.equals, shiftLabel: '+'),
+    RetroDosboxKey('[', RetroDosboxScancode.leftBracket, shiftLabel: '{'),
+    RetroDosboxKey(']', RetroDosboxScancode.rightBracket, shiftLabel: '}'),
+    RetroDosboxKey(r'\', RetroDosboxScancode.backslash, shiftLabel: '|'),
+    RetroDosboxKey(';', RetroDosboxScancode.semicolon, shiftLabel: ':'),
+    RetroDosboxKey("'", RetroDosboxScancode.apostrophe, shiftLabel: '"'),
+    RetroDosboxKey('`', RetroDosboxScancode.grave, shiftLabel: '~'),
+    RetroDosboxKey(',', RetroDosboxScancode.comma, shiftLabel: '<'),
+    RetroDosboxKey('.', RetroDosboxScancode.period, shiftLabel: '>'),
+    RetroDosboxKey('/', RetroDosboxScancode.slash, shiftLabel: '?'),
   ];
 
   /// Ordered groups for the picker UI.
-  static const Map<String, List<DosKey>> groups = {
+  static const Map<String, List<RetroDosboxKey>> groups = {
     'Common': common,
     'Arrows': arrows,
     'Letters': letters,
@@ -283,13 +283,13 @@ class DosKeyCatalogue {
     'Symbols': symbols,
   };
 
-  static final Map<int, DosKey> _byScancode = {
+  static final Map<int, RetroDosboxKey> _byScancode = {
     for (final group in groups.values)
       for (final key in group) key.scancode: key,
   };
 
   /// The catalogue entry for a scancode, or null if it is not one we name.
-  static DosKey? byScancode(int scancode) => _byScancode[scancode];
+  static RetroDosboxKey? byScancode(int scancode) => _byScancode[scancode];
 
   /// Human label for a scancode, falling back to the raw number so an
   /// unrecognised binding is still debuggable in the UI rather than blank.

@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Adaptive launcher icon. Background colour comes from ic_launcher_background
+  in values/ (a near-black matching the app's root background); foreground
+  is the amber "C:>" mark. Android 8+ composes the two with a circular or
+  squircle mask automatically; pre-8 falls back to mipmap-*/ic_launcher.png.
+-->
+<adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
+    <background android:drawable="@color/ic_launcher_background" />
+    <foreground android:drawable="@mipmap/ic_launcher_foreground" />
+</adaptive-icon>

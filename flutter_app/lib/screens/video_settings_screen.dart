@@ -8,7 +8,7 @@
 import 'package:flutter/material.dart';
 
 import '../services/video_settings.dart';
-import '../theme/dosbox_theme.dart';
+import '../theme/retrodosbox_theme.dart';
 
 class VideoSettingsScreen extends StatelessWidget {
   const VideoSettingsScreen({super.key});
@@ -19,9 +19,9 @@ class VideoSettingsScreen extends StatelessWidget {
       child: Container(
         padding: const EdgeInsets.all(12),
         decoration: BoxDecoration(
-          color: DosColors.cardFill,
+          color: RetroDosboxColors.cardFill,
           borderRadius: BorderRadius.circular(8),
-          border: Border.all(color: DosColors.cardStroke),
+          border: Border.all(color: RetroDosboxColors.cardStroke),
         ),
         child: child,
       ),
@@ -45,13 +45,13 @@ class VideoSettingsScreen extends StatelessWidget {
               const SizedBox(height: 4),
               Text(subtitle,
                   style: const TextStyle(
-                      color: DosColors.textMuted2, fontSize: 12)),
+                      color: RetroDosboxColors.textMuted2, fontSize: 12)),
             ],
           ),
         ),
         Switch(
           value: value,
-          activeThumbColor: DosColors.accentAmber,
+          activeThumbColor: RetroDosboxColors.accentAmber,
           onChanged: onChanged,
         ),
       ],
@@ -71,7 +71,7 @@ class VideoSettingsScreen extends StatelessWidget {
         // and will come back with the effect.
         final crtOn = settings.crt;
         final scanlineColour =
-            crtOn ? DosColors.accentAmber : DosColors.textMuted;
+            crtOn ? RetroDosboxColors.accentAmber : RetroDosboxColors.textMuted;
 
         return ListView(
           children: [
@@ -98,7 +98,7 @@ class VideoSettingsScreen extends StatelessWidget {
                     'Integer scale keeps every emulated pixel the same size, '
                     'so scrolling never shimmers.',
                     style:
-                        TextStyle(color: DosColors.textMuted2, fontSize: 12),
+                        TextStyle(color: RetroDosboxColors.textMuted2, fontSize: 12),
                   ),
                   const SizedBox(height: 10),
                   Wrap(
@@ -136,7 +136,7 @@ class VideoSettingsScreen extends StatelessWidget {
                       Expanded(
                         child: Slider(
                           value: settings.scanlineIntensity,
-                          activeColor: DosColors.accentAmber,
+                          activeColor: RetroDosboxColors.accentAmber,
                           // A null callback is what disables (and greys) a
                           // Slider in Material; there is no `enabled` flag.
                           onChanged:
@@ -183,7 +183,7 @@ class VideoSettingsScreen extends StatelessWidget {
                     'For vertically-oriented games on a handheld held '
                     'sideways.',
                     style:
-                        TextStyle(color: DosColors.textMuted2, fontSize: 12),
+                        TextStyle(color: RetroDosboxColors.textMuted2, fontSize: 12),
                   ),
                   const SizedBox(height: 10),
                   SegmentedButton<int>(

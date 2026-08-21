@@ -14,8 +14,8 @@ import 'package:flutter/services.dart' show AssetManifest, rootBundle;
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 
-class DosboxNativePaths {
-  DosboxNativePaths._();
+class RetroDosboxNativePaths {
+  RetroDosboxNativePaths._();
 
   /// Marker written after a successful resource extraction, so subsequent
   /// launches skip re-copying the whole asset subtree.

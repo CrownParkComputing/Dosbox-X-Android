@@ -3,7 +3,7 @@ import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 
-import '../ffi/dosbox_core.dart';
+import '../ffi/retrodosbox_core.dart';
 import '../services/video_settings.dart';
 
 /// Live view of the DOS framebuffer.
@@ -27,7 +27,7 @@ import '../services/video_settings.dart';
 ///    (320x200 displayed as 4:3) and frequently not (320x240 displayed
 ///    square), and there is no single correct constant.
 class FramebufferView extends StatefulWidget {
-  final DosboxCore core;
+  final RetroDosboxCore core;
   final Duration pollInterval;
 
   const FramebufferView({

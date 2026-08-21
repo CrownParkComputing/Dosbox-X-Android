@@ -5,8 +5,8 @@
 // value carried over from the Java sources is used here unconverted.
 import 'package:flutter/material.dart';
 
-class DosColors {
-  DosColors._();
+class RetroDosboxColors {
+  RetroDosboxColors._();
 
   static const Color rootBackground = Color(0xFF050607);
 
@@ -38,8 +38,8 @@ class DosColors {
   static const Color danger = Color(0xFFE53935);
 }
 
-class DosMetrics {
-  DosMetrics._();
+class RetroDosboxMetrics {
+  RetroDosboxMetrics._();
 
   /// Clamp bounds for the sidebar, whose width is measured from its widest
   /// label rather than fixed -- a flat value left a dead strip beside every
@@ -79,21 +79,21 @@ class DosMetrics {
 
 /// Monospace styling for the places this app deliberately looks like a DOS
 /// prompt (setup wizard, status lines, config help text).
-class DosTextStyles {
-  DosTextStyles._();
+class RetroDosboxTextStyles {
+  RetroDosboxTextStyles._();
 
   static const TextStyle terminal = TextStyle(
     fontFamily: 'monospace',
     fontFamilyFallback: ['Courier New', 'DejaVu Sans Mono'],
     fontSize: 13,
     height: 1.35,
-    color: DosColors.accentAmber,
+    color: RetroDosboxColors.accentAmber,
   );
 
   static const TextStyle statusLine = TextStyle(
     fontFamily: 'monospace',
     fontFamilyFallback: ['Courier New', 'DejaVu Sans Mono'],
     fontSize: 11,
-    color: DosColors.textMuted,
+    color: RetroDosboxColors.textMuted,
   );
 }

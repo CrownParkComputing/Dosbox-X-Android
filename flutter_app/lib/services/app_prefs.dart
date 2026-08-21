@@ -45,6 +45,7 @@ class AppPrefs {
   static const _keyActionButtonBScancode = 'action_button_b_scancode';
   static const _keyOnScreenPadMode = 'on_screen_pad_mode';
   static const _keyJoystickEnabled = 'joystick_enabled';
+  static const _keySidebarHidden = 'sidebar_hidden';
   static const _keyCustomButtons = 'custom_on_screen_buttons';
 
   /// Sentinel stored in prefs for "leave this button as joystick fire" (no
@@ -140,12 +141,25 @@ class AppPrefs {
     await prefs.setBool(_keyJoystickEnabled, value);
   }
 
+  /// Whether the workbench sidebar is hidden so the content panel gets the
+  /// full width. The toggle lives in the bottom status bar precisely because
+  /// it must stay reachable while the sidebar is hidden.
+  static Future<bool> getSidebarHidden() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getBool(_keySidebarHidden) ?? false;
+  }
+
+  static Future<void> setSidebarHidden(bool value) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_keySidebarHidden, value);
+  }
+
   /// Extra on-screen buttons the user has added, in the order they were
   /// added (which is the order they appear on screen), as SDL scancodes.
   ///
   /// These are ADDITIONAL to the A/B action buttons. Each one sends a real
   /// key press via `dosbox_core_key_event`, so any scancode can be assigned
-  /// -- `DosKeyCatalogue` only decides which ones the picker offers and what
+  /// -- `RetroDosboxKeyCatalogue` only decides which ones the picker offers and what
   /// they are labelled, it is not a limit on what can be stored here.
   static Future<List<int>> getCustomButtons() async {
     final prefs = await SharedPreferences.getInstance();
@@ -168,7 +182,7 @@ class AppPrefs {
 
   /// Assignable A/B action-button mapping: null means "joystick button"
   /// (the button's default), a non-null value is an SDL scancode from
-  /// `DosScancode` sent via `dosbox_core_key_event`.
+  /// `RetroDosboxScancode` sent via `dosbox_core_key_event`.
   ///
   /// [button] is 'a' or 'b'; anything else is treated as 'b'.
   static Future<int?> getActionButtonScancode(String button) async {

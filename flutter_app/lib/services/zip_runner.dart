@@ -68,7 +68,7 @@ class ZipRunner {
   }
 
   /// Extracts [zip] into the per-title cache and returns the setup the
-  /// DosConfBuilder needs.
+  /// RetroDosboxConfBuilder needs.
   ///
   /// The cache is keyed by [slug], so two launches of the same zip hit the
   /// same directory. The cache is invalidated only when the underlying zip's

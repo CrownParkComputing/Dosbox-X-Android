@@ -43,3 +43,8 @@ app.*.map.json
 /android/app/debug
 /android/app/profile
 /android/app/release
+
+# Release signing config: holds the .jks path and passwords. The .jks file
+# itself is also gitignored under `*.jks` below. `key.properties.example`
+# IS checked in so the schema survives across checkouts.
+/android/key.properties

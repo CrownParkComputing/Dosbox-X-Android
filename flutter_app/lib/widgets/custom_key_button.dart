@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 
-import '../data/dos_scancodes.dart';
-import '../ffi/dosbox_core.dart';
-import '../theme/dosbox_theme.dart';
+import '../data/retrodosbox_scancodes.dart';
+import '../ffi/retrodosbox_core.dart';
+import '../theme/retrodosbox_theme.dart';
 
 /// An extra on-screen button the user added themselves, bound to one
 /// keyboard key.
@@ -10,13 +10,13 @@ import '../theme/dosbox_theme.dart';
 /// Deliberately NOT a remap of an existing control: the joystick stays the
 /// joystick and the action buttons stay action buttons, and these are added
 /// explicitly from Input settings ("Add button" -> pick a key). Presses go
-/// straight to [DosboxCore.keyEvent] as an SDL scancode, so any key in
-/// [DosKeyCatalogue] works -- including the keypad and the modifiers, which
+/// straight to [RetroDosboxCore.keyEvent] as an SDL scancode, so any key in
+/// [RetroDosboxKeyCatalogue] works -- including the keypad and the modifiers, which
 /// is what DOS games actually ask for far more often than a game-port
 /// button.
 class CustomKeyButton extends StatefulWidget {
-  final DosKey dosKey;
-  final DosboxCore core;
+  final RetroDosboxKey dosKey;
+  final RetroDosboxCore core;
   final double size;
 
   const CustomKeyButton({
@@ -98,11 +98,11 @@ class _CustomKeyButtonState extends State<CustomKeyButton> {
 }
 
 /// Modal that lets the user pick which key a new button should send.
-/// Grouped by [DosKeyCatalogue.groups] so the whole PC keyboard -- letters,
+/// Grouped by [RetroDosboxKeyCatalogue.groups] so the whole PC keyboard -- letters,
 /// number row, function keys, the keypad -- is browsable instead of being one
 /// undifferentiated grid of a hundred-odd caps.
-Future<DosKey?> showDosKeyPicker(BuildContext context) {
-  return showDialog<DosKey>(
+Future<RetroDosboxKey?> showDosKeyPicker(BuildContext context) {
+  return showDialog<RetroDosboxKey>(
     context: context,
     builder: (context) => Dialog(
       backgroundColor: const Color(0xFF141A1F),
@@ -125,13 +125,13 @@ Future<DosKey?> showDosKeyPicker(BuildContext context) {
               child: ListView(
                 padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
                 children: [
-                  for (final entry in DosKeyCatalogue.groups.entries) ...[
+                  for (final entry in RetroDosboxKeyCatalogue.groups.entries) ...[
                     Padding(
                       padding: const EdgeInsets.only(top: 12, bottom: 6),
                       child: Text(
                         entry.key.toUpperCase(),
                         style: const TextStyle(
-                            color: DosColors.accentAmber,
+                            color: RetroDosboxColors.accentAmber,
                             fontSize: 11,
                             letterSpacing: 1.1,
                             fontWeight: FontWeight.bold),

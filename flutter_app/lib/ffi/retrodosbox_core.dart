@@ -1,23 +1,23 @@
 // The emulator core as the UI sees it.
 //
 // Everything above this line is plain Dart: screens, widgets and the save
-// state service talk to a `DosboxCore`, never to `dart:ffi` directly. There
+// state service talk to a `RetroDosboxCore`, never to `dart:ffi` directly. There
 // are two implementations:
 //
-//   - DosboxCoreBindings (dosbox_bindings.dart), which opens
+//   - RetroDosboxCoreBindings (dosbox_bindings.dart), which opens
 //     libdosboxcore.so. That class cannot even be constructed without the
 //     native library present on disk, which is why this interface exists
 //     rather than the concrete type being referenced everywhere.
-//   - StubDosboxCore (stub_dosbox_core.dart), which reports "not running"
+//   - StubRetroDosboxCore (stub_dosbox_core.dart), which reports "not running"
 //     for everything and draws a test pattern.
 //
 // The stub is not just a test fake. The native core is a separate, slow build
 // (a cross-compiled DOSBox-X tree plus this project's bridge), so the whole
 // Flutter UI is developed and run against the stub, and `flutter test` needs
 // no native library, no device and no DOS game files.
-import 'dosbox_bindings.dart' show FrameSnapshot;
+import 'retrodosbox_bindings.dart' show FrameSnapshot;
 
-abstract class DosboxCore {
+abstract class RetroDosboxCore {
   /// Points the core at DOSBox-X's own resource tree (fonts, translations,
   /// conf template, glshaders). Must be called before [start].
   void init(String resourceDir);
@@ -25,12 +25,12 @@ abstract class DosboxCore {
   /// Boots the machine using the dosbox-x.conf at [confPath]. That file is
   /// the only channel by which a title is launched -- mounts, machine type
   /// and the [autoexec] that runs the program all live in it. Returns
-  /// [DosboxResult.ok] on success.
+  /// [RetroDosboxResult.ok] on success.
   ///
   /// Asynchronous: the machine is still booting when this returns.
   int start(String confPath);
 
-  /// Best-effort shutdown. Returns [DosboxResult.err] on builds where the
+  /// Best-effort shutdown. Returns [RetroDosboxResult.err] on builds where the
   /// core cannot be torn down -- see the note on dosbox_core_stop in
   /// native/dosbox_core/bridge/dosbox_bridge.h. Callers must not assume a
   /// second [start] will succeed.
@@ -50,7 +50,7 @@ abstract class DosboxCore {
   // --- Input ---------------------------------------------------------------
 
   /// Keyboard by SDL2 scancode. Scancodes rather than characters because DOS
-  /// games read the keyboard at that level; see [DosScancode].
+  /// games read the keyboard at that level; see [RetroDosboxScancode].
   void keyEvent(int sdlScancode, bool pressed);
 
   void mouseMotion(int dx, int dy);
@@ -61,7 +61,7 @@ abstract class DosboxCore {
   /// button: 0 left, 1 right, 2 middle.
   void mouseButton(int button, bool pressed);
 
-  /// port: 0 or 1. mask: bitwise OR of [DosJoyBits]. Axes are -1.0..1.0.
+  /// port: 0 or 1. mask: bitwise OR of [RetroDosboxJoyBits]. Axes are -1.0..1.0.
   void joystick(int port, int mask, {double axisX = 0, double axisY = 0});
 
   /// Types [line] into the DOS shell and presses Enter.
@@ -70,7 +70,7 @@ abstract class DosboxCore {
   // --- Save states ---------------------------------------------------------
 
   /// DOSBox-X's save states are slot-based, not path-based (class SaveState
-  /// in its dosbox.h), so these take a slot in 0..[DosboxLimits.slotCount).
+  /// in its dosbox.h), so these take a slot in 0..[RetroDosboxLimits.slotCount).
   /// SaveStateService layers naming, thumbnails and eviction on top.
   int saveState(int slot);
 
@@ -86,7 +86,7 @@ abstract class DosboxCore {
 
   /// The properties of one section, as reflected by the engine. Used to
   /// generate the settings UI rather than hand-maintaining a duplicate list.
-  List<DosConfigProperty> configSectionProperties(String section);
+  List<RetroDosboxConfigProperty> configSectionProperties(String section);
 
   /// Applies a property to the running engine.
   bool configSet(String section, String property, String value);
@@ -123,8 +123,8 @@ abstract class DosboxCore {
 }
 
 /// Result codes, mirroring the #defines in dosbox_bridge.h.
-class DosboxResult {
-  DosboxResult._();
+class RetroDosboxResult {
+  RetroDosboxResult._();
 
   static const int ok = 0;
   static const int err = -1;
@@ -138,16 +138,16 @@ class DosboxResult {
   static const int alreadyStarted = -4;
 }
 
-class DosboxLimits {
-  DosboxLimits._();
+class RetroDosboxLimits {
+  RetroDosboxLimits._();
 
   /// DOSBOX_SLOT_COUNT in dosbox_bridge.h.
   static const int slotCount = 10;
 }
 
 /// Emulated PC joystick bits, matching the DOSBOX_JOY_* defines.
-class DosJoyBits {
-  DosJoyBits._();
+class RetroDosboxJoyBits {
+  RetroDosboxJoyBits._();
 
   static const int up = 0x01;
   static const int down = 0x02;
@@ -160,7 +160,7 @@ class DosJoyBits {
 }
 
 /// One property as reflected out of DOSBox-X's config system.
-class DosConfigProperty {
+class RetroDosboxConfigProperty {
   final String name;
 
   /// "bool", "int", "string", "hex" or "double". Drives widget choice.
@@ -173,7 +173,7 @@ class DosConfigProperty {
   /// the UI should offer a dropdown rather than a free text field.
   final List<String> values;
 
-  const DosConfigProperty({
+  const RetroDosboxConfigProperty({
     required this.name,
     required this.type,
     required this.value,
@@ -182,8 +182,8 @@ class DosConfigProperty {
     required this.values,
   });
 
-  factory DosConfigProperty.fromJson(Map<String, dynamic> json) {
-    return DosConfigProperty(
+  factory RetroDosboxConfigProperty.fromJson(Map<String, dynamic> json) {
+    return RetroDosboxConfigProperty(
       name: (json['name'] ?? '') as String,
       type: (json['type'] ?? 'string') as String,
       value: (json['value'] ?? '').toString(),

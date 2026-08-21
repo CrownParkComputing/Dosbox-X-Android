@@ -158,10 +158,15 @@ if [ "$DO_BUILD" = 1 ]; then
 fi
 
 # ---------------------------------------------------------------- install
+# The package is com.dosboxx.app ON PURPOSE (build.gradle.kts): the Flutter
+# app replaces the legacy Java app in place, keeping its identity and data.
+# The MainActivity class lives in the Kotlin namespace, which is NOT the
+# package id, so the launch component spells both out.
+PKG="com.dosboxx.app"
+MAIN_ACTIVITY="com.crownpark.retrodosbox.MainActivity"
 if [ "$DO_INSTALL" = 1 ]; then
-    PKG="com.dosboxmultiplatform.dosbox_multiplatform"
     if [ -f "$APK" ]; then
-        echo "==> installing $APK"
+        echo "==> installing $APK (package $PKG)"
         "$ADB" install -r "$APK"
     elif [ -f "$AAB" ]; then
         # AABs need bundle install. The host has bundletool?
@@ -171,9 +176,8 @@ fi
 
 # ---------------------------------------------------------------- launch
 if [ "$DO_LAUNCH" = 1 ]; then
-    PKG="com.dosboxmultiplatform.dosbox_multiplatform"
     echo "==> launching $PKG"
-    "$ADB" shell am start -n "$PKG/.MainActivity"
+    "$ADB" shell am start -n "$PKG/$MAIN_ACTIVITY"
 fi
 
 echo "==> done"

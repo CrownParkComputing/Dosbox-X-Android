@@ -68,8 +68,8 @@ extern "C" {
 /* The core is not running, so the request is meaningless. */
 #define DOSBOX_ERR_NOT_RUNNING (-3)
 
-/* The core has already been started and this build cannot restart it in
- * process (see dosbox_core_stop). */
+/* The core is already running a session. After a successful
+ * dosbox_core_stop() a new start() is allowed. */
 #define DOSBOX_ERR_ALREADY_STARTED (-4)
 
 /* ------------------------------------------------------------------------ */
@@ -104,15 +104,17 @@ void dosbox_core_init(const char *resource_dir);
 int32_t dosbox_core_start(const char *conf_path);
 
 /*
- * Ask the mainloop to shut the machine down and exit.
+ * Shut the machine down and tear the engine down with it.
  *
- * IMPORTANT / KNOWN LIMITATION: upstream DOSBox-X has no complete teardown
- * path -- the Android app this project replaces sidesteps the problem by
- * running the emulator in a separate ":emu" process and killing it. Flutter
- * is single-process, so until the core gains a real shutdown this returns
- * DOSBOX_ERR and the only supported "quit" is to leave the core running
- * paused in the background. Callers must treat a successful stop as
- * best-effort and must not assume they can start a second session.
+ * Queues the same kill switch DOSBox-X's own Ctrl+F9 uses (an exception
+ * thrown on the mainloop thread out of DOSBOX_RunMachine), which makes
+ * dosbox_x_main run its full teardown and return. Blocks (bounded, ~5s)
+ * until the mainloop thread has exited, then resets the bridge so a later
+ * dosbox_core_start() begins a genuinely new session with a new conf.
+ *
+ * Returns DOSBOX_OK on a clean teardown, DOSBOX_ERR if nothing was running
+ * or the mainloop did not exit in time (callers should then fall back to a
+ * process restart, which is all the Android app this replaces had anyway).
  */
 int32_t dosbox_core_stop(void);
 

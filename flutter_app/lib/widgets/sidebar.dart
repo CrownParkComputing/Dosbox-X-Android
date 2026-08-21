@@ -1,37 +1,30 @@
 import 'package:flutter/material.dart';
 
-import '../theme/dosbox_theme.dart';
-
-/// One entry in the side nav.
-class SidebarDestination {
-  final String title;
-
-  const SidebarDestination(this.title);
-}
-
-/// The side nav: a vertical rail of destination buttons with an optional
-/// widget pinned to the bottom of the rail.
+/// The side nav shared by every Retro-* front end.
 ///
-/// The destinations are passed in rather than read from a screen-level enum.
-/// The VICE app's rail imports its category enum from workbench_screen.dart,
-/// which makes the widget unusable until that screen exists and impossible to
-/// reuse for a second rail; here the caller owns the list and the selection,
-/// so this file depends on nothing but the theme.
+/// This file is deliberately IDENTICAL in all of the apps. Nothing in it
+/// imports a per-app theme: the colours and metrics arrive as a
+/// [SidebarStyle], which each app builds from its own theme file. Before
+/// this, four front ends had four rails -- one decoupled, one that imported
+/// its category enum from workbench_screen.dart (and so could not be reused
+/// or unit-tested), one private class inlined in a screen, and one with a
+/// different name and API again. Any fix had to be made four times and
+/// usually was not.
 ///
 /// Sizing is measured, not hardcoded. LauncherLayoutHelper.createLauncher in
-/// the Android original also sizes this rail from its content (widest
+/// the Android original also sized this rail from its content (widest
 /// measured label, floored at dp(88), capped at dp(150)/a quarter of the
-/// screen); an earlier pass of the sibling port pinned it at a flat 160dp
-/// instead, which left a wide dead strip to the right of every label on a
-/// 853dp-wide device -- and, worse, ignored the platform text scale entirely,
-/// so at the Retroid's 1.35x font scale the labels were far too big for the
-/// fixed 36dp rows. Both are computed here now:
-///   - width  = widest measured title + paddings, clamped
+/// screen); an earlier pass pinned it at a flat 160dp instead, which left a
+/// wide dead strip to the right of every label on a 853dp-wide device -- and,
+/// worse, ignored the platform text scale entirely, so at the Retroid's 1.35x
+/// font scale the labels were far too big for the fixed 36dp rows. Both are
+/// computed here:
+///   - width  = icon column + widest measured title + paddings, clamped
 ///   - height = text height + vertical padding, floored at a touch target
 class Sidebar extends StatelessWidget {
   final List<SidebarDestination> destinations;
 
-  /// Index into [destinations]. Out-of-range values simply mean "nothing
+  /// Index into [destinations]. Out-of-range simply means "nothing
   /// highlighted", which is the right behaviour while a screen is still
   /// deciding what it is showing rather than an error worth asserting on.
   final int selectedIndex;
@@ -39,66 +32,68 @@ class Sidebar extends StatelessWidget {
   final ValueChanged<int> onSelected;
 
   /// Optional content pinned to the bottom of the rail, below the scrolling
-  /// destination list. The VICE app hardcodes a music-player status line in
-  /// this slot; this front end has no music player, but the slot itself is
-  /// worth keeping -- a mount/cycles status line lives just as naturally
-  /// there. Null means the rail ends after the last button.
+  /// destination list -- a music status line, a mount/cycles readout. Null
+  /// means the rail ends after the last button.
   final Widget? footer;
+
+  final SidebarStyle style;
 
   const Sidebar({
     super.key,
     required this.destinations,
     required this.selectedIndex,
     required this.onSelected,
+    required this.style,
     this.footer,
   });
 
-
-  TextStyle _titleStyle(double scaledSize) => TextStyle(
-        fontSize: scaledSize,
-        height: 1.15,
-        color: DosColors.sidebarLabelIdle,
-      );
+  static const double _iconColumnWidth = 22.0;
+  static const double _iconGap = 10.0;
 
   @override
   Widget build(BuildContext context) {
     final scaler = MediaQuery.textScalerOf(context);
-    final titleSize = scaler.scale(DosMetrics.sidebarButtonTextSize);
-    final style = _titleStyle(titleSize);
+    final titleSize = scaler.scale(style.buttonTextSize);
+    final textStyle = TextStyle(
+      fontSize: titleSize,
+      height: 1.15,
+      color: style.labelIdle,
+    );
 
     // Widest title decides the rail width, so no label is ever clipped and
-    // there's no dead space beyond one consistent right margin.
+    // there is no dead space beyond one consistent right margin.
     double widest = 0;
     for (final dest in destinations) {
       final painter = TextPainter(
-        text: TextSpan(text: dest.title, style: style),
+        text: TextSpan(text: dest.title, style: textStyle),
         textDirection: Directionality.of(context),
         maxLines: 1,
       )..layout();
       if (painter.width > widest) widest = painter.width;
     }
 
-    final horizontalPadding = DosMetrics.sidebarButtonSidePadding * 2;
-    final rowContentWidth = widest;
+    // Only reserve the icon column if something actually has an icon --
+    // otherwise a rail of plain labels carries a permanent empty gutter.
+    final hasIcons = destinations.any((d) => d.icon != null);
+    final iconAllowance = hasIcons ? _iconColumnWidth + _iconGap : 0.0;
+
     final screenWidth = MediaQuery.sizeOf(context).width;
     final railWidth =
-        (rowContentWidth + horizontalPadding + DosMetrics.sideNavPadding * 2)
-            .clamp(DosMetrics.sidebarMinWidth,
-                DosMetrics.sidebarMaxWidth(screenWidth));
+        (widest + iconAllowance + style.buttonSidePadding * 2 + style.navPadding * 2)
+            .clamp(style.minWidth, style.maxWidth(screenWidth));
 
-    // Rows grow with the text rather than clipping it, but never get
-    // smaller than a comfortable touch target.
-    final rowHeight =
-        (titleSize * 1.15 + DosMetrics.sidebarButtonVerticalPadding * 2)
-            .clamp(DosMetrics.sidebarButtonHeight, 72.0);
+    // Rows grow with the text rather than clipping it, but never get smaller
+    // than a comfortable touch target.
+    final rowHeight = (titleSize * 1.15 + style.buttonVerticalPadding * 2)
+        .clamp(style.buttonHeight, 72.0);
 
     return Container(
       width: railWidth,
-      padding: const EdgeInsets.all(DosMetrics.sideNavPadding),
+      padding: EdgeInsets.all(style.navPadding),
       decoration: BoxDecoration(
-        color: DosColors.panelFill,
+        color: style.panelFill,
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: DosColors.panelStroke),
+        border: Border.all(color: style.panelStroke),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -122,7 +117,10 @@ class Sidebar extends StatelessWidget {
                       selected: i == selectedIndex,
                       onTap: () => onSelected(i),
                       height: rowHeight,
-                      titleStyle: style,
+                      titleStyle: textStyle,
+                      style: style,
+                      iconWidth: hasIcons ? _iconColumnWidth : 0,
+                      iconGap: hasIcons ? _iconGap : 0,
                     ),
                 ],
               ),
@@ -130,8 +128,8 @@ class Sidebar extends StatelessWidget {
           ),
           if (footer != null)
             Padding(
-              padding: const EdgeInsets.only(
-                left: DosMetrics.sidebarButtonSidePadding,
+              padding: EdgeInsets.only(
+                left: style.buttonSidePadding,
                 top: 6,
                 bottom: 2,
               ),
@@ -143,12 +141,66 @@ class Sidebar extends StatelessWidget {
   }
 }
 
+/// One entry in the side nav. [icon] is an optional emoji shown in a fixed
+/// column to the left of the title.
+class SidebarDestination {
+  final String title;
+  final String? icon;
+
+  const SidebarDestination(this.title, {this.icon});
+}
+
+/// The per-app colours and metrics the rail needs. Each front end builds one
+/// of these from its own theme, which is the only thing that differs between
+/// apps -- the widget above stays identical.
+class SidebarStyle {
+  final Color panelFill;
+  final Color panelStroke;
+  final Color selectedFill;
+  final Color selectedStroke;
+  final Color labelIdle;
+  final Color labelSelected;
+
+  final double minWidth;
+  final double buttonHeight;
+  final double buttonTextSize;
+  final double buttonBottomMargin;
+  final double buttonSidePadding;
+  final double buttonVerticalPadding;
+  final double navPadding;
+
+  /// Cap on the rail width, as a function of the screen width. The Android
+  /// original capped at a quarter of the screen; keeping it a function rather
+  /// than a constant is what stops a long label eating a small display.
+  final double Function(double screenWidth) maxWidth;
+
+  const SidebarStyle({
+    required this.panelFill,
+    required this.panelStroke,
+    required this.selectedFill,
+    required this.selectedStroke,
+    required this.labelIdle,
+    required this.labelSelected,
+    required this.minWidth,
+    required this.buttonHeight,
+    required this.buttonTextSize,
+    required this.buttonBottomMargin,
+    required this.buttonSidePadding,
+    required this.buttonVerticalPadding,
+    required this.navPadding,
+    required this.maxWidth,
+  });
+}
+
 class _SidebarButton extends StatelessWidget {
   final SidebarDestination destination;
   final bool selected;
   final VoidCallback onTap;
   final double height;
   final TextStyle titleStyle;
+  final SidebarStyle style;
+  final double iconWidth;
+  final double iconGap;
 
   const _SidebarButton({
     required this.destination,
@@ -156,13 +208,15 @@ class _SidebarButton extends StatelessWidget {
     required this.onTap,
     required this.height,
     required this.titleStyle,
+    required this.style,
+    required this.iconWidth,
+    required this.iconGap,
   });
 
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding:
-          const EdgeInsets.only(bottom: DosMetrics.sidebarButtonBottomMargin),
+      padding: EdgeInsets.only(bottom: style.buttonBottomMargin),
       child: Material(
         color: Colors.transparent,
         child: InkWell(
@@ -170,26 +224,34 @@ class _SidebarButton extends StatelessWidget {
           borderRadius: BorderRadius.circular(8),
           child: Container(
             height: height,
-            padding: const EdgeInsets.symmetric(
-                horizontal: DosMetrics.sidebarButtonSidePadding),
+            padding: EdgeInsets.symmetric(horizontal: style.buttonSidePadding),
             decoration: selected
                 ? BoxDecoration(
-                    color: DosColors.selectedFill,
+                    color: style.selectedFill,
                     borderRadius: BorderRadius.circular(8),
-                    border: Border.all(color: DosColors.selectedStroke),
+                    border: Border.all(color: style.selectedStroke),
                   )
                 : null,
             child: Row(
               children: [
+                if (iconWidth > 0) ...[
+                  SizedBox(
+                    width: iconWidth,
+                    child: Text(
+                      destination.icon ?? '',
+                      style: TextStyle(fontSize: titleStyle.fontSize),
+                      textAlign: TextAlign.center,
+                    ),
+                  ),
+                  SizedBox(width: iconGap),
+                ],
                 Expanded(
                   child: Text(
                     destination.title,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: titleStyle.copyWith(
-                      color: selected
-                          ? DosColors.sidebarLabelSelected
-                          : DosColors.sidebarLabelIdle,
+                      color: selected ? style.labelSelected : style.labelIdle,
                       fontWeight:
                           selected ? FontWeight.w600 : FontWeight.normal,
                     ),

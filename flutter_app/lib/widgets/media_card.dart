@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-import '../theme/dosbox_theme.dart';
+import '../theme/retrodosbox_theme.dart';
 
 /// Port of MainActivity.createMediaCard (grid mode only -- the carousel
 /// mode is used by a "list view" toggle deferred in this pass).
@@ -42,8 +42,8 @@ class MediaCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return SizedBox(
-      width: DosMetrics.mediaCardWidth,
-      height: DosMetrics.mediaCardHeight,
+      width: RetroDosboxMetrics.mediaCardWidth,
+      height: RetroDosboxMetrics.mediaCardHeight,
       child: Material(
         color: Colors.transparent,
         child: InkWell(
@@ -52,20 +52,20 @@ class MediaCard extends StatelessWidget {
           child: Container(
             padding: const EdgeInsets.all(4),
             decoration: BoxDecoration(
-              color: DosColors.cardFill,
+              color: RetroDosboxColors.cardFill,
               borderRadius: BorderRadius.circular(8),
-              border: Border.all(color: DosColors.cardStroke),
+              border: Border.all(color: RetroDosboxColors.cardStroke),
             ),
             child: Column(
               children: [
                 Container(
-                  height: DosMetrics.mediaCoverHeight,
+                  height: RetroDosboxMetrics.mediaCoverHeight,
                   width: double.infinity,
                   alignment: Alignment.center,
                   decoration: BoxDecoration(
-                    color: DosColors.coverFill,
+                    color: RetroDosboxColors.coverFill,
                     borderRadius: BorderRadius.circular(6),
-                    border: Border.all(color: DosColors.coverStroke),
+                    border: Border.all(color: RetroDosboxColors.coverStroke),
                   ),
                   child: Text(
                     kindLabel,
@@ -99,7 +99,7 @@ class MediaCard extends StatelessWidget {
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: const TextStyle(
-                          color: DosColors.textMuted, fontSize: 8),
+                          color: RetroDosboxColors.textMuted, fontSize: 8),
                     ),
                   ),
               ],

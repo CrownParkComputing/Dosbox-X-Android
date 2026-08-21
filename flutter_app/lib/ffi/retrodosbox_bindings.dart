@@ -2,7 +2,7 @@
 //
 // Mechanical wrapper, no policy: every method here maps to exactly one C
 // entry point. Decisions about when to poll, what to cache and how to present
-// failures live in the callers (DosboxCore implementors' consumers), not here.
+// failures live in the callers (RetroDosboxCore implementors' consumers), not here.
 import 'dart:convert';
 import 'dart:ffi';
 import 'dart:io';
@@ -10,7 +10,7 @@ import 'dart:typed_data';
 
 import 'package:ffi/ffi.dart';
 
-import 'dosbox_core.dart';
+import 'retrodosbox_core.dart';
 
 // --- Native function signatures --------------------------------------------
 
@@ -89,7 +89,7 @@ class FrameSnapshot {
 }
 
 /// Thin wrapper around libdosboxcore's C ABI.
-class DosboxCoreBindings implements DosboxCore {
+class RetroDosboxCoreBindings implements RetroDosboxCore {
   final DynamicLibrary _lib;
 
   late final _InitDart _init;
@@ -121,7 +121,7 @@ class DosboxCoreBindings implements DosboxCore {
 
   bool _paused = false;
 
-  DosboxCoreBindings._(this._lib) {
+  RetroDosboxCoreBindings._(this._lib) {
     _init = _lib
         .lookup<NativeFunction<_InitNative>>('dosbox_core_init')
         .asFunction();
@@ -214,7 +214,7 @@ class DosboxCoreBindings implements DosboxCore {
   ///
   /// Android returns null for the path deliberately: the .so ships in
   /// `jniLibs/<abi>/` and the OS loader resolves it by bare name.
-  factory DosboxCoreBindings.load({String? libraryPath}) {
+  factory RetroDosboxCoreBindings.load({String? libraryPath}) {
     final DynamicLibrary lib;
     if (Platform.isLinux || Platform.isAndroid) {
       lib = DynamicLibrary.open(libraryPath ?? 'libdosboxcore.so');
@@ -224,7 +224,7 @@ class DosboxCoreBindings implements DosboxCore {
       // the Runner target, so the dylib is bundled but NOT linked -- its
       // symbols are not in the global namespace until something dlopens it,
       // and nothing else references it, so process() would find nothing.
-      // See DosboxNativePaths.coreLibraryPath.
+      // See RetroDosboxNativePaths.coreLibraryPath.
       lib = libraryPath != null
           ? DynamicLibrary.open(libraryPath)
           : DynamicLibrary.process();
@@ -233,10 +233,10 @@ class DosboxCoreBindings implements DosboxCore {
     } else if (Platform.isWindows) {
       lib = DynamicLibrary.open(libraryPath ?? 'dosboxcore.dll');
     } else {
-      throw UnsupportedError('DosboxCoreBindings.load: unsupported platform '
+      throw UnsupportedError('RetroDosboxCoreBindings.load: unsupported platform '
           '${Platform.operatingSystem}');
     }
-    return DosboxCoreBindings._(lib);
+    return RetroDosboxCoreBindings._(lib);
   }
 
   @override
@@ -310,20 +310,20 @@ class DosboxCoreBindings implements DosboxCore {
   }
 
   @override
-  List<DosConfigProperty> configSectionProperties(String section) {
+  List<RetroDosboxConfigProperty> configSectionProperties(String section) {
     final json = _readSectionBuffer(section);
-    if (json == null || json.isEmpty) return const <DosConfigProperty>[];
+    if (json == null || json.isEmpty) return const <RetroDosboxConfigProperty>[];
     try {
       final decoded = jsonDecode(json);
-      if (decoded is! List) return const <DosConfigProperty>[];
+      if (decoded is! List) return const <RetroDosboxConfigProperty>[];
       return decoded
           .whereType<Map<String, dynamic>>()
-          .map(DosConfigProperty.fromJson)
+          .map(RetroDosboxConfigProperty.fromJson)
           .toList(growable: false);
     } on FormatException {
       // A malformed reflection payload is a native bug, but it must not take
       // the settings screen down with it.
-      return const <DosConfigProperty>[];
+      return const <RetroDosboxConfigProperty>[];
     }
   }
 
@@ -333,7 +333,7 @@ class DosboxCoreBindings implements DosboxCore {
     final pProperty = property.toNativeUtf8();
     final pValue = value.toNativeUtf8();
     try {
-      return _configSet(pSection, pProperty, pValue) == DosboxResult.ok;
+      return _configSet(pSection, pProperty, pValue) == RetroDosboxResult.ok;
     } finally {
       malloc.free(pSection);
       malloc.free(pProperty);
@@ -342,7 +342,7 @@ class DosboxCoreBindings implements DosboxCore {
   }
 
   @override
-  bool configSave() => _configSave() == DosboxResult.ok;
+  bool configSave() => _configSave() == RetroDosboxResult.ok;
 
   @override
   int get fps => _getFps();

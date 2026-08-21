@@ -29,7 +29,7 @@ MOBAI_API="${MOBAI_API:-http://127.0.0.1:8686}"
 APPLE_ID="${APPLE_ID:-jonwhitt70@gmail.com}"
 
 # The signed bundle id gets the team id appended by the signer.
-BUNDLE_ID_BASE="com.dosboxmultiplatform.dosboxMultiplatform"
+BUNDLE_ID_BASE="com.crownpark.retrodosbox"
 TEAM_ID="${TEAM_ID:-2U6QYSTQ2F}"
 BUNDLE_ID="$BUNDLE_ID_BASE.$TEAM_ID"
 

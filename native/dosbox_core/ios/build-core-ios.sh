@@ -241,6 +241,16 @@ mkdir -p "$OUT"
     -I"$CORE/bridge" -I"$DBX" -I"$DBX/include" -I"$DBX/src" \
     -I"$PREFIX/include" -I"$PREFIX/include/SDL2" -D_REENTRANT
 
+# The CoreAudio backend is not optional: the bridge calls
+# audio_backend_get_level() directly (dosbox_core_get_audio_level), so the
+# dylib link fails on the undefined symbol without this object. The mixer's
+# own hooks are weak and would tolerate its absence; the bridge's call is not.
+echo "==> compiling the audio backend (ios/CoreAudio)"
+"$IOSBOX_SHIMS/clang" -c $IOS_CFLAGS -fobjc-arc \
+    -o "$OUT/audio_backend_ios.o" \
+    "$CORE/bridge/audio_backend_ios.m" \
+    -I"$CORE/bridge"
+
 echo "==> linking libdosboxcore.dylib"
 # ld64 has no --whole-archive; -all_load is the equivalent, and it is required
 # for the same reason as on Linux: nothing in the bridge references most of the
@@ -254,6 +264,7 @@ echo "==> linking libdosboxcore.dylib"
     -install_name "@rpath/libdosboxcore.framework/libdosboxcore" \
     -o "$OUT/libdosboxcore" \
     "$OUT/dosbox_bridge.o" \
+    "$OUT/audio_backend_ios.o" \
     -Wl,-all_load $ARCHIVES "$DBX"/src/*.o \
     "$PREFIX/lib/libSDL2.a" "$PREFIX/lib/libpng16.a" -lz \
     -framework CoreFoundation -framework CoreMIDI -framework AudioToolbox \

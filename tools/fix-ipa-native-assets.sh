@@ -90,7 +90,7 @@ if [ -f "$CORE_DYLIB" ]; then
 	<key>CFBundleExecutable</key>
 	<string>libdosboxcore</string>
 	<key>CFBundleIdentifier</key>
-	<string>com.dosboxmultiplatform.dosboxMultiplatform.core</string>
+	<string>com.crownpark.retrodosbox.core</string>
 	<key>CFBundleInfoDictionaryVersion</key>
 	<string>6.0</string>
 	<key>CFBundleName</key>

@@ -5,8 +5,10 @@ page records, per platform, how the native core is bundled, what code is
 platform-specific, and where the three builds diverge — so a change that
 touches one platform is visible as a difference against the other two.
 
-> Last updated: 2026-08-18. Re-check after the native core is wired up; the
-> build scripts exist but a shipped, core-backed build has not been cut yet.
+> Last updated: 2026-08-19. The native core is now built and ABI-verified on
+> all three platforms (details per platform below); a shipped, core-backed
+> APK/IPA/App has still not been cut, and audio is not yet runtime-verified
+> on a device.
 
 ## Shared across all three platforms
 
@@ -28,7 +30,9 @@ Everything below is compiled/interpreted identically on Android, iOS and Linux.
   `flutter_app/android/app/src/main/jniLibs/<abi>/` and is loaded by bare name
   (`DynamicLibrary.open('libdosboxcore.so')`). Built by
   `native/dosbox_core/android/build.sh` (applies 9 patches, then cross-builds
-  per ABI: arm64-v8a, x86_64).
+  per ABI). **Built and in place for both declared ABIs**: arm64-v8a
+  (2026-08-18) and x86_64 (2026-08-19), both link- and ABI-verified, both
+  including the AAudio backend (`libaaudio.so` in NEEDED).
 - **Platform-specific code**:
   - `MainActivity.kt` — gamepad hookup (`GamepadsCompatibleActivity`) +
     manual SDL JNI init + storage/permission handling.
@@ -45,7 +49,11 @@ Everything below is compiled/interpreted identically on Android, iOS and Linux.
 
 - **Core bundling** — the bridge is shipped as `libdosboxcore.framework`
   inside `Runner.app/Frameworks/`, dlopen'd by path (`DynamicLibrary.open`).
-  Built by `native/dosbox_core/ios/build-ios.sh` (Docker cross-build).
+  Built by `native/dosbox_core/ios/build-ios.sh` (Docker cross-build from
+  `~/dosbox-x-src`, which must exist). **Built 2026-08-19**:
+  `ios/build/out/libdosboxcore` is an arm64 Mach-O dylib with the full ABI
+  (31 symbols) and the CoreAudio backend linked in; it is packaged into the
+  framework at IPA-repack time by `tools/fix-ipa-native-assets.sh`.
 - **Platform-specific code**:
   - `AppDelegate.swift`, `SceneDelegate.swift` — standard Flutter iOS.
   - `Runner-Bridging-Header.h` — just `GeneratedPluginRegistrant.h`.
@@ -59,6 +67,9 @@ Everything below is compiled/interpreted identically on Android, iOS and Linux.
   checkout the path is derived from the repo root
   (`native/dosbox_core/linux/build/`). Built by
   `native/dosbox_core/linux/build.sh` (or `build-core-pic.sh`).
+  **Built 2026-08-19** and runtime-verified headlessly: `check-core.sh` boots
+  the core through the bridge and publishes real frames (gamelink 720x400 →
+  640x480 framebuffer, frame counter advancing).
 - **Platform-specific code** — `my_application.cc` (standard Flutter/GTK);
   nothing else.
 - **Divergences** — the reference/dev platform. Gamepads work through the
@@ -91,7 +102,16 @@ Everything below is compiled/interpreted identically on Android, iOS and Linux.
 3. **GUI/layouts are fully shared** — confirmed nothing in `android/res`,
    `ios/*.storyboard`, or `linux/` carries layout; all screens and widgets are
    in `lib/`.
-4. **Core is not yet bundled in a shipped build** — the per-platform build
-   scripts exist and the bridge is implemented, but a core-backed APK/IPA/App
-   has not been produced. Each platform's "core bundled" row above is the
-   *intended* mechanism, not a shipped artifact.
+4. **Cores are built on all three platforms, but no shipped app yet** — the
+   artifacts above are real and ABI-verified, but a core-backed APK/IPA/App
+   has not been cut, and no device has booted one. Next: `flutter build apk`,
+   `tools/deploy-ios.sh` (needs a terminal for the Apple ID 2FA prompt), and
+   a packaged Linux bundle.
+5. **The shared `~/dosbox-x-pic` tree is single-config** — Android
+   reconfigures it in place for the NDK target, so after an Android build the
+   tree is no longer host-configured. `build-core-pic.sh` now detects this
+   (cross `--host` in `config.status`, or foreign-arch objects on disk) and
+   reconfigures + `make clean`s before building for the host. Rule of thumb:
+   run `build-core-pic.sh` before `linux/build.sh` whenever the tree was last
+   used by Android. iOS is unaffected (it clones its own tree inside the
+   container).

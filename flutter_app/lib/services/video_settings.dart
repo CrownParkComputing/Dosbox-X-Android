@@ -6,7 +6,7 @@
 // shipped as switches that do nothing -- notably DOSBox-X's own scaler
 // (`render.scaler`) and output type, which live in the engine's config system
 // and are reached through the generated settings screen instead
-// (DosboxCore.configSet), not from here.
+// (RetroDosboxCore.configSet), not from here.
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 

@@ -12,16 +12,16 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
-import '../ffi/dosbox_core.dart';
+import '../ffi/retrodosbox_core.dart';
 import '../services/app_prefs.dart';
-import '../theme/dosbox_theme.dart';
+import '../theme/retrodosbox_theme.dart';
 import '../widgets/assignable_action_button.dart';
 import '../widgets/framebuffer_view.dart';
 import '../widgets/on_screen_keyboard.dart';
 import '../widgets/wobble_joystick.dart';
 
 class EmulatorScreen extends StatefulWidget {
-  final DosboxCore core;
+  final RetroDosboxCore core;
 
   /// Title of the running session, for the status overlay.
   final String title;
@@ -32,12 +32,18 @@ class EmulatorScreen extends StatefulWidget {
 
   final VoidCallback? onExit;
 
+  /// Snapshot the running state and return to the library. The owning shell
+  /// owns the save slot, the pause flag, and the navigation; this button is
+  /// just a trigger.
+  final VoidCallback? onPause;
+
   const EmulatorScreen({
     super.key,
     required this.core,
     required this.title,
     this.controllerConnected = false,
     this.onExit,
+    this.onPause,
   });
 
   @override
@@ -114,7 +120,7 @@ class _EmulatorScreenState extends State<EmulatorScreen> {
     // Preserve button bits already held while replacing the direction bits, so
     // holding fire and then moving does not cancel the fire.
     const directions =
-        DosJoyBits.up | DosJoyBits.down | DosJoyBits.left | DosJoyBits.right;
+        RetroDosboxJoyBits.up | RetroDosboxJoyBits.down | RetroDosboxJoyBits.left | RetroDosboxJoyBits.right;
     _joyMask = (_joyMask & ~directions) | (mask & directions);
     _joyAxisX = axisX;
     _joyAxisY = axisY;
@@ -207,6 +213,9 @@ class _EmulatorScreenState extends State<EmulatorScreen> {
     final frame = widget.core.frameCounter;
     final program = widget.core.runningProgram;
     final status = widget.core.statusLine;
+    // The title itself is deliberately NOT shown here: it lives in the
+    // workbench's bottom status bar now, outside the game picture, so this
+    // overlay only carries transient state (booting, program, pause).
     final detail = frame == 0
         ? 'Starting DOSBox...'
         : (program ?? status ?? 'Running (frame $frame)');
@@ -220,8 +229,8 @@ class _EmulatorScreenState extends State<EmulatorScreen> {
           borderRadius: BorderRadius.circular(4),
         ),
         child: Text(
-          '${widget.title}\n$detail',
-          style: DosTextStyles.statusLine,
+          detail,
+          style: RetroDosboxTextStyles.statusLine,
         ),
       ),
     );
@@ -246,11 +255,10 @@ class _EmulatorScreenState extends State<EmulatorScreen> {
             onTap: () => setState(() => _mouseMode = !_mouseMode),
           ),
           _ToolButton(
-            icon: widget.core.isPaused ? Icons.play_arrow : Icons.pause,
-            active: widget.core.isPaused,
-            tooltip: widget.core.isPaused ? 'Resume' : 'Pause',
-            onTap: () =>
-                setState(() => widget.core.setPaused(!widget.core.isPaused)),
+            icon: Icons.pause,
+            active: false,
+            tooltip: 'Pause and return to library (snapshot saved)',
+            onTap: widget.onPause ?? () {},
           ),
           if (widget.onExit != null)
             _ToolButton(
@@ -271,14 +279,14 @@ class _EmulatorScreenState extends State<EmulatorScreen> {
       children: [
         ActionButton(
           binding: _buttonAScancode == null
-              ? JoyButtonBinding(DosJoyBits.button1)
+              ? JoyButtonBinding(RetroDosboxJoyBits.button1)
               : KeyActionBinding(_buttonAScancode!),
           onAction: _onAction,
         ),
         const SizedBox(height: 10),
         ActionButton(
           binding: _buttonBScancode == null
-              ? JoyButtonBinding(DosJoyBits.button2)
+              ? JoyButtonBinding(RetroDosboxJoyBits.button2)
               : KeyActionBinding(_buttonBScancode!),
           onAction: _onAction,
         ),
@@ -349,17 +357,17 @@ class _ToolButton extends StatelessWidget {
             height: 38,
             decoration: BoxDecoration(
               color: active
-                  ? DosColors.selectedFill
+                  ? RetroDosboxColors.selectedFill
                   : Colors.black.withValues(alpha: 0.5),
               borderRadius: BorderRadius.circular(6),
               border: Border.all(
-                color: active ? DosColors.accentAmber : DosColors.panelStroke,
+                color: active ? RetroDosboxColors.accentAmber : RetroDosboxColors.panelStroke,
               ),
             ),
             child: Icon(
               icon,
               size: 19,
-              color: active ? DosColors.accentAmber : Colors.white70,
+              color: active ? RetroDosboxColors.accentAmber : Colors.white70,
             ),
           ),
         ),

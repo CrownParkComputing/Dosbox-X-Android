@@ -36,3 +36,8 @@ dist/
 
 # Build-time shim dir (regenerated per machine).
 native/dosbox_core/**/.tmp/
+
+# Keystore files (release signing config). The upload keystore is registered
+# with Play Console under the com.dosboxx.app listing; never commit it.
+*.jks
+*.keystore

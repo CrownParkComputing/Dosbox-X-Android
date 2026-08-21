@@ -17,8 +17,8 @@ import 'package:path/path.dart' as p;
 import '../data/game_entry.dart';
 import 'zip_runner.dart';
 
-class DosConfBuilder {
-  DosConfBuilder._();
+class RetroDosboxConfBuilder {
+  RetroDosboxConfBuilder._();
 
   /// Builds the full conf text for [entry].
   ///

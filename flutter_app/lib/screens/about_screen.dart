@@ -12,7 +12,7 @@
 import 'package:flutter/material.dart';
 
 import '../services/platform_info.dart';
-import '../theme/dosbox_theme.dart';
+import '../theme/retrodosbox_theme.dart';
 
 class AboutScreen extends StatelessWidget {
   const AboutScreen({super.key});
@@ -29,7 +29,7 @@ class AboutScreen extends StatelessWidget {
                 fontWeight: FontWeight.bold)),
         const SizedBox(height: 4),
         const Text('DOSBox Multiplatform',
-            style: TextStyle(color: DosColors.textMuted2)),
+            style: TextStyle(color: RetroDosboxColors.textMuted2)),
         const SizedBox(height: 20),
         _Card(
           title: 'What this is',
@@ -86,23 +86,23 @@ class _Card extends StatelessWidget {
       margin: const EdgeInsets.only(bottom: 12),
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: DosColors.cardFill,
+        color: RetroDosboxColors.cardFill,
         borderRadius: BorderRadius.circular(8),
         border: Border.all(
-            color: accent ? DosColors.accentAmber : DosColors.cardStroke),
+            color: accent ? RetroDosboxColors.accentAmber : RetroDosboxColors.cardStroke),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(title,
               style: TextStyle(
-                  color: accent ? DosColors.accentAmber : Colors.white,
+                  color: accent ? RetroDosboxColors.accentAmber : Colors.white,
                   fontSize: 15,
                   fontWeight: FontWeight.bold)),
           const SizedBox(height: 8),
           Text(body,
               style: const TextStyle(
-                  color: DosColors.textMuted2, height: 1.4)),
+                  color: RetroDosboxColors.textMuted2, height: 1.4)),
         ],
       ),
     );

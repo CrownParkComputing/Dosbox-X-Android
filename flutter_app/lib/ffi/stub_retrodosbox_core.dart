@@ -1,4 +1,4 @@
-// A DosboxCore that emulates nothing.
+// A RetroDosboxCore that emulates nothing.
 //
 // The native core is a slow, awkward build (a cross-compiled DOSBox-X tree
 // plus this project's bridge, neither of which CI can produce -- see
@@ -12,10 +12,10 @@
 // producing black frames". Getting those two confused wastes hours.
 import 'dart:typed_data';
 
-import 'dosbox_bindings.dart' show FrameSnapshot;
-import 'dosbox_core.dart';
+import 'retrodosbox_bindings.dart' show FrameSnapshot;
+import 'retrodosbox_core.dart';
 
-class StubDosboxCore implements DosboxCore {
+class StubRetroDosboxCore implements RetroDosboxCore {
   /// Mode 13h dimensions -- the classic DOS 320x200 that most games this
   /// front end targets actually ran in, so layout gets tested against a
   /// realistically non-square-pixel frame rather than a tidy 4:3 one.
@@ -32,7 +32,7 @@ class StubDosboxCore implements DosboxCore {
   final List<String> sentCommands = <String>[];
 
   final Set<int> _emptySlots = {
-    for (int i = 0; i < DosboxLimits.slotCount; i++) i
+    for (int i = 0; i < RetroDosboxLimits.slotCount; i++) i
   };
 
   @override
@@ -40,18 +40,27 @@ class StubDosboxCore implements DosboxCore {
 
   @override
   int start(String confPath) {
-    if (_running) return DosboxResult.alreadyStarted;
+    if (_running) return RetroDosboxResult.alreadyStarted;
     _confPath = confPath;
     _running = true;
-    return DosboxResult.ok;
+    return RetroDosboxResult.ok;
   }
 
   @override
   int stop() {
-    // Mirrors the real bridge's behaviour rather than the behaviour we wish
-    // it had: DOSBox-X has no working teardown, so a UI that only ever ran
-    // against a cooperative stub would be built on a false assumption.
-    return DosboxResult.err;
+    // The bridge actually tears the engine down and the code calling this
+    // treats "stop returned err" as "session is dead anyway, drop our side
+    // of the state". The Dart side already does that, but on the stub
+    // leaving `_running = true` meant `core.isRunning` kept reporting true
+    // after stop -- the sidebar footer kept drawing the running title, the
+    // alreadyStarted guard rejected every fresh launch, and the user-visible
+    // symptom was "I closed the session but it still says session open and
+    // it is". Mark the stub as actually stopped regardless of the returned
+    // code: the engine is gone from our point of view either way.
+    _running = false;
+    _paused = false;
+    _frame = 0;
+    return RetroDosboxResult.err;
   }
 
   @override
@@ -80,38 +89,38 @@ class StubDosboxCore implements DosboxCore {
 
   @override
   int sendCommand(String line) {
-    if (!_running) return DosboxResult.notRunning;
+    if (!_running) return RetroDosboxResult.notRunning;
     sentCommands.add(line);
-    return DosboxResult.ok;
+    return RetroDosboxResult.ok;
   }
 
   @override
   int saveState(int slot) {
-    if (!_running) return DosboxResult.notRunning;
-    if (slot < 0 || slot >= DosboxLimits.slotCount) return DosboxResult.err;
+    if (!_running) return RetroDosboxResult.notRunning;
+    if (slot < 0 || slot >= RetroDosboxLimits.slotCount) return RetroDosboxResult.err;
     _emptySlots.remove(slot);
-    return DosboxResult.ok;
+    return RetroDosboxResult.ok;
   }
 
   @override
   int loadState(int slot) {
-    if (!_running) return DosboxResult.notRunning;
-    if (slot < 0 || slot >= DosboxLimits.slotCount) return DosboxResult.err;
-    return _emptySlots.contains(slot) ? DosboxResult.err : DosboxResult.ok;
+    if (!_running) return RetroDosboxResult.notRunning;
+    if (slot < 0 || slot >= RetroDosboxLimits.slotCount) return RetroDosboxResult.err;
+    return _emptySlots.contains(slot) ? RetroDosboxResult.err : RetroDosboxResult.ok;
   }
 
   @override
   bool? stateIsEmpty(int slot) {
-    if (slot < 0 || slot >= DosboxLimits.slotCount) return null;
+    if (slot < 0 || slot >= RetroDosboxLimits.slotCount) return null;
     return _emptySlots.contains(slot);
   }
 
   /// A small but real slice of DOSBox-X's actual property set, so the
   /// generated settings UI is exercised against every widget type it has to
   /// handle: enum dropdown, bool switch, free int and free string.
-  static const Map<String, List<DosConfigProperty>> _config = {
+  static const Map<String, List<RetroDosboxConfigProperty>> _config = {
     'dosbox': [
-      DosConfigProperty(
+      RetroDosboxConfigProperty(
         name: 'machine',
         type: 'string',
         value: 'svga_s3',
@@ -119,7 +128,7 @@ class StubDosboxCore implements DosboxCore {
         help: 'The type of machine DOSBox-X tries to emulate.',
         values: ['hercules', 'cga', 'ega', 'vgaonly', 'svga_s3', 'pc98'],
       ),
-      DosConfigProperty(
+      RetroDosboxConfigProperty(
         name: 'memsize',
         type: 'int',
         value: '16',
@@ -129,7 +138,7 @@ class StubDosboxCore implements DosboxCore {
       ),
     ],
     'cpu': [
-      DosConfigProperty(
+      RetroDosboxConfigProperty(
         name: 'core',
         type: 'string',
         value: 'auto',
@@ -137,7 +146,7 @@ class StubDosboxCore implements DosboxCore {
         help: 'CPU core used in emulation.',
         values: ['auto', 'dynamic', 'normal', 'simple'],
       ),
-      DosConfigProperty(
+      RetroDosboxConfigProperty(
         name: 'cycles',
         type: 'string',
         value: 'auto',
@@ -148,7 +157,7 @@ class StubDosboxCore implements DosboxCore {
       ),
     ],
     'render': [
-      DosConfigProperty(
+      RetroDosboxConfigProperty(
         name: 'aspect',
         type: 'bool',
         value: 'false',
@@ -163,8 +172,8 @@ class StubDosboxCore implements DosboxCore {
   List<String> configSections() => _config.keys.toList(growable: false);
 
   @override
-  List<DosConfigProperty> configSectionProperties(String section) =>
-      _config[section] ?? const <DosConfigProperty>[];
+  List<RetroDosboxConfigProperty> configSectionProperties(String section) =>
+      _config[section] ?? const <RetroDosboxConfigProperty>[];
 
   @override
   bool configSet(String section, String property, String value) =>

@@ -8,7 +8,7 @@
 import 'package:path/path.dart' as p;
 
 /// How a library entry has to be launched. Each kind produces a materially
-/// different dosbox-x.conf (see DosConfBuilder), which is why the distinction
+/// different dosbox-x.conf (see RetroDosboxConfBuilder), which is why the distinction
 /// is modelled rather than inferred at launch time.
 enum GameKind {
   /// A folder holding an installed DOS game. Mounted as C:, then a launcher
@@ -38,7 +38,7 @@ enum GameKind {
 /// Ported from the Java app's GameMeta presets. These are not cosmetic: DOS
 /// games are famously speed-sensitive in both directions. Too fast and 80s
 /// titles become unplayable (they used busy loops for timing); too slow and
-/// mid-90s titles crawl. `auto` defers to the heuristics in DosConfBuilder.
+/// mid-90s titles crawl. `auto` defers to the heuristics in RetroDosboxConfBuilder.
 enum CpuPreset {
   /// Let the per-title heuristics decide.
   auto('Automatic', null),

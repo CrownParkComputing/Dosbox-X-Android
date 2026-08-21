@@ -1,27 +1,27 @@
 // Widget and unit tests that run with no native core, no device and no DOS
-// game files -- which is the whole reason DosboxCore is an interface and
-// StubDosboxCore exists.
-import 'package:dosbox_multiplatform/data/dos_scancodes.dart';
-import 'package:dosbox_multiplatform/data/game_entry.dart';
-import 'package:dosbox_multiplatform/ffi/dosbox_core.dart';
-import 'package:dosbox_multiplatform/ffi/stub_dosbox_core.dart';
-import 'package:dosbox_multiplatform/screens/library_grid.dart';
-import 'package:dosbox_multiplatform/services/dos_conf_builder.dart';
+// game files -- which is the whole reason RetroDosboxCore is an interface and
+// StubRetroDosboxCore exists.
+import 'package:retro_dosbox/data/retrodosbox_scancodes.dart';
+import 'package:retro_dosbox/data/game_entry.dart';
+import 'package:retro_dosbox/ffi/retrodosbox_core.dart';
+import 'package:retro_dosbox/ffi/stub_retrodosbox_core.dart';
+import 'package:retro_dosbox/screens/library_grid.dart';
+import 'package:retro_dosbox/services/retrodosbox_conf_builder.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
-  group('StubDosboxCore', () {
+  group('StubRetroDosboxCore', () {
     test('reports not running until started', () {
-      final core = StubDosboxCore();
+      final core = StubRetroDosboxCore();
       expect(core.isRunning, isFalse);
       expect(core.getFramebuffer(), isNull);
       expect(core.runningProgram, isNull);
     });
 
     test('produces frames once started', () {
-      final core = StubDosboxCore();
-      expect(core.start('/tmp/test.conf'), DosboxResult.ok);
+      final core = StubRetroDosboxCore();
+      expect(core.start('/tmp/test.conf'), RetroDosboxResult.ok);
       expect(core.isRunning, isTrue);
 
       final frame = core.getFramebuffer();
@@ -35,13 +35,13 @@ void main() {
     });
 
     test('refuses a second start, matching the real core', () {
-      final core = StubDosboxCore();
-      expect(core.start('/tmp/a.conf'), DosboxResult.ok);
-      expect(core.start('/tmp/b.conf'), DosboxResult.alreadyStarted);
+      final core = StubRetroDosboxCore();
+      expect(core.start('/tmp/a.conf'), RetroDosboxResult.ok);
+      expect(core.start('/tmp/b.conf'), RetroDosboxResult.alreadyStarted);
     });
 
     test('advances the frame counter only while unpaused', () {
-      final core = StubDosboxCore();
+      final core = StubRetroDosboxCore();
       core.start('/tmp/test.conf');
       core.getFramebuffer();
       final before = core.frameCounter;
@@ -54,7 +54,7 @@ void main() {
     });
   });
 
-  group('DosConfBuilder', () {
+  group('RetroDosboxConfBuilder', () {
     GameEntry folderEntry({
       String title = 'DOOM',
       List<String> launchers = const ['/games/DOOM/DOOM.EXE'],
@@ -70,7 +70,7 @@ void main() {
     }
 
     test('mounts C: and runs the launcher', () {
-      final conf = DosConfBuilder.build(
+      final conf = RetroDosboxConfBuilder.build(
         entry: folderEntry(),
         settings: const GameSettings(),
       );
@@ -81,7 +81,7 @@ void main() {
     });
 
     test('keeps memsize below the DOS/4GW 64MB limit', () {
-      final conf = DosConfBuilder.build(
+      final conf = RetroDosboxConfBuilder.build(
         entry: folderEntry(),
         settings: const GameSettings(),
       );
@@ -140,7 +140,7 @@ void main() {
       // output=surface. The engine then boots and renders perfectly into a
       // window surface nothing reads, so the app shows a black screen with no
       // error anywhere. Both lines are load-bearing.
-      final conf = DosConfBuilder.build(
+      final conf = RetroDosboxConfBuilder.build(
         entry: GameEntry(
           path: '/games/Keen1',
           kind: GameKind.dosFolder,
@@ -155,7 +155,7 @@ void main() {
     test('mounts the parent for the IndyCar DOS4G_GET_APPPATH workaround', () {
       // The bug this guards: run from the C: root, IndyCar asks DOS/4GW for
       // its own path, gets an empty string, and dies.
-      final conf = DosConfBuilder.build(
+      final conf = RetroDosboxConfBuilder.build(
         entry: GameEntry(
           path: '/games/IndyCar2',
           kind: GameKind.dosFolder,
@@ -168,7 +168,7 @@ void main() {
     });
 
     test('gives setup programs a fixed clock, not auto', () {
-      final conf = DosConfBuilder.build(
+      final conf = RetroDosboxConfBuilder.build(
         entry: folderEntry(launchers: const ['/games/X/SETUP.EXE']),
         settings: const GameSettings(),
         launcher: '/games/X/SETUP.EXE',
@@ -177,7 +177,7 @@ void main() {
     });
 
     test("Screamer's setup gets its own lower clock and vesa_nolfb", () {
-      final conf = DosConfBuilder.build(
+      final conf = RetroDosboxConfBuilder.build(
         entry: folderEntry(title: 'Screamer'),
         settings: const GameSettings(),
         launcher: '/games/Screamer/SETUP.EXE',
@@ -187,7 +187,7 @@ void main() {
     });
 
     test('an explicit preset overrides the heuristics', () {
-      final conf = DosConfBuilder.build(
+      final conf = RetroDosboxConfBuilder.build(
         entry: folderEntry(),
         settings: const GameSettings(preset: CpuPreset.era80s),
         launcher: '/games/DOOM/SETUP.EXE',
@@ -198,7 +198,7 @@ void main() {
     });
 
     test('3dfx executables enable the Voodoo and a bigger audio buffer', () {
-      final conf = DosConfBuilder.build(
+      final conf = RetroDosboxConfBuilder.build(
         entry: folderEntry(launchers: const ['/games/X/GAME3DFX.EXE']),
         settings: const GameSettings(),
         launcher: '/games/X/GAME3DFX.EXE',
@@ -208,7 +208,7 @@ void main() {
     });
 
     test('groups multiple discs onto one drive letter as a swap set', () {
-      final conf = DosConfBuilder.build(
+      final conf = RetroDosboxConfBuilder.build(
         entry: folderEntry(
           discs: const ['/games/DOOM/cd1.iso', '/games/DOOM/cd2.iso'],
         ),
@@ -223,7 +223,7 @@ void main() {
 
     test('separates raw .bin tracks from .iso images', () {
       // Different -t handling, so they must not share a mount command.
-      final conf = DosConfBuilder.build(
+      final conf = RetroDosboxConfBuilder.build(
         entry: folderEntry(
           discs: const ['/games/X/a.iso', '/games/X/b.bin'],
         ),
@@ -234,7 +234,7 @@ void main() {
     });
 
     test('boot images boot rather than mounting C:', () {
-      final conf = DosConfBuilder.build(
+      final conf = RetroDosboxConfBuilder.build(
         entry: const GameEntry(
           path: '/games/win98.img',
           kind: GameKind.bootImage,
@@ -251,7 +251,7 @@ void main() {
     });
 
     test('falls back to a prompt with a listing when nothing is runnable', () {
-      final conf = DosConfBuilder.build(
+      final conf = RetroDosboxConfBuilder.build(
         entry: folderEntry(launchers: const []),
         settings: const GameSettings(),
       );
@@ -260,7 +260,7 @@ void main() {
     });
 
     test('disabling the joystick emits joysticktype=none, not an omission', () {
-      final conf = DosConfBuilder.build(
+      final conf = RetroDosboxConfBuilder.build(
         entry: folderEntry(),
         settings: const GameSettings(joystick: false),
       );
@@ -268,7 +268,7 @@ void main() {
     });
 
     test('quotes paths containing spaces', () {
-      final conf = DosConfBuilder.build(
+      final conf = RetroDosboxConfBuilder.build(
         entry: GameEntry(
           path: '/storage/emulated/0/My Games/Alone in the Dark',
           kind: GameKind.dosFolder,
@@ -315,24 +315,24 @@ void main() {
     });
   });
 
-  group('DosKeyCatalogue', () {
+  group('RetroDosboxKeyCatalogue', () {
     test('every catalogue key resolves back to itself', () {
-      for (final group in DosKeyCatalogue.groups.values) {
+      for (final group in RetroDosboxKeyCatalogue.groups.values) {
         for (final key in group) {
-          expect(DosKeyCatalogue.byScancode(key.scancode), isNotNull);
+          expect(RetroDosboxKeyCatalogue.byScancode(key.scancode), isNotNull);
         }
       }
     });
 
     test('labels an unknown scancode instead of returning blank', () {
-      expect(DosKeyCatalogue.labelFor(9999), 'Key 9999');
+      expect(RetroDosboxKeyCatalogue.labelFor(9999), 'Key 9999');
     });
 
     test('keypad keys are distinct from the number row', () {
       // A DOS flight sim steers with the keypad; collapsing the two would make
       // it uncontrollable.
-      expect(DosScancode.kp1, isNot(DosScancode.n1));
-      expect(DosScancode.kp0, isNot(DosScancode.n0));
+      expect(RetroDosboxScancode.kp1, isNot(RetroDosboxScancode.n1));
+      expect(RetroDosboxScancode.kp0, isNot(RetroDosboxScancode.n0));
     });
   });
 

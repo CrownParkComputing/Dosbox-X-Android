@@ -2,15 +2,15 @@ import 'dart:math';
 
 import 'package:flutter/material.dart';
 
-import '../ffi/dosbox_core.dart';
+import '../ffi/retrodosbox_core.dart';
 
 /// A top-down analog-style "wobble" joystick: a circular base with a
 /// draggable knob that leans/offsets toward the drag point (clamped to a
 /// max travel radius) and springs back to center on release.
 ///
-/// It reports both halves of what [DosboxCore.joystick] takes, in one call:
+/// It reports both halves of what [RetroDosboxCore.joystick] takes, in one call:
 ///
-///  - a digital [DosJoyBits] mask, discretized into 8 compass sectors with a
+///  - a digital [RetroDosboxJoyBits] mask, discretized into 8 compass sectors with a
 ///    dead zone (18% of the base radius) near the center. Plenty of DOS games
 ///    only ever ask the game port "is the stick past the threshold", and the
 ///    keyboard-emulating mapper profiles need a hard on/off too.
@@ -22,10 +22,10 @@ import '../ffi/dosbox_core.dart';
 ///
 /// Both are derived from the same knob offset, so they can never disagree.
 class WobbleJoystick extends StatefulWidget {
-  /// Called on every change with a [DosJoyBits] direction mask (the button
+  /// Called on every change with a [RetroDosboxJoyBits] direction mask (the button
   /// bits are never set here -- fire buttons are separate widgets) and the
   /// stick position as axes in -1..1, y positive downward, matching the
-  /// argument shape of [DosboxCore.joystick].
+  /// argument shape of [RetroDosboxCore.joystick].
   final void Function(int mask, double axisX, double axisY)? onJoystick;
 
   final double size;
@@ -118,10 +118,10 @@ class _WobbleJoystickState extends State<WobbleJoystick>
     const leftSectors = {3, 4, 5};
     const upSectors = {5, 6, 7};
     var mask = 0;
-    if (upSectors.contains(sector)) mask |= DosJoyBits.up;
-    if (downSectors.contains(sector)) mask |= DosJoyBits.down;
-    if (leftSectors.contains(sector)) mask |= DosJoyBits.left;
-    if (rightSectors.contains(sector)) mask |= DosJoyBits.right;
+    if (upSectors.contains(sector)) mask |= RetroDosboxJoyBits.up;
+    if (downSectors.contains(sector)) mask |= RetroDosboxJoyBits.down;
+    if (leftSectors.contains(sector)) mask |= RetroDosboxJoyBits.left;
+    if (rightSectors.contains(sector)) mask |= RetroDosboxJoyBits.right;
     _emit(mask, axisX, axisY);
   }
 

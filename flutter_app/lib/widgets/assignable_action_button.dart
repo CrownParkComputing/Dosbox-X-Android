@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 
-import '../data/dos_scancodes.dart';
-import '../ffi/dosbox_core.dart';
+import '../data/retrodosbox_scancodes.dart';
+import '../ffi/retrodosbox_core.dart';
 
 /// What an on-screen action button sends when it is pressed.
 ///
@@ -13,7 +13,7 @@ import '../ffi/dosbox_core.dart';
 /// choose between "a fire button" and "a key button", the binding is part of
 /// the button's identity and the press callback carries it, so the emulator
 /// screen can route a joystick bit into its OR-ed joystick mask and a
-/// scancode straight to [DosboxCore.keyEvent] without keeping a parallel
+/// scancode straight to [RetroDosboxCore.keyEvent] without keeping a parallel
 /// table of which button is which.
 sealed class ActionBinding {
   const ActionBinding();
@@ -22,9 +22,9 @@ sealed class ActionBinding {
   String get defaultLabel;
 }
 
-/// Binds the button to one [DosJoyBits] button bit on the emulated game port.
+/// Binds the button to one [RetroDosboxJoyBits] button bit on the emulated game port.
 class JoyButtonBinding extends ActionBinding {
-  /// One of [DosJoyBits.button1] .. [DosJoyBits.button4]. A single bit, not a
+  /// One of [RetroDosboxJoyBits.button1] .. [RetroDosboxJoyBits.button4]. A single bit, not a
   /// mask: the caller ORs these together itself, and a two-bit "button" would
   /// make releasing one of them ambiguous.
   final int bit;
@@ -34,13 +34,13 @@ class JoyButtonBinding extends ActionBinding {
   @override
   String get defaultLabel {
     switch (bit) {
-      case DosJoyBits.button1:
+      case RetroDosboxJoyBits.button1:
         return 'A';
-      case DosJoyBits.button2:
+      case RetroDosboxJoyBits.button2:
         return 'B';
-      case DosJoyBits.button3:
+      case RetroDosboxJoyBits.button3:
         return 'C';
-      case DosJoyBits.button4:
+      case RetroDosboxJoyBits.button4:
         return 'D';
       default:
         return '?';
@@ -48,14 +48,14 @@ class JoyButtonBinding extends ActionBinding {
   }
 }
 
-/// Binds the button to an SDL scancode, sent with [DosboxCore.keyEvent].
+/// Binds the button to an SDL scancode, sent with [RetroDosboxCore.keyEvent].
 class KeyActionBinding extends ActionBinding {
   final int scancode;
 
   const KeyActionBinding(this.scancode);
 
   @override
-  String get defaultLabel => DosKeyCatalogue.labelFor(scancode);
+  String get defaultLabel => RetroDosboxKeyCatalogue.labelFor(scancode);
 }
 
 /// One of the on-screen action buttons.

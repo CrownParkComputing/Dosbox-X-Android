@@ -7,12 +7,21 @@ The emulator is not written here. `libdosboxcore` is a thin plain-C bridge in
 
 **The bridge is implemented** (`bridge/dosbox_bridge.h` + `dosbox_bridge.cpp`,
 ~1000 lines): the full C ABI for init/start/stop, the framebuffer, keyboard /
-mouse / joystick input, config reflection and save-states. It links against a
-real -fPIC DOSBox-X tree on Linux and cross-compiles + links for Android
-(`android/build.sh` produces a valid `libdosboxcore.so` for `arm64-v8a` and
-`x86_64`). The Flutter app still loads `StubDosboxCore` by default and says so
-in a banner across the top of the window; that is a Dart-side switch, not a
-missing core.
+mouse / joystick input, config reflection and save-states. As of 2026-08-19
+the core is **built and ABI-verified on all three platforms**:
+
+- **Linux** — `linux/build/libdosboxcore.so`, boot-tested headlessly by
+  `check-core.sh` (renders real frames through the bridge).
+- **Android** — `jniLibs/arm64-v8a/` and `jniLibs/x86_64/`, both with the
+  AAudio backend; device runtime still unverified.
+- **iOS** — `ios/build/out/libdosboxcore` (arm64 Mach-O, CoreAudio backend);
+  packaged as `libdosboxcore.framework` into the IPA by
+  `tools/fix-ipa-native-assets.sh`. Requires `~/dosbox-x-src` (a clean
+  DOSBox-X checkout) for the container to clone.
+
+The Flutter app dlopens the real core when the artifact is present and falls
+back to `StubDosboxCore` (with a banner) when it is not — that is a runtime
+fallback, not a Dart-side switch.
 
 One problem remains open before a real device build is useful: **clean
 shutdown** (upstream has no teardown path). Audio is implemented (see below).
@@ -51,9 +60,11 @@ conversion pass. See `lib/widgets/framebuffer_view.dart`.
    `SDL_OpenAudioDevice`'s callback. `dosbox_core_get_audio_level()` now
    reports the backend's live output peak. The Android build links
    `audio_backend_android.o` with `-laaudio` and has been link-verified. The
-   Linux backend compiles clean headlessly and can capture PCM to a WAV via
-   `DOSBOX_AUDIO_WAV_CAPTURE` for verification. Not yet runtime-verified on a
-   device.
+   iOS build compiles `audio_backend_ios.m` into the dylib (the bridge calls
+   `audio_backend_get_level()` directly, so the link fails without it) and
+   has been link-verified. The Linux backend compiles clean headlessly and
+   can capture PCM to a WAV via `DOSBOX_AUDIO_WAV_CAPTURE` for verification.
+   Not yet runtime-verified on a device.
 
 2. **Shutdown.** Upstream DOSBox-X has no complete teardown path. The Java
    Android app this replaces sidestepped it by running the emulator in a

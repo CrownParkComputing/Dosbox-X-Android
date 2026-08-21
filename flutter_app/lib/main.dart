@@ -8,36 +8,38 @@
 // from a reactive graph.
 import 'package:flutter/material.dart';
 
-import 'ffi/dosbox_bindings.dart';
-import 'ffi/dosbox_core.dart';
-import 'ffi/dosbox_native_paths.dart';
-import 'ffi/stub_dosbox_core.dart';
+import 'ffi/retrodosbox_bindings.dart';
+import 'ffi/retrodosbox_core.dart';
+import 'ffi/retrodosbox_native_paths.dart';
+import 'ffi/stub_retrodosbox_core.dart';
 import 'screens/setup_wizard_screen.dart';
 import 'screens/workbench_screen.dart';
 import 'services/app_prefs.dart';
 import 'services/video_settings.dart';
-import 'theme/dosbox_theme.dart';
+import 'theme/retrodosbox_theme.dart';
 
 void main() {
-  runApp(const DosboxApp());
+  runApp(const RetroDosboxApp());
 }
 
-class DosboxApp extends StatefulWidget {
-  const DosboxApp({super.key});
+class RetroDosboxApp extends StatefulWidget {
+  const RetroDosboxApp({super.key});
 
   @override
-  State<DosboxApp> createState() => _DosboxAppState();
+  State<RetroDosboxApp> createState() => _DosboxAppState();
 }
 
-class _DosboxAppState extends State<DosboxApp> with WidgetsBindingObserver {
-  DosboxCore? _core;
+class _DosboxAppState extends State<RetroDosboxApp> with WidgetsBindingObserver {
+  RetroDosboxCore? _core;
 
   /// True when [_core] is the stub rather than the real native library, so the
   /// UI can say so instead of looking broken.
   bool _usingStub = false;
 
   bool? _setupCompleted;
-  bool _pausedBeforeBackground = false;
+  /// True when the lifecycle handler paused the core (vs the user pausing it
+  /// from the emulator screen). See didChangeAppLifecycleState.
+  bool _pausedByLifecycle = false;
 
   @override
   void initState() {
@@ -50,11 +52,11 @@ class _DosboxAppState extends State<DosboxApp> with WidgetsBindingObserver {
     await VideoSettings.instance.load();
     final setupCompleted = await AppPrefs.isSetupCompleted();
 
-    DosboxCore core;
+    RetroDosboxCore core;
     bool usingStub;
     try {
-      core = DosboxCoreBindings.load(
-          libraryPath: DosboxNativePaths.coreLibraryPath);
+      core = RetroDosboxCoreBindings.load(
+          libraryPath: RetroDosboxNativePaths.coreLibraryPath);
       usingStub = false;
     } on Object catch (e) {
       // Falling back rather than failing: the native core is a separate, slow
@@ -68,13 +70,13 @@ class _DosboxAppState extends State<DosboxApp> with WidgetsBindingObserver {
       // invisible from the banner alone, and only this message distinguishes
       // them.
       debugPrint('dosbox: falling back to the stub core. '
-          'path=${DosboxNativePaths.coreLibraryPath} error=$e');
-      core = StubDosboxCore();
+          'path=${RetroDosboxNativePaths.coreLibraryPath} error=$e');
+      core = StubRetroDosboxCore();
       usingStub = true;
     }
 
     if (!usingStub) {
-      final resourceDir = await DosboxNativePaths.resolveResourceDir();
+      final resourceDir = await RetroDosboxNativePaths.resolveResourceDir();
       core.init(resourceDir);
     }
 
@@ -93,12 +95,27 @@ class _DosboxAppState extends State<DosboxApp> with WidgetsBindingObserver {
     if (state == AppLifecycleState.resumed) {
       // Only un-pause if we were the ones who paused it. Otherwise returning
       // from the background would resume a session the user had deliberately
-      // paused.
-      if (!_pausedBeforeBackground) core.setPaused(false);
+      // paused. Tracked as "did we pause" rather than "was it paused before":
+      // one backgrounding delivers SEVERAL non-resumed events (inactive,
+      // hidden, paused), and re-reading core.isPaused on the second one sees
+      // the pause WE just applied and records it as the user's -- the resume
+      // then refuses to un-pause and the core stays frozen for good.
+      if (_pausedByLifecycle) {
+        core.setPaused(false);
+        _pausedByLifecycle = false;
+      }
     } else {
-      _pausedBeforeBackground = core.isPaused;
-      if (!_pausedBeforeBackground) core.setPaused(true);
+      // Idempotent across the multi-event transition: only the first
+      // non-resumed event pauses and marks; later ones see the mark and do
+      // nothing.
+      if (!_pausedByLifecycle && !core.isPaused) {
+        core.setPaused(true);
+        _pausedByLifecycle = true;
+      }
     }
+    // The pause state feeds visible text (the workbench status bar) and there
+    // is no stream for it, so repaint explicitly.
+    setState(() {});
   }
 
   @override
@@ -110,12 +127,12 @@ class _DosboxAppState extends State<DosboxApp> with WidgetsBindingObserver {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'DOSBox-X',
+      title: 'Retro-Dosbox',
       debugShowCheckedModeBanner: false,
       theme: ThemeData.dark(useMaterial3: true).copyWith(
-        scaffoldBackgroundColor: DosColors.rootBackground,
+        scaffoldBackgroundColor: RetroDosboxColors.rootBackground,
         colorScheme: ColorScheme.fromSeed(
-          seedColor: DosColors.accentAmber,
+          seedColor: RetroDosboxColors.accentAmber,
           brightness: Brightness.dark,
         ),
       ),
@@ -165,7 +182,7 @@ class _StubBanner extends StatelessWidget {
     // to the screens below.
     return Container(
       width: double.infinity,
-      color: DosColors.warning,
+      color: RetroDosboxColors.warning,
       padding: EdgeInsets.fromLTRB(
         12, 6 + MediaQuery.paddingOf(context).top, 12, 6),
       child: Text(

@@ -1,12 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Modify this file to customize your launch splash screen -->
+<!-- Splash background: the bitmap is a 9:16 amber-on-black splash image with
+     a CRT scanline pattern, generated alongside the launcher icons. The
+     fallback `<item android:drawable="@android:color/white" />` line is gone
+     so the launcher splash never shows plain white. -->
 <layer-list xmlns:android="http://schemas.android.com/apk/res/android">
-    <item android:drawable="@android:color/white" />
-
-    <!-- You can insert your own image assets here -->
-    <!-- <item>
-        <bitmap
-            android:gravity="center"
-            android:src="@mipmap/launch_image" />
-    </item> -->
+    <item android:drawable="@drawable/launch_splash" />
 </layer-list>
