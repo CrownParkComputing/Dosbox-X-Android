@@ -105,6 +105,16 @@ class _WorkbenchScreenState extends State<WorkbenchScreen>
 
   final GamepadService _gamepads = GamepadService();
 
+  /// Identity for the running emulator view, so it SURVIVES being moved.
+  ///
+  /// Fullscreen draws it inside a Stack and windowed draws it inside a
+  /// Column: different positions in the tree, which without a stable key
+  /// Flutter treats as a destroy and a create rather than a move. The engine
+  /// is in another process and would keep running, but the view's own state
+  /// -- held joystick bits, loaded input preferences, keyboard focus -- would
+  /// silently reset every time the rail was toggled.
+  final GlobalKey _emulatorKey = GlobalKey();
+
   /// Whether the in-game chrome is on screen. It hides itself a few seconds
   /// after the last touch, because a DOS game is 4:3 on a widescreen handheld
   /// and every pixel of chrome is a pixel of picture.
@@ -1129,6 +1139,7 @@ class _WorkbenchScreenState extends State<WorkbenchScreen>
         final session = _session;
         if (session != null) {
           return EmulatorScreen(
+            key: _emulatorKey,
             ui: _emulatorUi,
             core: widget.core,
             input: _input,
