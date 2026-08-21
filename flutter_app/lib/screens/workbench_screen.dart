@@ -8,6 +8,7 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../data/game_entry.dart';
 import '../ffi/retrodosbox_core.dart';
@@ -104,6 +105,16 @@ class _WorkbenchScreenState extends State<WorkbenchScreen>
 
   final GamepadService _gamepads = GamepadService();
 
+  /// Whether the in-game chrome is on screen. It hides itself a few seconds
+  /// after the last touch, because a DOS game is 4:3 on a widescreen handheld
+  /// and every pixel of chrome is a pixel of picture.
+  bool _chromeVisible = true;
+  Timer? _chromeTimer;
+
+  /// Whether the system bars are currently hidden. Tracked so the mode is set
+  /// once on each transition rather than on every rebuild.
+  bool _immersive = false;
+
   /// Where input goes: the core here on desktop, the :dosbox process on
   /// Android. See EmulatorInput.
   late final EmulatorInput _input =
@@ -193,6 +204,12 @@ class _WorkbenchScreenState extends State<WorkbenchScreen>
     _gamepadSub?.cancel();
     _gamepads.connected.removeListener(_onControllerChanged);
     _gamepads.dispose();
+    _chromeTimer?.cancel();
+    // The library is not a fullscreen game, and leaving the bars hidden would
+    // outlive this screen.
+    if (_immersive) {
+      SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
+    }
     super.dispose();
   }
 
@@ -655,9 +672,53 @@ class _WorkbenchScreenState extends State<WorkbenchScreen>
     });
   }
 
+  /// Shows the in-game chrome and restarts its countdown.
+  ///
+  /// Called on every touch anywhere in the session, through a Listener that
+  /// does not consume the event -- so the same tap that brings the toolbar
+  /// back is still the tap the game receives. Anything else would make
+  /// revealing the controls cost you a shot.
+  void _pokeChrome() {
+    _chromeTimer?.cancel();
+    if (!_chromeVisible) setState(() => _chromeVisible = true);
+    _chromeTimer = Timer(const Duration(seconds: 3), () {
+      if (mounted) setState(() => _chromeVisible = false);
+    });
+  }
+
+  /// Hides the system bars while a machine is on screen, and gives them back
+  /// when it is not.
+  ///
+  /// Sticky rather than plain immersive: a swipe from the edge of a handheld
+  /// is easy to do by accident mid-game, and sticky brings the bars back
+  /// transiently instead of leaving them up over the picture.
+  void _syncImmersive(bool wanted) {
+    if (wanted == _immersive) return;
+    _immersive = wanted;
+    SystemChrome.setEnabledSystemUIMode(
+      wanted ? SystemUiMode.immersiveSticky : SystemUiMode.edgeToEdge,
+    );
+    if (wanted) {
+      // Visible on arrival, then gone: the player needs to see the controls
+      // exist before they can learn a tap brings them back.
+      _pokeChrome();
+    } else {
+      _chromeTimer?.cancel();
+      _chromeVisible = true;
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final screenWidth = MediaQuery.sizeOf(context).width;
+
+    // A running machine takes the whole screen: no rail, no status row, no
+    // panel border. Those are library furniture, and a 4:3 picture on a wide
+    // handheld has no height to lend them.
+    final fullscreen = _session != null && _tab == WorkbenchTab.running;
+    WidgetsBinding.instance
+        .addPostFrameCallback((_) => _syncImmersive(fullscreen));
+    if (fullscreen) return _fullscreenSession();
     return Container(
       color: RetroDosboxColors.rootBackground,
       child: SafeArea(
@@ -772,6 +833,55 @@ class _WorkbenchScreenState extends State<WorkbenchScreen>
           ),
         ],
       ],
+      ),
+    );
+  }
+
+  /// The running machine, edge to edge, with the toolbar floating over it.
+  ///
+  /// The toolbar overlays the picture here, which everywhere else in this app
+  /// it deliberately does not: on the library screens it sits on the status
+  /// row so it cannot cover the top-right corner where DOS titles put their
+  /// own panels. Fullscreen leaves nowhere else for it to be, so it earns its
+  /// place by getting out of the way -- three seconds after the last touch it
+  /// is gone, and the corner is the game's again.
+  Widget _fullscreenSession() {
+    return Listener(
+      // Translucent, and onPointerDown rather than a tap: this has to observe
+      // the touch without eating it, so the game still gets it.
+      behavior: HitTestBehavior.translucent,
+      onPointerDown: (_) => _pokeChrome(),
+      child: ColoredBox(
+        color: Colors.black,
+        child: Stack(
+          children: [
+            Positioned.fill(child: _tabContent()),
+            Positioned(
+              top: 0,
+              right: 0,
+              child: SafeArea(
+                child: AnimatedOpacity(
+                  opacity: _chromeVisible ? 1 : 0,
+                  duration: const Duration(milliseconds: 220),
+                  // Faded-out chrome must not still be catching taps meant for
+                  // the game underneath it.
+                  child: IgnorePointer(
+                    ignoring: !_chromeVisible,
+                    child: Padding(
+                      padding: const EdgeInsets.all(8),
+                      child: EmulatorControlStrip(
+                        ui: _emulatorUi,
+                        onPause: _onSessionPause,
+                        onExit: _onSessionExit,
+                        onInteract: _pokeChrome,
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

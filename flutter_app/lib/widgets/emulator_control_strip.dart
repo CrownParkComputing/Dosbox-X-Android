@@ -28,12 +28,25 @@ class EmulatorControlStrip extends StatelessWidget {
   /// Terminates the session with no resume path. Null hides the button.
   final VoidCallback? onExit;
 
+  /// Called before any button acts, so the shell can restart the countdown
+  /// that hides this strip. Without it, using the toolbar would be the one
+  /// interaction that did not keep the toolbar on screen -- pressing one
+  /// button would be a race against the strip vanishing under your thumb.
+  final VoidCallback? onInteract;
+
   const EmulatorControlStrip({
     super.key,
     required this.ui,
     this.onPause,
     this.onExit,
+    this.onInteract,
   });
+
+  /// Wraps a button's action so any press counts as interaction.
+  VoidCallback _act(VoidCallback action) => () {
+        onInteract?.call();
+        action();
+      };
 
   @override
   Widget build(BuildContext context) {
@@ -46,33 +59,33 @@ class EmulatorControlStrip extends StatelessWidget {
             icon: Icons.videogame_asset,
             active: ui.padVisible,
             tooltip: 'On-screen joypad',
-            onTap: ui.togglePad,
+            onTap: _act(ui.togglePad),
           ),
           _StripButton(
             icon: Icons.keyboard,
             active: ui.keyboardVisible,
             tooltip: 'On-screen keys',
-            onTap: ui.toggleKeyboard,
+            onTap: _act(ui.toggleKeyboard),
           ),
           _StripButton(
             icon: Icons.mouse,
             active: ui.mouseMode,
             tooltip: 'Trackpad mouse',
-            onTap: ui.toggleMouseMode,
+            onTap: _act(ui.toggleMouseMode),
           ),
           if (onPause != null)
             _StripButton(
               icon: Icons.pause,
               active: false,
               tooltip: 'Pause and return to library (snapshot saved)',
-              onTap: onPause!,
+              onTap: _act(onPause!),
             ),
           if (onExit != null)
             _StripButton(
               icon: Icons.close,
               active: false,
               tooltip: 'Close game',
-              onTap: onExit!,
+              onTap: _act(onExit!),
             ),
         ],
       ),
@@ -96,7 +109,12 @@ class _StripButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.only(bottom: 6),
+      // Spaced apart, not touching. These are hit targets for a thumb on a
+      // handheld, and the pause and close buttons sit next to each other:
+      // adjacent 38px squares with no gap is how you quit a game you meant to
+      // pause. The padding used to be `only(bottom: 6)`, left over from when
+      // this strip was a vertical column down the side of the picture.
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
       child: Tooltip(
         message: tooltip,
         child: InkWell(
