@@ -103,6 +103,12 @@ android {
         // 28 matches the Java app this replaces. The dynamic CPU core and the
         // storage model both assume a reasonably modern platform, and going
         // lower has no audience.
+        // 28, which is this app's real floor rather than a preference.
+        // DOSBox-X needs iconv, and Bionic did not gain iconv_open until API
+        // 28 -- below that the link fails with "unable to find library
+        // -liconv", because there is no iconv on the platform at all. Keeping
+        // the core at 28 and minSdk at 28 is what stops the app installing
+        // somewhere it cannot load itself.
         minSdk = 28
         // Pinned, not inherited from the Flutter SDK.
         //
