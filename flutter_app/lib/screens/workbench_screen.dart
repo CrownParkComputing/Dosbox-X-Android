@@ -382,6 +382,9 @@ class _WorkbenchScreenState extends State<WorkbenchScreen>
       launcher: launcher,
       archiveSetup: archiveSetup,
       captureRoot: captureRoot.path,
+      // A window when the core runs in its own process, offscreen when it
+      // runs in this one.
+      windowed: EmulatorProcess.isSupported,
     );
 
     // One conf file per title rather than a single shared one, so a crashed
@@ -407,6 +410,27 @@ class _WorkbenchScreenState extends State<WorkbenchScreen>
     // to disk - `<captures>/../save/<slot>.sav` - rather than holding them in
     // the running core, and each title now has its own captures directory, so
     // slot 0 is that title's slot rather than a shared one.
+    // Android runs the core in its own process: a session is a process, so it
+    // ends by ending, and the next game gets a fresh engine without this
+    // launcher going anywhere. Everything the one-shot core problem used to
+    // cost - the wedged engine, the app restart - goes with it.
+    if (EmulatorProcess.isSupported) {
+      if (await EmulatorProcess.launch(file.path)) {
+        if (!mounted) return;
+        setState(() {
+          _session = entry;
+          _pendingArchiveSetup = archiveSetup;
+          _launchError = null;
+        });
+        return;
+      }
+      if (!mounted) return;
+      setState(
+        () => _launchError = 'Could not start ${entry.title}.',
+      );
+      return;
+    }
+
     var result = widget.core.start(file.path);
     if (result == RetroDosboxResult.alreadyStarted) {
       // A second game means a second process. DOSBox-X cannot start twice in

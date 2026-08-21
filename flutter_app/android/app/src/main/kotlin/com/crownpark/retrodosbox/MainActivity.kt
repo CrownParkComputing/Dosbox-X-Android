@@ -175,6 +175,23 @@ class MainActivity : FlutterActivity(), GamepadsCompatibleActivity {
                     }
                 }
 
+                // Hands a title to the emulator process. See
+                // DosboxEmulatorActivity: the core runs there so that ending a
+                // session ends a process, which is the only reliable way to
+                // get a fresh one.
+                "launchEmulator" -> {
+                    val conf = call.argument<String>("confPath")
+                    if (conf.isNullOrEmpty()) {
+                        result.error("bad_args", "launchEmulator needs confPath", null)
+                    } else {
+                        startActivity(
+                            Intent(this, DosboxEmulatorActivity::class.java)
+                                .putExtra(DosboxEmulatorActivity.EXTRA_CONF_PATH, conf)
+                        )
+                        result.success(true)
+                    }
+                }
+
                 // The one-shot core's way out. See restartApp.
                 "restartApp" -> {
                     // Answer BEFORE restarting: the channel goes away with the

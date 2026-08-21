@@ -64,6 +64,21 @@
                 <category android:name="android.intent.category.LAUNCHER"/>
             </intent-filter>
         </activity>
+        <!-- The emulator, in a process of its own.
+             Ending a session ends this process, which is what makes the core
+             one-shot problem go away: Android reclaims whatever the engine
+             leaked and the next game gets a genuinely fresh one, while the
+             launcher's process is never touched. Same arrangement Retro-Amiga
+             uses for its core in :sdl.
+             Landscape and keep-screen-on because it is a game, not a form. -->
+        <activity
+            android:name=".DosboxEmulatorActivity"
+            android:exported="false"
+            android:configChanges="keyboard|keyboardHidden|orientation|screenSize|screenLayout|smallestScreenSize|uiMode|navigation"
+            android:launchMode="singleTask"
+            android:process=":dosbox"
+            android:screenOrientation="sensorLandscape"
+            android:theme="@android:style/Theme.NoTitleBar.Fullscreen" />
         <!-- The one-shot core's way out.
              DOSBox-X's upstream globals have no complete teardown path, so a
              second start in the same process is unsafe - and the Quit that

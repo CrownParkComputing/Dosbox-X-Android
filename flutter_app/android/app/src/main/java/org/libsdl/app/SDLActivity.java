@@ -59,9 +59,21 @@ import java.util.Locale;
 */
 public class SDLActivity extends Activity implements View.OnSystemUiVisibilityChangeListener {
     private static final String TAG = "SDL";
+    // Must match the libSDL2.so actually shipped in jniLibs, which is
+    // SDL-2.32.10-g0394c4e. This Java layer came from the 2.30.9 tree under
+    // native/dosbox_core/ios/build/SDL, and the two disagreeing was invisible
+    // until an activity actually instantiated SDL: the check below is a plain
+    // string comparison, so it refused to start with "SDL C/Java version
+    // mismatch" while everything about the pairing was in fact fine.
+    //
+    // Checked rather than assumed before changing these: all 42 native methods
+    // this Java layer declares are present among the 52 Java_org_libsdl_app_*
+    // entry points the shipped .so exports, so the JNI surface is compatible.
+    // If that ever stops being true, the honest fix is a matched Java layer,
+    // not a bigger number here.
     private static final int SDL_MAJOR_VERSION = 2;
-    private static final int SDL_MINOR_VERSION = 30;
-    private static final int SDL_MICRO_VERSION = 9;
+    private static final int SDL_MINOR_VERSION = 32;
+    private static final int SDL_MICRO_VERSION = 10;
 /*
     // Display InputType.SOURCE/CLASS of events and devices
     //

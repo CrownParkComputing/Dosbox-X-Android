@@ -40,6 +40,9 @@ class RetroDosboxConfBuilder {
     /// Where per-title capture directories live. The save slots hang off
     /// this, so it has to be somewhere writable that survives the session.
     required String captureRoot,
+    /// True when the core will run in its own process with an SDL window,
+    /// false when it runs in-process and publishes frames back to Flutter.
+    required bool windowed,
   }) {
     final program =
         launcher ??
@@ -64,6 +67,7 @@ class RetroDosboxConfBuilder {
       voodoo: settings.voodoo || _defaultVoodoo(programName),
       joystick: settings.joystick,
       capturesDir: p.join(captureRoot, entry.slug),
+      windowed: windowed,
       advanced: [
         settings.advanced,
         globalAdvanced ?? '',
@@ -83,6 +87,7 @@ class RetroDosboxConfBuilder {
     required bool joystick,
     required String advanced,
     required String capturesDir,
+    required bool windowed,
   }) {
     final sb = StringBuffer();
 
@@ -100,7 +105,12 @@ class RetroDosboxConfBuilder {
     // picture -- a DOSBox menu bar inside the Flutter frame would be redundant
     // and would eat a row of pixels.
     sb.writeln('[sdl]');
-    sb.writeln('output=gamelink');
+    // Offscreen when the core runs inside this process, a real window when it
+    // runs in its own. The bridge hooks OUTPUT_GAMELINK_Transfer to publish
+    // frames back to Flutter; SDLActivity instead gives DOSBox-X a SurfaceView
+    // to draw straight into, and gamelink there would render into a buffer
+    // nobody reads - a black screen from an engine that is running perfectly.
+    sb.writeln(windowed ? 'output=surface' : 'output=gamelink');
     sb.writeln('gamelink master=true');
     sb.writeln('showmenu=false');
     sb.writeln('showdetails=false');
