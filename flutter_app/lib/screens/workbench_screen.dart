@@ -841,10 +841,14 @@ class _WorkbenchScreenState extends State<WorkbenchScreen>
   ///
   /// The toolbar overlays the picture here, which everywhere else in this app
   /// it deliberately does not: on the library screens it sits on the status
-  /// row so it cannot cover the top-right corner where DOS titles put their
-  /// own panels. Fullscreen leaves nowhere else for it to be, so it earns its
-  /// place by getting out of the way -- three seconds after the last touch it
-  /// is gone, and the corner is the game's again.
+  /// row below the panel. Fullscreen leaves no row to sit on, so it keeps the
+  /// same place it has everywhere else -- along the bottom, from the right --
+  /// and earns it by getting out of the way: three seconds after the last
+  /// touch it is gone.
+  ///
+  /// Bottom rather than top. The top-right is where DOS titles put their own
+  /// status panels, and it is also not where this app's toolbar lives on any
+  /// other screen, or where the Amiga and C64 front ends put theirs.
   Widget _fullscreenSession() {
     return Listener(
       // Translucent, and onPointerDown rather than a tap: this has to observe
@@ -857,7 +861,7 @@ class _WorkbenchScreenState extends State<WorkbenchScreen>
           children: [
             Positioned.fill(child: _tabContent()),
             Positioned(
-              top: 0,
+              bottom: 0,
               right: 0,
               child: SafeArea(
                 child: AnimatedOpacity(
