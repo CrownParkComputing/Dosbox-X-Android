@@ -141,6 +141,57 @@ void dosbox_core_set_paused(int32_t paused);
  * caller must COPY the pixels it wants before yielding. See
  * DosboxCoreBindings.getFramebuffer() in Dart, which does exactly that.
  */
+/* ------------------------------------------------------------------------ */
+/* Shared frames, for running the engine in another process               */
+/* ------------------------------------------------------------------------ */
+
+/*
+ * Publish finished frames into a file both processes map, instead of a buffer
+ * private to this one.
+ *
+ * The engine runs in its own process because DOSBox-X is a one-shot core: it
+ * has no teardown path, so ending a session has to mean ending a process. But
+ * the launcher still wants to DRAW the picture, inside its own window,
+ * alongside its own controls -- and a pointer from another process is worth
+ * nothing to it.
+ *
+ * So the frame goes somewhere both can see. The mapping is a header followed
+ * by pixels, and the header carries everything the reader needs (size, pitch,
+ * frame counter), which means there is no per-frame IPC at all: the reader
+ * polls the mapping exactly as an in-process reader polls
+ * dosbox_core_get_framebuffer, and a frame counter that has not moved costs
+ * it nothing.
+ *
+ * Call before dosbox_core_start(). Returns DOSBOX_OK, or DOSBOX_ERR if the
+ * file cannot be created or mapped -- in which case the caller should fall
+ * back to the in-process path rather than run a session nobody can see.
+ */
+int32_t dosbox_core_set_shared_frame(const char *path, int32_t max_width,
+                                     int32_t max_height);
+
+/*
+ * Attach to a mapping another process is publishing into, read-only.
+ *
+ * The reader side of the above, and the whole reason this lives in the same
+ * library: the launcher already links libdosboxcore for its own in-process
+ * path, so reading a shared frame needs no second artifact. Loading the
+ * library does not start an engine.
+ */
+int32_t dosbox_shared_frame_attach(const char *path);
+
+/*
+ * The attached mapping's current frame, in the shape
+ * dosbox_core_get_framebuffer returns, so a reader can use either without
+ * caring which. Returns NULL when nothing is attached or no frame has landed.
+ */
+const uint32_t *dosbox_shared_frame_get(int32_t *out_width, int32_t *out_height,
+                                        int32_t *out_pitch_bytes);
+
+/* The attached mapping's frame counter, for skipping unchanged frames. */
+uint64_t dosbox_shared_frame_counter(void);
+
+void dosbox_shared_frame_detach(void);
+
 const uint32_t *dosbox_core_get_framebuffer(int32_t *out_width,
                                             int32_t *out_height,
                                             int32_t *out_pitch_bytes);

@@ -23,13 +23,22 @@
  * point. The framebuffer is copied into bridge-owned memory in the same hook,
  * so a reader can never see a half-drawn frame from the scaler.
  */
-/* _GNU_SOURCE for pthread_timedjoin_np (a GNU extension stop() uses to bound
- * the engine teardown). Must precede every libc include, so it comes first. */
+/* _GNU_SOURCE for the GNU extensions the Linux build uses. Must precede every
+ * libc include, so it comes first. Note stop() no longer relies on
+ * pthread_timedjoin_np: Bionic has no such function, so that version never
+ * compiled for Android. */
+#ifndef _GNU_SOURCE
 #define _GNU_SOURCE
+#endif
 
 #include "config.h"
 
 #include <SDL.h>
+
+#include <fcntl.h>
+#include <sys/mman.h>
+#include <sys/stat.h>
+#include <unistd.h>
 
 #include <atomic>
 #include <cstdio>
@@ -94,6 +103,9 @@ std::atomic<int32_t> g_aspect_x1000{0};
 std::atomic<bool> g_running{false};
 std::atomic<bool> g_paused{false};
 std::atomic<bool> g_started{false};
+/* Set by the engine thread as its last act, so a bounded join can be built
+ * out of pthread_join alone. See dosbox_core_stop. */
+std::atomic<bool> g_thread_exited{false};
 /* One-shot: the emulated joystick is attached at the first frame. */
 std::atomic<bool> g_joystick_attached{false};
 std::atomic<int32_t> g_fps{0};
@@ -246,10 +258,177 @@ void *mainloop_thread(void *)
     g_started.store(false);
     g_joystick_attached.store(false);
     g_fps.store(0);
+    /* Last: whoever is waiting on this may join the moment it is seen. */
+    g_thread_exited.store(true, std::memory_order_release);
     return nullptr;
 }
 
 } /* namespace */
+
+/* ------------------------------------------------------------------------ */
+/* Shared frames                                                            */
+/* ------------------------------------------------------------------------ */
+
+/* Header + pixels in one mapping. The header carries everything a reader
+ * needs, so a frame costs no IPC: the reader polls this exactly as an
+ * in-process reader polls g_frame.
+ *
+ * counter is written LAST on publish and read FIRST by the reader, which is
+ * what makes a torn frame impossible to mistake for a whole one: a reader
+ * that sees a new counter has, by release/acquire, seen the pixels that came
+ * with it. */
+struct SharedFrameHeader {
+    std::atomic<uint64_t> counter;
+    std::atomic<int32_t> width;
+    std::atomic<int32_t> height;
+    std::atomic<int32_t> pitch_bytes;
+    std::atomic<int32_t> capacity_bytes;
+};
+
+static void *g_shm_base = nullptr;         /* writer side */
+static size_t g_shm_size = 0;
+static void *g_shm_read_base = nullptr;    /* reader side */
+static size_t g_shm_read_size = 0;
+
+static size_t shm_total_bytes(int32_t max_width, int32_t max_height)
+{
+    return sizeof(SharedFrameHeader) +
+           static_cast<size_t>(max_width) * static_cast<size_t>(max_height) * 4;
+}
+
+extern "C" int32_t dosbox_core_set_shared_frame(const char *path,
+                                                int32_t max_width,
+                                                int32_t max_height)
+{
+    if (path == nullptr || max_width <= 0 || max_height <= 0) {
+        return DOSBOX_ERR;
+    }
+    const size_t total = shm_total_bytes(max_width, max_height);
+
+    const int fd = open(path, O_RDWR | O_CREAT, 0600);
+    if (fd < 0) {
+        return DOSBOX_ERR;
+    }
+    /* Sized up front. A mapping that grows under a reader is a mapping the
+     * reader can be holding a stale length for. */
+    if (ftruncate(fd, static_cast<off_t>(total)) != 0) {
+        close(fd);
+        return DOSBOX_ERR;
+    }
+    void *base = mmap(nullptr, total, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
+    close(fd); /* the mapping keeps the file alive */
+    if (base == MAP_FAILED) {
+        return DOSBOX_ERR;
+    }
+
+    auto *header = static_cast<SharedFrameHeader *>(base);
+    header->counter.store(0, std::memory_order_relaxed);
+    header->width.store(0, std::memory_order_relaxed);
+    header->height.store(0, std::memory_order_relaxed);
+    header->pitch_bytes.store(0, std::memory_order_relaxed);
+    header->capacity_bytes.store(
+        static_cast<int32_t>(total - sizeof(SharedFrameHeader)),
+        std::memory_order_relaxed);
+
+    g_shm_base = base;
+    g_shm_size = total;
+    return DOSBOX_OK;
+}
+
+/* Called from the publish hook, on the engine thread. */
+static void shared_frame_publish(const uint32_t *pixels, int32_t width,
+                                 int32_t height, int32_t pitch_bytes)
+{
+    if (g_shm_base == nullptr || pixels == nullptr) {
+        return;
+    }
+    auto *header = static_cast<SharedFrameHeader *>(g_shm_base);
+    const size_t needed =
+        static_cast<size_t>(height) * static_cast<size_t>(pitch_bytes);
+    /* A frame larger than the mapping is dropped rather than truncated: half a
+     * frame drawn confidently is worse than the last whole one held. */
+    if (needed > g_shm_size - sizeof(SharedFrameHeader)) {
+        return;
+    }
+    memcpy(static_cast<uint8_t *>(g_shm_base) + sizeof(SharedFrameHeader),
+           pixels, needed);
+    header->width.store(width, std::memory_order_relaxed);
+    header->height.store(height, std::memory_order_relaxed);
+    header->pitch_bytes.store(pitch_bytes, std::memory_order_relaxed);
+    /* Last, and with release: see the note on SharedFrameHeader. */
+    header->counter.fetch_add(1, std::memory_order_release);
+}
+
+extern "C" int32_t dosbox_shared_frame_attach(const char *path)
+{
+    if (path == nullptr) {
+        return DOSBOX_ERR;
+    }
+    dosbox_shared_frame_detach();
+
+    const int fd = open(path, O_RDONLY);
+    if (fd < 0) {
+        return DOSBOX_ERR;
+    }
+    struct stat st;
+    if (fstat(fd, &st) != 0 ||
+        static_cast<size_t>(st.st_size) < sizeof(SharedFrameHeader)) {
+        close(fd);
+        return DOSBOX_ERR;
+    }
+    void *base = mmap(nullptr, static_cast<size_t>(st.st_size), PROT_READ,
+                      MAP_SHARED, fd, 0);
+    close(fd);
+    if (base == MAP_FAILED) {
+        return DOSBOX_ERR;
+    }
+    g_shm_read_base = base;
+    g_shm_read_size = static_cast<size_t>(st.st_size);
+    return DOSBOX_OK;
+}
+
+extern "C" const uint32_t *dosbox_shared_frame_get(int32_t *out_width,
+                                                   int32_t *out_height,
+                                                   int32_t *out_pitch_bytes)
+{
+    if (g_shm_read_base == nullptr) {
+        return nullptr;
+    }
+    auto *header = static_cast<SharedFrameHeader *>(g_shm_read_base);
+    /* Acquire pairs with the publisher's release store of counter. */
+    if (header->counter.load(std::memory_order_acquire) == 0) {
+        return nullptr;
+    }
+    const int32_t width = header->width.load(std::memory_order_relaxed);
+    const int32_t height = header->height.load(std::memory_order_relaxed);
+    const int32_t pitch = header->pitch_bytes.load(std::memory_order_relaxed);
+    if (width <= 0 || height <= 0 || pitch <= 0) {
+        return nullptr;
+    }
+    if (out_width) *out_width = width;
+    if (out_height) *out_height = height;
+    if (out_pitch_bytes) *out_pitch_bytes = pitch;
+    return reinterpret_cast<const uint32_t *>(
+        static_cast<uint8_t *>(g_shm_read_base) + sizeof(SharedFrameHeader));
+}
+
+extern "C" uint64_t dosbox_shared_frame_counter(void)
+{
+    if (g_shm_read_base == nullptr) {
+        return 0;
+    }
+    auto *header = static_cast<SharedFrameHeader *>(g_shm_read_base);
+    return header->counter.load(std::memory_order_acquire);
+}
+
+extern "C" void dosbox_shared_frame_detach(void)
+{
+    if (g_shm_read_base != nullptr) {
+        munmap(g_shm_read_base, g_shm_read_size);
+        g_shm_read_base = nullptr;
+        g_shm_read_size = 0;
+    }
+}
 
 /* ------------------------------------------------------------------------ */
 /* Hook called by the patched OUTPUT_GAMELINK_Transfer                      */
@@ -278,6 +457,10 @@ extern "C" void DOSBOX_BRIDGE_PublishFrame(const uint32_t *pixels, int32_t width
         g_height = height;
         g_pitch = pitch_bytes;
     }
+
+    /* And into the shared mapping, when another process is doing the drawing.
+     * A no-op when nothing is shared, which is the in-process case. */
+    shared_frame_publish(pixels, width, height, pitch_bytes);
 
     /* Attach the emulated joystick once, as early as the mainloop reaches a
      * frame boundary -- which is before a DOS program has had time to run and
@@ -331,6 +514,7 @@ extern "C" void dosbox_core_init(const char *resource_dir)
 
 extern "C" int32_t dosbox_core_start(const char *conf_path)
 {
+    g_thread_exited.store(false, std::memory_order_relaxed);
     if (g_started.exchange(true)) {
         return DOSBOX_ERR_ALREADY_STARTED;
     }
@@ -366,12 +550,28 @@ extern "C" int32_t dosbox_core_stop(void)
      * mapper and SDL), but it must not be allowed to wedge the caller: on a
      * stuck mainloop the app still has the process-restart fallback, which
      * only works if this call returns. */
-    struct timespec deadline;
-    clock_gettime(CLOCK_REALTIME, &deadline);
-    deadline.tv_sec += 5;
-    if (pthread_timedjoin_np(g_thread, nullptr, &deadline) != 0) {
+    /* A bounded join, without pthread_timedjoin_np.
+     *
+     * That is a glibc extension: Bionic has no such function at any API level,
+     * so the timed-join version of this never compiled for Android at all -
+     * which is why the shipped core predates it. Polling a flag the engine
+     * thread sets as it exits, then joining a thread already known to be
+     * finished, is portable and keeps the property that actually matters here:
+     * a stuck mainloop must not wedge the caller, because the app's only
+     * remaining recourse - replacing the process - needs this call to return.
+     */
+    bool exited = false;
+    for (int i = 0; i < 500; ++i) { /* 500 x 10ms = the same ~5s bound */
+        if (g_thread_exited.load(std::memory_order_acquire)) {
+            exited = true;
+            break;
+        }
+        usleep(10 * 1000);
+    }
+    if (!exited) {
         return DOSBOX_ERR;
     }
+    pthread_join(g_thread, nullptr);
 
     /* Back to the just-launched state so the next start() builds a fresh
      * session: no frames, no stick, no leftover input. */

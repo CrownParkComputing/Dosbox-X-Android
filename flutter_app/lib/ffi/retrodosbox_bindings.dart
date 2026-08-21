@@ -43,6 +43,9 @@ typedef _JoystickDart = void Function(
 typedef _Int32StrNative = Int32 Function(Pointer<Utf8> s);
 typedef _Int32StrDart = int Function(Pointer<Utf8> s);
 
+typedef _AttachSharedNative = Int32 Function(Pointer<Utf8>);
+typedef _AttachSharedDart = int Function(Pointer<Utf8>);
+
 typedef _GetFramebufferNative = Pointer<Uint32> Function(
     Pointer<Int32> outWidth, Pointer<Int32> outHeight,
     Pointer<Int32> outPitchBytes);
@@ -107,6 +110,15 @@ class RetroDosboxCoreBindings implements RetroDosboxCore {
   late final _Int32Int32Dart _loadState;
   late final _Int32Int32Dart _stateIsEmpty;
   late final _GetFramebufferDart _getFramebuffer;
+
+  // The shared mapping the emulator process publishes into. Same shapes as the
+  // in-process pair above, deliberately: a reader should not have to care
+  // which side of a process boundary the frame came from.
+  late final _AttachSharedDart _sharedAttach;
+  late final _GetFramebufferDart _sharedGet;
+  late final _Uint64VoidDart _sharedCounter;
+  late final void Function() _sharedDetach;
+  bool _sharedAttached = false;
   late final _Uint64VoidDart _getFrameCounter;
   late final _Int32VoidDart _getPixelAspect;
   late final _BufDart _configSections;
@@ -169,6 +181,21 @@ class RetroDosboxCoreBindings implements RetroDosboxCore {
     _getFramebuffer = _lib
         .lookup<NativeFunction<_GetFramebufferNative>>(
             'dosbox_core_get_framebuffer')
+        .asFunction();
+    _sharedAttach = _lib
+        .lookup<NativeFunction<_AttachSharedNative>>(
+            'dosbox_shared_frame_attach')
+        .asFunction();
+    _sharedGet = _lib
+        .lookup<NativeFunction<_GetFramebufferNative>>(
+            'dosbox_shared_frame_get')
+        .asFunction();
+    _sharedCounter = _lib
+        .lookup<NativeFunction<_Uint64VoidNative>>(
+            'dosbox_shared_frame_counter')
+        .asFunction();
+    _sharedDetach = _lib
+        .lookup<NativeFunction<Void Function()>>('dosbox_shared_frame_detach')
         .asFunction();
     _getFrameCounter = _lib
         .lookup<NativeFunction<_Uint64VoidNative>>(
@@ -365,8 +392,32 @@ class RetroDosboxCoreBindings implements RetroDosboxCore {
     return (s == null || s.isEmpty) ? null : s;
   }
 
+  /// Reads frames from [path] instead of this process's own core.
+  ///
+  /// The emulator runs in another process - DOSBox-X is one-shot, so a session
+  /// has to be a process - but the launcher still draws the picture, in its own
+  /// panel, under its own controls. The engine publishes into a mapping and
+  /// this side reads it, which is why nothing above here changes: the counter
+  /// and the framebuffer keep the shapes they always had.
+  bool attachSharedFrame(String path) {
+    final p = path.toNativeUtf8();
+    try {
+      _sharedAttached = _sharedAttach(p) == 0;
+      return _sharedAttached;
+    } finally {
+      malloc.free(p);
+    }
+  }
+
+  void detachSharedFrame() {
+    if (!_sharedAttached) return;
+    _sharedDetach();
+    _sharedAttached = false;
+  }
+
   @override
-  int get frameCounter => _getFrameCounter();
+  int get frameCounter =>
+      _sharedAttached ? _sharedCounter() : _getFrameCounter();
 
   @override
   double? get pixelAspect {
@@ -380,7 +431,9 @@ class RetroDosboxCoreBindings implements RetroDosboxCore {
     final outH = malloc<Int32>();
     final outPitch = malloc<Int32>();
     try {
-      final ptr = _getFramebuffer(outW, outH, outPitch);
+      final ptr = _sharedAttached
+          ? _sharedGet(outW, outH, outPitch)
+          : _getFramebuffer(outW, outH, outPitch);
       if (ptr == nullptr) return null;
       final w = outW.value;
       final h = outH.value;
