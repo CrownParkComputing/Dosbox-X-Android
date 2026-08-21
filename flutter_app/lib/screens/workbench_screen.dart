@@ -803,7 +803,12 @@ class _WorkbenchScreenState extends State<WorkbenchScreen>
   /// When the user has paused a session the running title is gone from the
   /// emulator screen but still alive in [_pausedSession]; the status bar
   /// surfaces that, with a tap target to resume rather than just text.
-  Widget _statusBar() {
+  ///
+  /// [floating] is the fullscreen case, where this row is drawn over the foot
+  /// of the picture instead of below it. Everything about it is the same
+  /// except that touching it has to restart the countdown that hides it --
+  /// otherwise the row would fade out from under the thumb reaching for it.
+  Widget _statusBar({bool floating = false}) {
     final session = _session;
     final paused = _pausedSession;
     final shown = session ?? paused;
@@ -816,6 +821,7 @@ class _WorkbenchScreenState extends State<WorkbenchScreen>
       children: [
         IconButton(
           onPressed: () {
+            if (floating) _pokeChrome();
             setState(() => _sidebarHidden = !_sidebarHidden);
             AppPrefs.setSidebarHidden(_sidebarHidden);
           },
@@ -859,6 +865,7 @@ class _WorkbenchScreenState extends State<WorkbenchScreen>
             ui: _emulatorUi,
             onPause: _onSessionPause,
             onExit: _onSessionExit,
+            onInteract: floating ? _pokeChrome : null,
           ),
         ],
       ],
@@ -889,26 +896,39 @@ class _WorkbenchScreenState extends State<WorkbenchScreen>
         child: Stack(
           children: [
             Positioned.fill(child: _tabContent()),
+            // The status row itself, floated over the foot of the picture --
+            // not a second copy of half of it. It already carries the rail
+            // toggle and the running title, so reusing it is what keeps the
+            // fullscreen chrome and the windowed chrome the same chrome: one
+            // toggle icon with one behaviour, and the title where it always
+            // is.
             Positioned(
-              bottom: 0,
+              left: 0,
               right: 0,
-              child: SafeArea(
-                child: AnimatedOpacity(
-                  opacity: _chromeVisible ? 1 : 0,
-                  duration: const Duration(milliseconds: 220),
-                  // Faded-out chrome must not still be catching taps meant for
-                  // the game underneath it.
-                  child: IgnorePointer(
-                    ignoring: !_chromeVisible,
-                    child: Padding(
-                      padding: const EdgeInsets.all(8),
-                      child: EmulatorControlStrip(
-                        ui: _emulatorUi,
-                        onShowSidebar: () =>
-                            setState(() => _sidebarHidden = false),
-                        onPause: _onSessionPause,
-                        onExit: _onSessionExit,
-                        onInteract: _pokeChrome,
+              bottom: 0,
+              child: AnimatedOpacity(
+                opacity: _chromeVisible ? 1 : 0,
+                duration: const Duration(milliseconds: 220),
+                // Faded-out chrome must not still be catching taps meant for
+                // the game underneath it.
+                child: IgnorePointer(
+                  ignoring: !_chromeVisible,
+                  child: DecoratedBox(
+                    // Legible over whatever the game happens to be drawing
+                    // there, and fading upwards so it does not read as a bar
+                    // bolted across the picture.
+                    decoration: const BoxDecoration(
+                      gradient: LinearGradient(
+                        begin: Alignment.bottomCenter,
+                        end: Alignment.topCenter,
+                        colors: [Colors.black87, Colors.transparent],
+                      ),
+                    ),
+                    child: SafeArea(
+                      top: false,
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 8),
+                        child: _statusBar(floating: true),
                       ),
                     ),
                   ),

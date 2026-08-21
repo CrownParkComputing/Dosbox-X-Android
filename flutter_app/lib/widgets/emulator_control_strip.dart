@@ -3,8 +3,8 @@ import 'package:flutter/material.dart';
 import '../data/emulator_ui_state.dart';
 import '../theme/retrodosbox_theme.dart';
 
-/// The in-game control strip: the rail toggle, the on-screen pad, keyboard,
-/// trackpad mouse, and the ways out.
+/// The in-game control strip: the on-screen pad, keyboard, trackpad mouse,
+/// and the ways out.
 ///
 /// It sits OUTSIDE the content panel, on the right-hand end of the status row
 /// that already carries the rail toggle and the loaded title -- the same place
@@ -22,15 +22,6 @@ import '../theme/retrodosbox_theme.dart';
 class EmulatorControlStrip extends StatelessWidget {
   final EmulatorUiState ui;
 
-  /// Brings the sidebar back, leaving fullscreen. Null on the status row,
-  /// where the rail's own toggle already sits a few pixels to the left and a
-  /// second one would be a duplicate.
-  ///
-  /// Fullscreen has no status row for that toggle to live on, and dropping it
-  /// left no way back to the rail at all -- so it joins the strip, appearing
-  /// and hiding with the rest of the chrome on a touch.
-  final VoidCallback? onShowSidebar;
-
   /// Snapshots and returns to the library, keeping your place.
   final VoidCallback? onPause;
 
@@ -46,7 +37,6 @@ class EmulatorControlStrip extends StatelessWidget {
   const EmulatorControlStrip({
     super.key,
     required this.ui,
-    this.onShowSidebar,
     this.onPause,
     this.onExit,
     this.onInteract,
@@ -65,15 +55,6 @@ class EmulatorControlStrip extends StatelessWidget {
       builder: (context, _) => Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          // Leftmost, the same end of the strip the rail toggle occupies on
-          // the status row.
-          if (onShowSidebar != null)
-            _StripButton(
-              icon: Icons.menu,
-              active: false,
-              tooltip: 'Show sidebar',
-              onTap: _act(onShowSidebar!),
-            ),
           _StripButton(
             icon: Icons.videogame_asset,
             active: ui.padVisible,
