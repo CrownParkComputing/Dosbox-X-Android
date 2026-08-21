@@ -9,7 +9,18 @@ flutter_app/ios/Pods/
 flutter_app/linux/flutter/ephemeral/
 flutter_app/android/.gradle/
 flutter_app/android/local.properties
-flutter_app/android/app/src/main/jniLibs/**/*.so
+# The jniLibs .so files are TRACKED, deliberately.
+#
+# They used to be ignored as build output, which meant the only working copy
+# of the emulator was on whichever machine last built it: CI checked out a
+# tree with no core in it and produced an app that installs, starts, and
+# cannot run a single game. Nothing in the release pipeline noticed, because
+# a missing core is not a build error.
+#
+# They are affordable now because they are stripped -- llvm-strip
+# --strip-unneeded takes the pair from 190M to 36M, keeping every dynamic
+# symbol that matters: the 27 dosbox_core_* bridge entries, SDL_main, and
+# SDL2's 52 JNI natives. See docs/NATIVE_BUILD.md.
 **/*.iml
 
 # Native core: large cross-compiled artifacts, rebuilt per machine.
