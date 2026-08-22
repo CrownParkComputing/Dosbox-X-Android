@@ -79,6 +79,13 @@ flutter:
   # RetroDosboxNativePaths.extractResourceDir.
   assets:
     - assets/retrodosbox/
+    # The demo, so a fresh install has something to run. Ours, built by
+    # tool/make_demo_com.py -- a .COM of 8086 machine code that calls INT 10h
+    # and INT 21h only, so it behaves the same on DOSBox-X's built-in DOS as on
+    # a real MS-DOS. Unlike the C64 and Amiga apps there is no ROM to ship
+    # alongside it: DOSBox-X provides its own DOS, so this runs with nothing
+    # supplied by the user. DemoProgram copies it onto the shelf at launch.
+    - assets/demo/DEMO.COM
 
   # An image asset can refer to one or more resolution-specific "variants", see
   # https://flutter.dev/to/resolution-aware-images

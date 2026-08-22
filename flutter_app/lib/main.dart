@@ -25,6 +25,7 @@ import 'ffi/stub_retrodosbox_core.dart';
 import 'screens/setup_wizard_screen.dart';
 import 'screens/workbench_screen.dart';
 import 'services/app_prefs.dart';
+import 'services/demo_program.dart';
 import 'services/video_settings.dart';
 import 'theme/retrodosbox_theme.dart';
 
@@ -97,6 +98,18 @@ class _DosboxAppState extends State<RetroDosboxApp> with WidgetsBindingObserver 
     if (!usingStub) {
       final resourceDir = await RetroDosboxNativePaths.resolveResourceDir();
       core.init(resourceDir);
+    }
+
+    // Put the demo on the shelf if the folder has none. The app ships no games
+    // and needs no DOS of its own, so without this a fresh install offers a
+    // working emulator and nothing whatsoever to run on it -- which is exactly
+    // the position a reviewer is in. It never overwrites: see DemoProgram.
+    try {
+      await DemoProgram.install();
+    } on Object catch (e) {
+      // A read-only or missing games folder is not a reason to fail launch;
+      // the shelf simply stays empty, which is a state the UI already handles.
+      debugPrint('dosbox: could not install the demo: $e');
     }
 
     if (!mounted) return;
