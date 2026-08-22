@@ -21,10 +21,12 @@ Future<String> _prepareComplianceDemo() async {
 class SetupWizardScreen extends StatefulWidget {
   final VoidCallback onComplete;
   final Future<String> Function() prepareComplianceDemo;
+  final String? appBuild;
 
   const SetupWizardScreen({
     super.key,
     required this.onComplete,
+    this.appBuild,
     this.prepareComplianceDemo = _prepareComplianceDemo,
   });
 
@@ -120,7 +122,12 @@ class _SetupWizardScreenState extends State<SetupWizardScreen> {
 
   Future<void> _finish({required bool complianceMode}) async {
     await AppPrefs.setComplianceMode(complianceMode);
-    await AppPrefs.setSetupCompleted(true);
+    final appBuild = widget.appBuild;
+    if (appBuild == null) {
+      await AppPrefs.setSetupCompleted(true);
+    } else {
+      await AppPrefs.setSetupCompletedForBuild(appBuild);
+    }
     if (!mounted) return;
     widget.onComplete();
   }

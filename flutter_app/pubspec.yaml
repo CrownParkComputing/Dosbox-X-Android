@@ -16,7 +16,10 @@ publish_to: 'none' # Remove this line if you wish to publish to pub.dev
 # https://developer.apple.com/library/archive/documentation/General/Reference/InfoPlistKeyReference/Articles/CoreFoundationKeys.html
 # In Windows, build-name is used as the major, minor, and patch parts
 # of the product and file versions while build-number is used as the build suffix.
-version: 1.0.0+1
+# Increment the build number for every distributable build. The app uses the
+# resulting version+buildNumber identity to show setup once per new build and
+# reports it on About.
+version: 1.0.0+2
 
 environment:
   sdk: ^3.11.5
@@ -43,6 +46,7 @@ dependencies:
   shared_preferences: ^2.3.5
   path_provider: ^2.1.5
   gamepads: ^0.1.10+5
+  package_info_plus: ^9.0.1
 
   # Not needed by the VICE app, but this one has to do real work with DOS
   # media containers: the Java app's ArchiveExtractor/ZipToIso are being

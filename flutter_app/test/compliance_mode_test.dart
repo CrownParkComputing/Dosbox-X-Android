@@ -19,6 +19,16 @@ void main() {
     expect(await AppPrefs.getComplianceMode(), isFalse);
   });
 
+  test('setup completion is keyed to the exact app build', () async {
+    SharedPreferences.setMockInitialValues(<String, Object>{});
+    expect(await AppPrefs.setupCompletedForBuild('1.0.0+10'), isFalse);
+
+    await AppPrefs.setSetupCompletedForBuild('1.0.0+10');
+    expect(await AppPrefs.setupCompletedForBuild('1.0.0+10'), isTrue);
+    expect(await AppPrefs.setupCompletedForBuild('1.0.0+11'), isFalse);
+    expect(await AppPrefs.getSetupCompletedBuild(), '1.0.0+10');
+  });
+
   test(
     'bundled FreeDOS evidence installs without a user games folder',
     () async {

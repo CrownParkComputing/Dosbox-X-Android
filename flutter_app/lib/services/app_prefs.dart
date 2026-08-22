@@ -24,10 +24,10 @@ enum OnScreenPadMode {
 
   /// Whether the pad should be on screen right now.
   bool visibleWith({required bool controllerConnected}) => switch (this) {
-        OnScreenPadMode.always => true,
-        OnScreenPadMode.never => false,
-        OnScreenPadMode.auto => !controllerConnected,
-      };
+    OnScreenPadMode.always => true,
+    OnScreenPadMode.never => false,
+    OnScreenPadMode.auto => !controllerConnected,
+  };
 
   /// Next mode when the user taps the single Quick Settings row.
   OnScreenPadMode get next =>
@@ -38,6 +38,7 @@ class AppPrefs {
   AppPrefs._();
 
   static const _keySetupCompleted = 'setup_completed';
+  static const _keySetupBuild = 'setup_completed_build';
   static const _keyComplianceMode = 'compliance_mode';
   static const _keyAppFolderPath = 'app_folder_path';
   static const _keyGamesFolderPath = 'games_folder_path';
@@ -61,6 +62,32 @@ class AppPrefs {
   static Future<void> setSetupCompleted(bool value) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool(_keySetupCompleted, value);
+  }
+
+  /// Whether the setup choice has been completed for this exact app build.
+  ///
+  /// App Store and tester builds retain preferences across upgrades. A plain
+  /// boolean therefore hides revised setup/compliance information forever.
+  /// Recording `version+buildNumber` makes each newly numbered build show the
+  /// wizard once, while ordinary launches of the same build go straight to
+  /// the workbench.
+  static Future<bool> setupCompletedForBuild(String build) async {
+    final prefs = await SharedPreferences.getInstance();
+    if (!(prefs.getBool(_keySetupCompleted) ?? false)) return false;
+    return prefs.getString(_keySetupBuild) == build;
+  }
+
+  static Future<void> setSetupCompletedForBuild(String build) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_keySetupCompleted, true);
+    await prefs.setString(_keySetupBuild, build);
+  }
+
+  /// The build whose wizard choice is currently recorded, shown on About so
+  /// a tester can verify why setup did or did not appear.
+  static Future<String?> getSetupCompletedBuild() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getString(_keySetupBuild);
   }
 
   /// Store-review isolation mode.
@@ -223,17 +250,21 @@ class AppPrefs {
   /// [button] is 'a' or 'b'; anything else is treated as 'b'.
   static Future<int?> getActionButtonScancode(String button) async {
     final prefs = await SharedPreferences.getInstance();
-    final key =
-        button == 'a' ? _keyActionButtonAScancode : _keyActionButtonBScancode;
+    final key = button == 'a'
+        ? _keyActionButtonAScancode
+        : _keyActionButtonBScancode;
     final value = prefs.getInt(key) ?? _mappingDefault;
     return value == _mappingDefault ? null : value;
   }
 
   static Future<void> setActionButtonScancode(
-      String button, int? scancode) async {
+    String button,
+    int? scancode,
+  ) async {
     final prefs = await SharedPreferences.getInstance();
-    final key =
-        button == 'a' ? _keyActionButtonAScancode : _keyActionButtonBScancode;
+    final key = button == 'a'
+        ? _keyActionButtonAScancode
+        : _keyActionButtonBScancode;
     await prefs.setInt(key, scancode ?? _mappingDefault);
   }
 }

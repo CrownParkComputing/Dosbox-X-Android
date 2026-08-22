@@ -11,6 +11,10 @@ submit until every applicable item below is checked against the actual archive.
 - [ ] The wizard visibly offers `Store Compliance` and `Regular Mode`.
 - [ ] `Store Compliance` activates Compliance Mode and starts the bundled demo.
 - [ ] `Regular Mode` opens the normal library without queuing the demo.
+- [ ] Installing a higher App Store build number shows the wizard once, and a
+      second launch of that same build does not.
+- [ ] About shows the current `version+buildNumber` and the build that last
+      completed the wizard.
 - [ ] The main GUI shows `COMPLIANCE MODE ACTIVE`.
 - [ ] Games shows only `Retro-DosBox Homebrew Demo` while active.
 - [ ] Paths and user-editable settings pages are absent, and the user library

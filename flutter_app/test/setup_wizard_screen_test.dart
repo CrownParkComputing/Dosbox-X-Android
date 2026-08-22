@@ -21,6 +21,7 @@ void main() {
       MaterialApp(
         home: Scaffold(
           body: SetupWizardScreen(
+            appBuild: '1.2.3+45',
             onComplete: onComplete,
             prepareComplianceDemo:
                 prepareComplianceDemo ?? () async => 'review-demo',
@@ -50,6 +51,7 @@ void main() {
 
     expect(completed, 1);
     expect(await AppPrefs.isSetupCompleted(), isTrue);
+    expect(await AppPrefs.getSetupCompletedBuild(), '1.2.3+45');
     expect(await AppPrefs.getComplianceMode(), isFalse);
     expect(await AppPrefs.takePendingLaunch(), isNull);
   });
@@ -69,6 +71,7 @@ void main() {
 
     expect(completed, 1);
     expect(await AppPrefs.isSetupCompleted(), isTrue);
+    expect(await AppPrefs.getSetupCompletedBuild(), '1.2.3+45');
     expect(await AppPrefs.getComplianceMode(), isTrue);
     expect(await AppPrefs.takePendingLaunch(), 'free-dos-review-demo');
   });

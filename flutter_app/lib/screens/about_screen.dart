@@ -10,7 +10,9 @@
 // else would have to be maintained in step with an upstream this app does not
 // control.
 import 'package:flutter/material.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 
+import '../services/app_prefs.dart';
 import '../services/platform_info.dart';
 import '../theme/retrodosbox_theme.dart';
 
@@ -24,14 +26,21 @@ class AboutScreen extends StatelessWidget {
     return ListView(
       padding: const EdgeInsets.all(16),
       children: [
-        const Text('About',
-            style: TextStyle(
-                color: Colors.white,
-                fontSize: 20,
-                fontWeight: FontWeight.bold)),
+        const Text(
+          'About',
+          style: TextStyle(
+            color: Colors.white,
+            fontSize: 20,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
         const SizedBox(height: 4),
-        const Text('DOSBox Multiplatform',
-            style: TextStyle(color: RetroDosboxColors.textMuted2)),
+        const Text(
+          'DOSBox Multiplatform',
+          style: TextStyle(color: RetroDosboxColors.textMuted2),
+        ),
+        const SizedBox(height: 4),
+        const _BuildTrackingView(),
         const SizedBox(height: 20),
         Padding(
           padding: const EdgeInsets.only(bottom: 12),
@@ -43,7 +52,8 @@ class AboutScreen extends StatelessWidget {
         ),
         _Card(
           title: 'What this is',
-          body: 'A front end. This app browses your DOS games, writes the '
+          body:
+              'A front end. This app browses your DOS games, writes the '
               'configuration for a session, shows the emulator\'s picture and '
               'feeds it keyboard, mouse and joystick input. It does not '
               'emulate anything itself -- there is no CPU, no VGA and no '
@@ -52,7 +62,8 @@ class AboutScreen extends StatelessWidget {
         ),
         const _Card(
           title: 'DOSBox-X',
-          body: 'All of the actual work is DOSBox-X: the x86 CPU, the video '
+          body:
+              'All of the actual work is DOSBox-X: the x86 CPU, the video '
               'and sound hardware, the DOS itself, the disk and CD-ROM '
               'emulation and the compatibility with thousands of titles. If a '
               'game runs correctly here, that is DOSBox-X. Enormous thanks to '
@@ -64,7 +75,8 @@ class AboutScreen extends StatelessWidget {
         ),
         const _Card(
           title: 'FreeDOS review environment',
-          body: 'Compliance mode boots a minimal FreeDOS 1.4 image containing '
+          body:
+              'Compliance mode boots a minimal FreeDOS 1.4 image containing '
               'only the GPL-licensed FreeDOS kernel and FreeCOM shell, plus '
               'this app\'s original MIT-licensed homebrew demo. The exact '
               'source links, licences, official archive hash and reproducible '
@@ -73,14 +85,16 @@ class AboutScreen extends StatelessWidget {
         ),
         const _Card(
           title: 'DOSBox',
-          body: 'DOSBox-X is a fork of DOSBox, and much of what makes DOS '
+          body:
+              'DOSBox-X is a fork of DOSBox, and much of what makes DOS '
               'games run at all on modern machines was built there first. The '
               'debt to the original DOSBox project runs through every part of '
               'the core this app embeds.',
         ),
         const _Card(
           title: 'Game Link output',
-          body: 'The offscreen rendering this app depends on is not a custom '
+          body:
+              'The offscreen rendering this app depends on is not a custom '
               'patch bolted onto the emulator. It reuses DOSBox-X\'s own Game '
               'Link output backend, which already publishes each finished '
               'frame to an external consumer. Building on an existing, '
@@ -90,6 +104,67 @@ class AboutScreen extends StatelessWidget {
       ],
     );
   }
+}
+
+const TextStyle _buildStyle = TextStyle(
+  color: RetroDosboxColors.textMuted,
+  fontSize: 12,
+  fontFamily: 'monospace',
+);
+
+class _BuildTracking {
+  final String? currentBuild;
+  final String? setupBuild;
+
+  const _BuildTracking({required this.currentBuild, required this.setupBuild});
+}
+
+class _BuildTrackingView extends StatefulWidget {
+  const _BuildTrackingView();
+
+  @override
+  State<_BuildTrackingView> createState() => _BuildTrackingViewState();
+}
+
+class _BuildTrackingViewState extends State<_BuildTrackingView> {
+  late final Future<_BuildTracking> _tracking = _loadBuildTracking();
+
+  @override
+  Widget build(BuildContext context) {
+    return FutureBuilder<_BuildTracking>(
+      future: _tracking,
+      builder: (context, snapshot) {
+        final tracking = snapshot.data;
+        if (tracking == null) {
+          return const Text('Build information loading…', style: _buildStyle);
+        }
+        return Text(
+          tracking.currentBuild == null
+              ? 'Current build: unavailable\n'
+                    'Wizard completed for: '
+                    '${tracking.setupBuild ?? 'not recorded'}'
+              : 'Current build: ${tracking.currentBuild}\n'
+                    'Wizard completed for: '
+                    '${tracking.setupBuild ?? 'not recorded'}',
+          style: _buildStyle,
+        );
+      },
+    );
+  }
+}
+
+Future<_BuildTracking> _loadBuildTracking() async {
+  String? currentBuild;
+  try {
+    final info = await PackageInfo.fromPlatform();
+    currentBuild = '${info.version}+${info.buildNumber}';
+  } on Object {
+    // About remains usable on a platform/test binding without the plugin.
+  }
+  return _BuildTracking(
+    currentBuild: currentBuild,
+    setupBuild: await AppPrefs.getSetupCompletedBuild(),
+  );
 }
 
 class _Card extends StatelessWidget {
@@ -108,20 +183,30 @@ class _Card extends StatelessWidget {
         color: RetroDosboxColors.cardFill,
         borderRadius: BorderRadius.circular(8),
         border: Border.all(
-            color: accent ? RetroDosboxColors.accentAmber : RetroDosboxColors.cardStroke),
+          color: accent
+              ? RetroDosboxColors.accentAmber
+              : RetroDosboxColors.cardStroke,
+        ),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(title,
-              style: TextStyle(
-                  color: accent ? RetroDosboxColors.accentAmber : Colors.white,
-                  fontSize: 15,
-                  fontWeight: FontWeight.bold)),
+          Text(
+            title,
+            style: TextStyle(
+              color: accent ? RetroDosboxColors.accentAmber : Colors.white,
+              fontSize: 15,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
           const SizedBox(height: 8),
-          Text(body,
-              style: const TextStyle(
-                  color: RetroDosboxColors.textMuted2, height: 1.4)),
+          Text(
+            body,
+            style: const TextStyle(
+              color: RetroDosboxColors.textMuted2,
+              height: 1.4,
+            ),
+          ),
         ],
       ),
     );

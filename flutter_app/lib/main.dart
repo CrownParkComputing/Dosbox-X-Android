@@ -17,6 +17,7 @@ import 'dart:async';
 import 'core_process_main.dart' show dosboxCoreMain;
 import 'services/app_restart_service.dart';
 import 'package:flutter/material.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 
 import 'ffi/retrodosbox_bindings.dart';
 import 'ffi/retrodosbox_core.dart';
@@ -48,7 +49,8 @@ class RetroDosboxApp extends StatefulWidget {
   State<RetroDosboxApp> createState() => _DosboxAppState();
 }
 
-class _DosboxAppState extends State<RetroDosboxApp> with WidgetsBindingObserver {
+class _DosboxAppState extends State<RetroDosboxApp>
+    with WidgetsBindingObserver {
   RetroDosboxCore? _core;
 
   /// True when [_core] is the stub rather than the real native library, so the
@@ -56,6 +58,8 @@ class _DosboxAppState extends State<RetroDosboxApp> with WidgetsBindingObserver 
   bool _usingStub = false;
 
   bool? _setupCompleted;
+  String? _appBuild;
+
   /// True when the lifecycle handler paused the core (vs the user pausing it
   /// from the emulator screen). See didChangeAppLifecycleState.
   bool _pausedByLifecycle = false;
@@ -69,13 +73,34 @@ class _DosboxAppState extends State<RetroDosboxApp> with WidgetsBindingObserver 
 
   Future<void> _bootstrap() async {
     await VideoSettings.instance.load();
-    final setupCompleted = await AppPrefs.isSetupCompleted();
+
+    // The setup/compliance choice is shown once per numbered build, not once
+    // per installation. App upgrades preserve SharedPreferences, so a lone
+    // setup_completed boolean would prevent testers and reviewers from ever
+    // seeing revised first-run information.
+    String? appBuild;
+    try {
+      final info = await PackageInfo.fromPlatform();
+      appBuild = '${info.version}+${info.buildNumber}';
+    } on Object catch (error) {
+      // Package metadata can be unavailable under a test binding or on a new
+      // platform integration. Fall back to the legacy boolean rather than
+      // trapping that platform in a wizard on every launch.
+      debugPrint(
+        'dosbox: app build unavailable; setup is not build-keyed: '
+        '$error',
+      );
+    }
+    final setupCompleted = appBuild == null
+        ? await AppPrefs.isSetupCompleted()
+        : await AppPrefs.setupCompletedForBuild(appBuild);
 
     RetroDosboxCore core;
     bool usingStub;
     try {
       core = RetroDosboxCoreBindings.load(
-          libraryPath: RetroDosboxNativePaths.coreLibraryPath);
+        libraryPath: RetroDosboxNativePaths.coreLibraryPath,
+      );
       usingStub = false;
     } on Object catch (e) {
       // Falling back rather than failing: the native core is a separate, slow
@@ -88,8 +113,10 @@ class _DosboxAppState extends State<RetroDosboxApp> with WidgetsBindingObserver 
       // "no core was built" and "the core is there and dlopen refused it" is
       // invisible from the banner alone, and only this message distinguishes
       // them.
-      debugPrint('dosbox: falling back to the stub core. '
-          'path=${RetroDosboxNativePaths.coreLibraryPath} error=$e');
+      debugPrint(
+        'dosbox: falling back to the stub core. '
+        'path=${RetroDosboxNativePaths.coreLibraryPath} error=$e',
+      );
       core = StubRetroDosboxCore();
       usingStub = true;
     }
@@ -103,6 +130,7 @@ class _DosboxAppState extends State<RetroDosboxApp> with WidgetsBindingObserver 
     setState(() {
       _core = core;
       _usingStub = usingStub;
+      _appBuild = appBuild;
       _setupCompleted = setupCompleted;
     });
   }
@@ -171,6 +199,7 @@ class _DosboxAppState extends State<RetroDosboxApp> with WidgetsBindingObserver 
     }
     if (!setupCompleted) {
       return SetupWizardScreen(
+        appBuild: _appBuild,
         onComplete: () => setState(() => _setupCompleted = true),
       );
     }
@@ -180,8 +209,7 @@ class _DosboxAppState extends State<RetroDosboxApp> with WidgetsBindingObserver 
         Expanded(
           child: WorkbenchScreen(
             core: core,
-            onRunSetupWizard: () =>
-                setState(() => _setupCompleted = false),
+            onRunSetupWizard: () => setState(() => _setupCompleted = false),
           ),
         ),
       ],
@@ -207,7 +235,11 @@ class _StubBanner extends StatelessWidget {
       width: double.infinity,
       color: RetroDosboxColors.warning,
       padding: EdgeInsets.fromLTRB(
-        12, 6 + MediaQuery.paddingOf(context).top, 12, 6),
+        12,
+        6 + MediaQuery.paddingOf(context).top,
+        12,
+        6,
+      ),
       child: Text(
         'Stub core: libdosboxcore not found, so nothing is being emulated. '
         'Build it with native/dosbox_core (see docs/NATIVE_BUILD.md).',
