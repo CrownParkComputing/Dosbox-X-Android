@@ -1,0 +1,77 @@
+Retro-DosBox is a PC emulator under App Review Guideline 4.7. It ships no
+commercial games, Microsoft DOS, Microsoft Windows, proprietary BIOS/ROM dump,
+activation key, or link to obtain copyrighted software.
+
+FASTEST REVIEW PATH — NO DOWNLOAD, ACCOUNT, NETWORK OR USER FILE REQUIRED
+
+1. Launch a clean install. The first screen explains Compliance Mode.
+2. Tap "Boot FreeDOS homebrew demo".
+3. The app boots a minimal FreeDOS 1.4 floppy image in DOSBox-X.
+4. RETRODEM.COM starts automatically. Its animated spinner proves the guest is
+   running. Press any key to return to the FreeDOS prompt.
+
+The demo is not a mock Flutter screen. It is an original 16-bit DOS program
+running in the submitted DOSBox-X core. Its complete assembly source and MIT
+licence ship with the app.
+
+COMPLIANCE MODE
+
+Compliance Mode is ON by default for a clean install. A persistent amber banner
+on the main GUI says it is active. In this mode:
+
+  * Games contains only the bundled FreeDOS homebrew demo.
+  * The user's games folder is not resolved, scanned, listed or displayed.
+  * Paths and user-editable settings pages are hidden.
+  * A user title cannot be launched.
+  * Enabling the mode ends any current user session before the isolated library
+    is shown.
+
+Open "Compliance" in the sidebar at any time to inspect or change the mode.
+The same page is linked from About. Turning the mode off restores the user's
+normal library without changing any user file.
+
+WHAT THE FREE IMAGE CONTAINS
+
+FREEDOS.IMG is reproducibly derived from the official, hash-verified FreeDOS
+1.4 Floppy Edition. The image was reduced to:
+
+  * FreeDOS Kernel 2043 (KERNEL.SYS), GNU GPL v2 or later
+  * FreeCOM 0.86 (COMMAND.COM), GNU GPL v2
+  * startup files written for this app
+  * the original RETRODEM.COM homebrew and its MIT licence
+  * provenance, licence and source information
+
+The exact official archive SHA-256, file list and source links are visible in
+Compliance and ship in FREEDOS.txt. The reproducible recipe is
+tools/build-freedos-demo.sh in the matching source repository.
+
+BIOS AND USER SOFTWARE
+
+No external PC BIOS is needed; DOSBox-X emulates the required firmware
+services. The app tells users to use only software they created or are licensed
+or legally permitted to copy and use. It explicitly warns that owning original
+media does not automatically make a download from an unrelated ROM or
+"abandonware" site lawful. The app contains no catalogue, search, downloader
+or links for commercial software.
+
+PRIVACY AND ACCOUNTS
+
+No account or demo credentials are required. The app has no analytics,
+advertising, tracking or developer network service. Files and settings remain
+on-device. The iOS bundle includes a PrivacyInfo.xcprivacy manifest declaring
+no tracking and no collected data, plus the required reasons for private app
+preferences and timestamps of app-owned/user-selected files.
+
+SOURCE
+
+App and integration source:
+https://github.com/CrownParkComputing/DosboxMultiplatform
+
+DOSBox-X:
+https://github.com/joncampbell123/dosbox-x
+
+FreeDOS kernel:
+https://github.com/FDOS/kernel
+
+FreeCOM:
+https://github.com/FDOS/freecom

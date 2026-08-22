@@ -38,6 +38,7 @@ class AppPrefs {
   AppPrefs._();
 
   static const _keySetupCompleted = 'setup_completed';
+  static const _keyComplianceMode = 'compliance_mode';
   static const _keyAppFolderPath = 'app_folder_path';
   static const _keyGamesFolderPath = 'games_folder_path';
   static const _keyLeftHandedInput = 'left_handed_input';
@@ -60,6 +61,22 @@ class AppPrefs {
   static Future<void> setSetupCompleted(bool value) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool(_keySetupCompleted, value);
+  }
+
+  /// Store-review isolation mode.
+  ///
+  /// On for a clean install so a reviewer sees only content whose provenance
+  /// ships with the app. While it is on the workbench does not resolve, scan,
+  /// list or launch the user's games folder. The user can turn it off from the
+  /// permanently available Compliance page.
+  static Future<bool> getComplianceMode() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getBool(_keyComplianceMode) ?? true;
+  }
+
+  static Future<void> setComplianceMode(bool value) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_keyComplianceMode, value);
   }
 
   static Future<String?> getAppFolderPath() async {

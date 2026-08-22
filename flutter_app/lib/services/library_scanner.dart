@@ -146,11 +146,7 @@ class LibraryScanner {
               GameEntry(
                 path: child.path,
                 kind:
-                    ext == '.cue' ||
-                        ext == '.iso' ||
-                        ext == '.bin' ||
-                        ext == '.img' ||
-                        ext == '.dsk'
+                    ext == '.cue' || ext == '.iso' || ext == '.bin'
                     ? GameKind.discImage
                     : GameKind.archive,
                 title: title,
@@ -193,18 +189,18 @@ class LibraryScanner {
 
     _walk(dir, 3, programs, discs, images);
 
-    // A folder holding nothing but a bootable disk image is a boot title, not
-    // a DOS folder -- there is no C: to mount, the image IS the disk.
+    // A folder holding nothing but a bootable image is a boot title, not a DOS
+    // folder -- there is no C: to mount, the image IS the disk.
     if (programs.isEmpty) {
       for (final image in images) {
-        if (await _isHardDiskImage(image)) {
-          return GameEntry(
-            path: image.path,
-            kind: GameKind.bootImage,
-            title: p.basename(dir.path),
-            discs: discs,
-          );
-        }
+        return GameEntry(
+          path: image.path,
+          kind: await _isHardDiskImage(image)
+              ? GameKind.bootImage
+              : GameKind.floppyImage,
+          title: p.basename(dir.path),
+          discs: discs,
+        );
       }
     }
 
@@ -241,7 +237,7 @@ class LibraryScanner {
         path: file.path,
         kind: await _isHardDiskImage(file)
             ? GameKind.bootImage
-            : GameKind.discImage,
+            : GameKind.floppyImage,
         title: title,
       );
     }

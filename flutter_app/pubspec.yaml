@@ -79,6 +79,10 @@ flutter:
   # RetroDosboxNativePaths.extractResourceDir.
   assets:
     - assets/retrodosbox/
+    # Original, MIT-licensed DOS homebrew used by the offline review path.
+    # Source and licence ship beside the executable so its provenance is
+    # independently checkable; no commercial game or proprietary BIOS does.
+    - assets/demo/
 
   # An image asset can refer to one or more resolution-specific "variants", see
   # https://flutter.dev/to/resolution-aware-images

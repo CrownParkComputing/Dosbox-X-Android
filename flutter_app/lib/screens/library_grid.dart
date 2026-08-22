@@ -342,6 +342,8 @@ class _LibraryGridState extends State<LibraryGrid> {
       case GameKind.discImage:
         final extra = entry.discs.length;
         return extra == 0 ? 'Disc' : '${extra + 1} discs';
+      case GameKind.floppyImage:
+        return 'Boots FreeDOS demo';
       case GameKind.bootImage:
         return 'Boots from image';
       case GameKind.archive:

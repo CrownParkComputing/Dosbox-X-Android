@@ -37,9 +37,11 @@ class RetroDosboxConfBuilder {
     String? launcher,
     String? globalAdvanced,
     ArchiveRunSetup? archiveSetup,
+
     /// Where per-title capture directories live. The save slots hang off
     /// this, so it has to be somewhere writable that survives the session.
     required String captureRoot,
+
     /// True when the core will run in its own process with an SDL window,
     /// false when it runs in-process and publishes frames back to Flutter.
     required bool windowed,
@@ -54,6 +56,7 @@ class RetroDosboxConfBuilder {
     final autoexec = switch (entry.kind) {
       GameKind.dosFolder => _dosFolderAutoexec(entry, program),
       GameKind.discImage => _discImageAutoexec(entry),
+      GameKind.floppyImage => _floppyImageAutoexec(entry),
       GameKind.bootImage => _bootImageAutoexec(entry),
       GameKind.archive => _archiveAutoexec(archiveSetup, program),
     };
@@ -281,6 +284,11 @@ class RetroDosboxConfBuilder {
     lines.add('boot -l c');
     return lines;
   }
+
+  static List<String> _floppyImageAutoexec(GameEntry entry) => <String>[
+    'imgmount a ${_quote(entry.path)} -t floppy -fs none',
+    'boot -l a',
+  ];
 
   /// Mounts a previously-extracted archive as C:, with a writable overlay
   /// for save data. The overlay is a real directory mounted as D: so dosbox

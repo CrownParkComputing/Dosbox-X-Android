@@ -24,6 +24,28 @@ core via the `native/dosbox_core/` bridge:
 - `libSDL2.so`: SDL 2.0, zlib license
 - `libpng16.so`: libpng license
 
+## FreeDOS Review Environment
+
+The app includes a minimal bootable image derived from the official FreeDOS
+1.4 Floppy Edition. It contains the FreeDOS kernel (GNU GPL v2 or later), the
+FreeCOM command shell (GNU GPL v2), startup files written for this app, and the
+original homebrew demo described below. The official archive hash, component
+list, corresponding-source links and reproducible image recipe are in
+`flutter_app/assets/demo/FREEDOS.txt` and `tools/build-freedos-demo.sh`.
+
+- FreeDOS kernel source: https://github.com/FDOS/kernel
+- FreeCOM source: https://github.com/FDOS/freecom
+- License: GNU General Public License version 2; see [LICENSE](LICENSE)
+
+## Retro-DosBox Homebrew Demo
+
+`RETRODEM.COM` is an original 16-bit DOS program created for this app so the
+emulator can be reviewed without third-party content. Its complete assembly
+source ships beside it in `flutter_app/assets/demo/retro_demo.S`.
+
+- Copyright: 2026 Crown Park Computing
+- License: MIT; see `flutter_app/assets/demo/LICENSE.txt`
+
 ## Source Availability
 
 The complete corresponding source for this app, including the Flutter front
@@ -37,6 +59,8 @@ GPL rights to source code and redistribution.
 
 ## External Content
 
-This repository and app do not include Microsoft Windows disk images, game ROMs,
-game ISOs, game files, BIOS files, or other third-party copyrighted content.
-Users are responsible for supplying only content they have the right to use.
+Other than the documented open-source FreeDOS review image and original demo,
+this repository and app do not include Microsoft DOS or Windows disk images,
+game ROMs, game ISOs, commercial game files, BIOS dumps, activation keys, or
+other third-party copyrighted content. Users are responsible for supplying only
+content they have the right to use.

@@ -10,7 +10,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import '../services/app_prefs.dart';
-import '../services/storage_access.dart';
+import '../services/demo_program_service.dart';
 import '../theme/retrodosbox_theme.dart';
 
 class SetupWizardScreen extends StatefulWidget {
@@ -32,8 +32,8 @@ class _SetupWizardScreenState extends State<SetupWizardScreen> {
   Timer? _typeTimer;
 
   List<String> _pending = <String>[];
-  bool _awaitingFolder = false;
-  String? _gamesFolder;
+  bool _awaitingChoice = false;
+  bool _busy = false;
 
   @override
   void initState() {
@@ -46,11 +46,18 @@ class _SetupWizardScreenState extends State<SetupWizardScreen> {
     '',
     'Memory Test: 640K OK',
     '',
-    'This app runs DOS games using the DOSBox-X emulator.',
-    'It needs to know where your games are kept.',
+    'This app runs PC software using the DOSBox-X emulator.',
+    'A clean install starts in COMPLIANCE MODE.',
     '',
-    'A game is normally a folder containing its EXE files.',
-    'CD images (.iso, .cue) and disk images also work.',
+    'Only a bundled FreeDOS 1.4 environment is visible.',
+    'It runs an original, MIT-licensed homebrew demo.',
+    'No external BIOS, account, download or user file is needed.',
+    '',
+    'No Microsoft DOS, Windows, commercial game, ROM or BIOS',
+    'dump is included. Use only software you have the right to use.',
+    '',
+    'Compliance mode can be changed anytime from the sidebar.',
+    'While active, your own library is not scanned or displayed.',
     '',
   ];
 
@@ -62,7 +69,7 @@ class _SetupWizardScreenState extends State<SetupWizardScreen> {
   void _typeNext() {
     _typeTimer?.cancel();
     if (_pending.isEmpty) {
-      setState(() => _awaitingFolder = true);
+      setState(() => _awaitingChoice = true);
       return;
     }
     final line = _pending.removeAt(0);
@@ -99,19 +106,23 @@ class _SetupWizardScreenState extends State<SetupWizardScreen> {
     super.dispose();
   }
 
-  Future<void> _chooseFolder() async {
-    final result =
-        await StorageAccess.instance.pickFolder(dialogTitle: 'Games folder');
-    if (result == null || !mounted) return;
-    setState(() => _gamesFolder = result.path);
-  }
-
   Future<void> _finish() async {
-    final folder = _gamesFolder;
-    if (folder != null) await AppPrefs.setGamesFolderPath(folder);
+    await AppPrefs.setComplianceMode(true);
     await AppPrefs.setSetupCompleted(true);
     if (!mounted) return;
     widget.onComplete();
+  }
+
+  Future<void> _runDemo() async {
+    if (_busy) return;
+    setState(() => _busy = true);
+    try {
+      final demo = await DemoProgramService.prepare();
+      await AppPrefs.setPendingLaunch(demo.entry.slug);
+      await _finish();
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
   }
 
   @override
@@ -136,12 +147,10 @@ class _SetupWizardScreenState extends State<SetupWizardScreen> {
                         _current.substring(0, _charIndex),
                         style: RetroDosboxTextStyles.terminal,
                       ),
-                    if (_awaitingFolder) ...[
+                    if (_awaitingChoice) ...[
                       const SizedBox(height: 8),
                       Text(
-                        _gamesFolder == null
-                            ? 'C:\\> _'
-                            : 'C:\\> SET GAMES=$_gamesFolder',
+                        'A:\\> RETRODEM _',
                         style: RetroDosboxTextStyles.terminal,
                       ),
                     ],
@@ -149,7 +158,7 @@ class _SetupWizardScreenState extends State<SetupWizardScreen> {
                 ),
               ),
             ),
-            if (_awaitingFolder) _actions(),
+            if (_awaitingChoice) _actions(),
           ],
         ),
       ),
@@ -168,23 +177,16 @@ class _SetupWizardScreenState extends State<SetupWizardScreen> {
         runSpacing: 8,
         crossAxisAlignment: WrapCrossAlignment.center,
         children: [
-          OutlinedButton(
-            onPressed: _chooseFolder,
-            style: OutlinedButton.styleFrom(
-              foregroundColor: RetroDosboxColors.accentAmber,
-              side: const BorderSide(color: RetroDosboxColors.accentAmber),
-            ),
-            child: Text(
-                _gamesFolder == null ? 'Choose games folder' : 'Change folder'),
+          FilledButton.icon(
+            onPressed: _busy ? null : _runDemo,
+            icon: const Icon(Icons.play_arrow),
+            label: const Text('Boot FreeDOS homebrew demo'),
           ),
-          // Skipping is allowed on purpose: a user with no games yet should be
-          // able to reach the app and set the folder later from Paths, rather
-          // than being trapped in the wizard.
           TextButton(
-            onPressed: _finish,
-            child: Text(
-              _gamesFolder == null ? 'Skip for now' : 'Continue',
-              style: const TextStyle(color: RetroDosboxColors.textMuted2),
+            onPressed: _busy ? null : _finish,
+            child: const Text(
+              'Continue in compliance mode',
+              style: TextStyle(color: RetroDosboxColors.textMuted2),
             ),
           ),
         ],

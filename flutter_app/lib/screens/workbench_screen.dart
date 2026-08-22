@@ -15,6 +15,7 @@ import '../ffi/retrodosbox_core.dart';
 import '../ffi/retrodosbox_native_paths.dart';
 import '../services/app_prefs.dart';
 import '../services/app_restart_service.dart';
+import '../services/demo_program_service.dart';
 import '../services/retrodosbox_conf_builder.dart';
 import '../services/game_settings_store.dart';
 import '../services/games_folder.dart';
@@ -32,6 +33,7 @@ import '../widgets/emulator_control_strip.dart';
 import '../widgets/sidebar.dart';
 import '../widgets/sidebar_style.dart';
 import 'about_screen.dart';
+import 'compliance_screen.dart';
 import 'retrodosbox_config_screen.dart';
 import 'emulator_screen.dart';
 import 'input_settings_screen.dart';
@@ -55,6 +57,7 @@ enum WorkbenchTab {
   input('\u{1F579}\u{FE0F}', 'Input', 1),
   engine('\u{2699}\u{FE0F}', 'Engine', 1),
   paths('\u{1F4C2}', 'Paths', 1),
+  compliance('\u{2705}', 'Compliance', 2),
   about('\u{2139}\u{FE0F}', 'About', 2);
 
   final String icon;
@@ -87,6 +90,8 @@ class _WorkbenchScreenState extends State<WorkbenchScreen>
   List<GameEntry> _entries = const <GameEntry>[];
   List<String> _unreadable = const <String>[];
   bool _scanning = false;
+  bool _complianceMode = true;
+  GameEntry? _demoEntry;
 
   GameEntry? _session;
   String? _launchError;
@@ -127,8 +132,7 @@ class _WorkbenchScreenState extends State<WorkbenchScreen>
 
   /// Where input goes: the core here on desktop, the :dosbox process on
   /// Android. See EmulatorInput.
-  late final EmulatorInput _input =
-      EmulatorInput.forSession(core: widget.core);
+  late final EmulatorInput _input = EmulatorInput.forSession(core: widget.core);
   StreamSubscription<JoystickState>? _gamepadSub;
   bool _controllerConnected = false;
   bool _sidebarHidden = false;
@@ -143,11 +147,19 @@ class _WorkbenchScreenState extends State<WorkbenchScreen>
     super.initState();
     // The scan first, then anything the last process asked us to launch: the
     // entry has to exist in _library before it can be found by slug.
-    _rescan().then((_) => _resumePendingLaunch());
+    _initialiseLibrary();
     _startGamepads();
     AppPrefs.getSidebarHidden().then((hidden) {
       if (mounted) setState(() => _sidebarHidden = hidden);
     });
+  }
+
+  Future<void> _initialiseLibrary() async {
+    final complianceMode = await AppPrefs.getComplianceMode();
+    if (!mounted) return;
+    setState(() => _complianceMode = complianceMode);
+    await _rescan();
+    await _resumePendingLaunch();
   }
 
   void _startGamepads() {
@@ -228,7 +240,8 @@ class _WorkbenchScreenState extends State<WorkbenchScreen>
   /// Bounded: a mapping that never appears means the other process failed to
   /// start, and retrying forever would just hide that.
   Future<void> _attachWhenReady(String path) async {
-    for (var i = 0; i < 100; i++) { // 100 x 100ms = 10s
+    for (var i = 0; i < 100; i++) {
+      // 100 x 100ms = 10s
       if (!mounted || _session == null) return;
       // Retry until the attach SUCCEEDS, not until the file appears.
       //
@@ -276,13 +289,34 @@ class _WorkbenchScreenState extends State<WorkbenchScreen>
   }
 
   Future<void> _rescan() async {
+    setState(() => _scanning = true);
+
+    GameEntry? demo;
+    try {
+      demo = (await DemoProgramService.prepare()).entry;
+    } on Object catch (error) {
+      debugPrint('dosbox: could not prepare bundled FreeDOS demo: $error');
+    }
+
+    // Compliance mode is a read barrier, not a display filter. Return before
+    // resolving the user folder so review mode cannot even create or inspect
+    // its path, let alone briefly scan content and hide it afterwards.
+    if (_complianceMode) {
+      if (!mounted) return;
+      setState(() {
+        _demoEntry = demo;
+        _entries = <GameEntry>[?demo];
+        _unreadable = const <String>[];
+        _scanning = false;
+      });
+      return;
+    }
+
     // GamesFolder.resolve() never returns null: it falls back to the default
     // Retro-DosBox folder and creates it. On iOS that folder existing is what
     // makes the app appear in Files at all, so there is nowhere to drop a game
     // until something has made it.
     final folder = await GamesFolder.resolve();
-
-    setState(() => _scanning = true);
 
     // Archives are now run in place via ZipRunner; the scanner picks them up
     // directly. We no longer auto-import zips on every rescan: doing so on a
@@ -296,7 +330,8 @@ class _WorkbenchScreenState extends State<WorkbenchScreen>
     await GameSettingsStore.instance.preload(result.entries.map((e) => e.slug));
     if (!mounted) return;
     setState(() {
-      _entries = result.entries;
+      _demoEntry = demo;
+      _entries = <GameEntry>[?demo, ...result.entries];
       _unreadable = result.unreadable;
       _scanning = false;
     });
@@ -310,6 +345,7 @@ class _WorkbenchScreenState extends State<WorkbenchScreen>
   /// .exe/.com/.bat files (an installed DOS game), and tapping "Pick a zip"
   /// opens the file picker for a zip archive.
   Future<void> _addGame() async {
+    if (_complianceMode) return;
     final folder = await GamesFolder.resolve();
     if (!mounted) return;
 
@@ -327,7 +363,10 @@ class _WorkbenchScreenState extends State<WorkbenchScreen>
           mainAxisSize: MainAxisSize.min,
           children: [
             ListTile(
-              leading: const Icon(Icons.folder, color: RetroDosboxColors.textMuted2),
+              leading: const Icon(
+                Icons.folder,
+                color: RetroDosboxColors.textMuted2,
+              ),
               title: const Text(
                 'Pick a folder',
                 style: TextStyle(color: Colors.white, fontSize: 14),
@@ -340,7 +379,10 @@ class _WorkbenchScreenState extends State<WorkbenchScreen>
                   Navigator.of(sheetContext).pop(_AddGameChoice.folder),
             ),
             ListTile(
-              leading: const Icon(Icons.archive, color: RetroDosboxColors.textMuted2),
+              leading: const Icon(
+                Icons.archive,
+                color: RetroDosboxColors.textMuted2,
+              ),
               title: const Text(
                 'Pick a zip',
                 style: TextStyle(color: Colors.white, fontSize: 14),
@@ -374,11 +416,15 @@ class _WorkbenchScreenState extends State<WorkbenchScreen>
         setState(() => _scanning = false);
         await _rescan();
         if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-            content: Text(copied == 0
-                ? 'Nothing new found in that folder.'
-                : 'Imported $copied file${copied == 1 ? '' : 's'}.'),
-          ));
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                copied == 0
+                    ? 'Nothing new found in that folder.'
+                    : 'Imported $copied file${copied == 1 ? '' : 's'}.',
+              ),
+            ),
+          );
         }
         return;
       }
@@ -412,7 +458,16 @@ class _WorkbenchScreenState extends State<WorkbenchScreen>
   }
 
   Future<void> _launch(GameEntry entry, {String? launcher}) async {
-    final settings = await GameSettingsStore.instance.load(entry.slug);
+    if (_complianceMode && entry.path != _demoEntry?.path) {
+      setState(
+        () => _launchError =
+            'User content cannot be launched while compliance mode is active.',
+      );
+      return;
+    }
+    final settings = _complianceMode
+        ? const GameSettings(preset: CpuPreset.era80s)
+        : await GameSettingsStore.instance.load(entry.slug);
 
     // Archives get extracted into a per-title cache before conf building,
     // because the conf has to mount a real directory as C: and the zip is
@@ -539,9 +594,7 @@ class _WorkbenchScreenState extends State<WorkbenchScreen>
         return;
       }
       if (!mounted) return;
-      setState(
-        () => _launchError = 'Could not start ${entry.title}.',
-      );
+      setState(() => _launchError = 'Could not start ${entry.title}.');
       return;
     }
 
@@ -703,6 +756,64 @@ class _WorkbenchScreenState extends State<WorkbenchScreen>
     setState(() => _sidebarHidden = hidden);
   }
 
+  /// Enters or leaves the store-review environment.
+  ///
+  /// Enabling is ordered carefully: end any user session, clear every
+  /// user-derived in-memory object, persist the mode, then rescan. [_rescan]
+  /// sees the new mode and returns before it resolves the user folder.
+  Future<void> _setComplianceMode(bool enabled) async {
+    if (enabled == _complianceMode) return;
+
+    if (enabled) {
+      final archive = _pendingArchiveSetup;
+      if (archive != null) {
+        await ZipRunner.persistSaves(
+          cacheRoot: archive.cacheRoot,
+          saveRoot: archive.saveRoot,
+        );
+      }
+      if (EmulatorProcess.isSupported) {
+        await EmulatorProcess.stop();
+        widget.core.detachSharedFrameIfAttached();
+      } else if (_session != null || _pausedSession != null) {
+        widget.core.stop();
+      }
+      _emulatorUi.reset();
+    }
+
+    await AppPrefs.setComplianceMode(enabled);
+    if (!mounted) return;
+    setState(() {
+      _complianceMode = enabled;
+      _session = null;
+      _pausedSession = null;
+      _pendingArchiveSetup = null;
+      _entries = const <GameEntry>[];
+      _unreadable = const <String>[];
+      _launchError = null;
+      _tab = WorkbenchTab.compliance;
+      _sidebarHidden = false;
+    });
+    await _rescan();
+  }
+
+  Future<void> _runComplianceDemo() async {
+    final installation = await DemoProgramService.prepare();
+    if (!mounted) return;
+    _demoEntry = installation.entry;
+    await _launch(installation.entry);
+  }
+
+  List<WorkbenchTab> get _visibleTabs {
+    if (!_complianceMode) return WorkbenchTab.values;
+    return const <WorkbenchTab>[
+      WorkbenchTab.games,
+      WorkbenchTab.running,
+      WorkbenchTab.compliance,
+      WorkbenchTab.about,
+    ];
+  }
+
   /// Shows the in-game chrome and restarts its countdown.
   ///
   /// Called on every touch anywhere in the session, through a Listener that
@@ -755,9 +866,11 @@ class _WorkbenchScreenState extends State<WorkbenchScreen>
     // exactly like the one on the status row it replaces.
     final fullscreen =
         _session != null && _tab == WorkbenchTab.running && _sidebarHidden;
-    WidgetsBinding.instance
-        .addPostFrameCallback((_) => _syncImmersive(fullscreen));
+    WidgetsBinding.instance.addPostFrameCallback(
+      (_) => _syncImmersive(fullscreen),
+    );
     if (fullscreen) return _fullscreenSession();
+    final visibleTabs = _visibleTabs;
     return Container(
       color: RetroDosboxColors.rootBackground,
       child: SafeArea(
@@ -765,6 +878,10 @@ class _WorkbenchScreenState extends State<WorkbenchScreen>
           padding: const EdgeInsets.all(RetroDosboxMetrics.rootPadding),
           child: Column(
             children: [
+              if (_complianceMode) ...[
+                _complianceModeBanner(),
+                const SizedBox(height: 8),
+              ],
               Expanded(
                 child: Row(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -772,25 +889,29 @@ class _WorkbenchScreenState extends State<WorkbenchScreen>
                     if (!_sidebarHidden) ...[
                       ConstrainedBox(
                         constraints: BoxConstraints(
-                          maxWidth: RetroDosboxMetrics.sidebarMaxWidth(screenWidth),
+                          maxWidth: RetroDosboxMetrics.sidebarMaxWidth(
+                            screenWidth,
+                          ),
                         ),
                         child: Sidebar(
                           destinations: [
-                            for (final tab in WorkbenchTab.values)
+                            for (final tab in visibleTabs)
                               SidebarDestination(
                                 tab.title,
                                 icon: tab.icon,
                                 group: tab.group,
                               ),
                           ],
-                          selectedIndex: _tab.index,
+                          selectedIndex: visibleTabs.indexOf(_tab),
                           onSelected: (i) =>
-                              setState(() => _tab = WorkbenchTab.values[i]),
+                              setState(() => _tab = visibleTabs[i]),
                           style: retroDosboxSidebarStyle,
                           pinLastGroupToBottom: true,
                         ),
                       ),
-                      const SizedBox(width: RetroDosboxMetrics.contentLeftMargin),
+                      const SizedBox(
+                        width: RetroDosboxMetrics.contentLeftMargin,
+                      ),
                     ],
                     Expanded(child: _contentPanel()),
                   ],
@@ -800,6 +921,39 @@ class _WorkbenchScreenState extends State<WorkbenchScreen>
             ],
           ),
         ),
+      ),
+    );
+  }
+
+  Widget _complianceModeBanner() {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      decoration: BoxDecoration(
+        color: RetroDosboxColors.accentAmber.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(6),
+        border: Border.all(color: RetroDosboxColors.accentAmber),
+      ),
+      child: const Row(
+        children: [
+          Icon(
+            Icons.verified_outlined,
+            color: RetroDosboxColors.accentAmber,
+            size: 18,
+          ),
+          SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              'COMPLIANCE MODE ACTIVE — only the bundled FreeDOS homebrew '
+              'demo is visible; user content is not scanned.',
+              style: TextStyle(
+                color: RetroDosboxColors.accentAmber,
+                fontSize: 12,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -828,57 +982,54 @@ class _WorkbenchScreenState extends State<WorkbenchScreen>
     return SizedBox(
       height: session != null ? 36 : 28,
       child: Row(
-      children: [
-        IconButton(
-          onPressed: () {
-            if (floating) _pokeChrome();
-            setState(() => _sidebarHidden = !_sidebarHidden);
-            AppPrefs.setSidebarHidden(_sidebarHidden);
-          },
-          icon: Icon(
-            _sidebarHidden ? Icons.menu : Icons.menu_open,
-            size: 20,
+        children: [
+          IconButton(
+            onPressed: () {
+              if (floating) _pokeChrome();
+              setState(() => _sidebarHidden = !_sidebarHidden);
+              AppPrefs.setSidebarHidden(_sidebarHidden);
+            },
+            icon: Icon(_sidebarHidden ? Icons.menu : Icons.menu_open, size: 20),
+            color: RetroDosboxColors.textMuted,
+            tooltip: _sidebarHidden ? 'Show sidebar' : 'Hide sidebar',
+            visualDensity: VisualDensity.compact,
           ),
-          color: RetroDosboxColors.textMuted,
-          tooltip: _sidebarHidden ? 'Show sidebar' : 'Hide sidebar',
-          visualDensity: VisualDensity.compact,
-        ),
-        if (shown != null)
-          Expanded(
-            child: GestureDetector(
-              // The status bar doubles as a resume affordance when there is a
-              // paused session -- tapping it switches to the Running tab and
-              // restores the snapshotted state. The emulator screen's pause
-              // toolbar covers this for the in-session case; this is the
-              // counterpart visible after the user has gone back to the library.
-              behavior: HitTestBehavior.opaque,
-              onTap: paused != null ? _onResumePaused : null,
-              child: Text(
-                // The outer if (shown != null) ensures both branches have
-                // a non-null title to pull from, so the casts are sound.
-                session != null
-                    ? (widget.core.isPaused
-                        ? 'PAUSED — ${session.title}'
-                        : session.title)
-                    : 'PAUSED — ${paused!.title} (tap to resume)',
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: RetroDosboxTextStyles.statusLine,
+          if (shown != null)
+            Expanded(
+              child: GestureDetector(
+                // The status bar doubles as a resume affordance when there is a
+                // paused session -- tapping it switches to the Running tab and
+                // restores the snapshotted state. The emulator screen's pause
+                // toolbar covers this for the in-session case; this is the
+                // counterpart visible after the user has gone back to the library.
+                behavior: HitTestBehavior.opaque,
+                onTap: paused != null ? _onResumePaused : null,
+                child: Text(
+                  // The outer if (shown != null) ensures both branches have
+                  // a non-null title to pull from, so the casts are sound.
+                  session != null
+                      ? (widget.core.isPaused
+                            ? 'PAUSED — ${session.title}'
+                            : session.title)
+                      : 'PAUSED — ${paused!.title} (tap to resume)',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: RetroDosboxTextStyles.statusLine,
+                ),
               ),
             ),
-          ),
-        // Right-hand end of the row, and only while a machine is actually
-        // running: the strip is the in-game chrome, not a permanent fixture.
-        if (session != null) ...[
-          const Spacer(),
-          EmulatorControlStrip(
-            ui: _emulatorUi,
-            onPause: _onSessionPause,
-            onExit: _onSessionExit,
-            onInteract: floating ? _pokeChrome : null,
-          ),
+          // Right-hand end of the row, and only while a machine is actually
+          // running: the strip is the in-game chrome, not a permanent fixture.
+          if (session != null) ...[
+            const Spacer(),
+            EmulatorControlStrip(
+              ui: _emulatorUi,
+              onPause: _onSessionPause,
+              onExit: _onSessionExit,
+              onInteract: floating ? _pokeChrome : null,
+            ),
+          ],
         ],
-      ],
       ),
     );
   }
@@ -983,7 +1134,10 @@ class _WorkbenchScreenState extends State<WorkbenchScreen>
           Expanded(
             child: Text(
               message,
-              style: const TextStyle(color: RetroDosboxColors.warning, fontSize: 12),
+              style: const TextStyle(
+                color: RetroDosboxColors.warning,
+                fontSize: 12,
+              ),
             ),
           ),
           IconButton(
@@ -1012,8 +1166,11 @@ class _WorkbenchScreenState extends State<WorkbenchScreen>
       ),
       child: Row(
         children: [
-          const Icon(Icons.history, size: 16,
-              color: RetroDosboxColors.accentAmber),
+          const Icon(
+            Icons.history,
+            size: 16,
+            color: RetroDosboxColors.accentAmber,
+          ),
           const SizedBox(width: 8),
           Expanded(
             child: GestureDetector(
@@ -1024,7 +1181,9 @@ class _WorkbenchScreenState extends State<WorkbenchScreen>
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
                 style: const TextStyle(
-                    color: RetroDosboxColors.accentAmber, fontSize: 12),
+                  color: RetroDosboxColors.accentAmber,
+                  fontSize: 12,
+                ),
               ),
             ),
           ),
@@ -1053,15 +1212,19 @@ class _WorkbenchScreenState extends State<WorkbenchScreen>
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Icon(Icons.history,
-                size: 28, color: RetroDosboxColors.accentAmber),
+            const Icon(
+              Icons.history,
+              size: 28,
+              color: RetroDosboxColors.accentAmber,
+            ),
             const SizedBox(height: 10),
             const Text(
               'Paused session',
               style: TextStyle(
-                  color: RetroDosboxColors.accentAmber,
-                  fontSize: 14,
-                  fontWeight: FontWeight.w600),
+                color: RetroDosboxColors.accentAmber,
+                fontSize: 14,
+                fontWeight: FontWeight.w600,
+              ),
             ),
             const SizedBox(height: 4),
             Text(
@@ -1069,19 +1232,21 @@ class _WorkbenchScreenState extends State<WorkbenchScreen>
               textAlign: TextAlign.center,
               maxLines: 2,
               overflow: TextOverflow.ellipsis,
-              style: const TextStyle(
-                  color: Colors.white, fontSize: 18),
+              style: const TextStyle(color: Colors.white, fontSize: 18),
             ),
             const SizedBox(height: 16),
             Row(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
                 TextButton.icon(
-                  icon: const Icon(Icons.delete_outline,
-                      color: RetroDosboxColors.textMuted2),
-                  label: const Text('Discard',
-                      style:
-                          TextStyle(color: RetroDosboxColors.textMuted2)),
+                  icon: const Icon(
+                    Icons.delete_outline,
+                    color: RetroDosboxColors.textMuted2,
+                  ),
+                  label: const Text(
+                    'Discard',
+                    style: TextStyle(color: RetroDosboxColors.textMuted2),
+                  ),
                   onPressed: _discardPausedSession,
                 ),
                 const SizedBox(width: 8),
@@ -1128,9 +1293,9 @@ class _WorkbenchScreenState extends State<WorkbenchScreen>
                 entries: _entries,
                 unreadable: _unreadable,
                 onLaunch: _launch,
-                onShowDetails: _showDetails,
+                onShowDetails: _complianceMode ? null : _showDetails,
                 onRescan: _rescan,
-                onAddGame: _addGame,
+                onAddGame: _complianceMode ? null : _addGame,
               ),
             ),
           ],
@@ -1174,12 +1339,29 @@ class _WorkbenchScreenState extends State<WorkbenchScreen>
       case WorkbenchTab.engine:
         return RetroDosboxConfigScreen(core: widget.core);
       case WorkbenchTab.paths:
+        if (_complianceMode) {
+          return const Center(
+            child: Text(
+              'Paths is unavailable while compliance mode is active.',
+              style: TextStyle(color: RetroDosboxColors.textMuted2),
+            ),
+          );
+        }
         return PathsSettingsScreen(
           onGamesFolderChanged: _rescan,
           onRunSetupWizard: widget.onRunSetupWizard,
         );
+      case WorkbenchTab.compliance:
+        return ComplianceScreen(
+          complianceMode: _complianceMode,
+          onModeChanged: _setComplianceMode,
+          onRunDemo: _runComplianceDemo,
+        );
       case WorkbenchTab.about:
-        return const AboutScreen();
+        return AboutScreen(
+          onOpenCompliance: () =>
+              setState(() => _tab = WorkbenchTab.compliance),
+        );
     }
   }
 
@@ -1248,7 +1430,10 @@ class _GameDetailsSheetState extends State<_GameDetailsSheet> {
             const SizedBox(height: 12),
             const Text(
               'Hardware generation',
-              style: TextStyle(color: RetroDosboxColors.textMuted2, fontSize: 12),
+              style: TextStyle(
+                color: RetroDosboxColors.textMuted2,
+                fontSize: 12,
+              ),
             ),
             const SizedBox(height: 6),
             // Presets rather than a raw cycles field: "which era is this game
@@ -1286,7 +1471,10 @@ class _GameDetailsSheetState extends State<_GameDetailsSheet> {
               subtitle: const Text(
                 'Software rasterizer. Costs a lot of CPU; only a few titles '
                 'use it.',
-                style: TextStyle(fontSize: 11, color: RetroDosboxColors.textMuted),
+                style: TextStyle(
+                  fontSize: 11,
+                  color: RetroDosboxColors.textMuted,
+                ),
               ),
             ),
             SwitchListTile(
@@ -1302,7 +1490,10 @@ class _GameDetailsSheetState extends State<_GameDetailsSheet> {
             if (entry.launchers.length > 1) ...[
               const Text(
                 'Program to run',
-                style: TextStyle(color: RetroDosboxColors.textMuted2, fontSize: 12),
+                style: TextStyle(
+                  color: RetroDosboxColors.textMuted2,
+                  fontSize: 12,
+                ),
               ),
               const SizedBox(height: 6),
               for (final launcher in entry.launchers)

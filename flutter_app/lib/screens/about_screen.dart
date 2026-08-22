@@ -15,7 +15,9 @@ import '../services/platform_info.dart';
 import '../theme/retrodosbox_theme.dart';
 
 class AboutScreen extends StatelessWidget {
-  const AboutScreen({super.key});
+  final VoidCallback? onOpenCompliance;
+
+  const AboutScreen({super.key, this.onOpenCompliance});
 
   @override
   Widget build(BuildContext context) {
@@ -31,6 +33,14 @@ class AboutScreen extends StatelessWidget {
         const Text('DOSBox Multiplatform',
             style: TextStyle(color: RetroDosboxColors.textMuted2)),
         const SizedBox(height: 20),
+        Padding(
+          padding: const EdgeInsets.only(bottom: 12),
+          child: OutlinedButton.icon(
+            onPressed: onOpenCompliance,
+            icon: const Icon(Icons.verified_outlined, size: 18),
+            label: const Text('Store Compliance & Legal Use'),
+          ),
+        ),
         _Card(
           title: 'What this is',
           body: 'A front end. This app browses your DOS games, writes the '
@@ -51,6 +61,15 @@ class AboutScreen extends StatelessWidget {
               'Licensed under the GNU General Public License, version 2.\n\n'
               'https://github.com/joncampbell123/dosbox-x',
           accent: true,
+        ),
+        const _Card(
+          title: 'FreeDOS review environment',
+          body: 'Compliance mode boots a minimal FreeDOS 1.4 image containing '
+              'only the GPL-licensed FreeDOS kernel and FreeCOM shell, plus '
+              'this app\'s original MIT-licensed homebrew demo. The exact '
+              'source links, licences, official archive hash and reproducible '
+              'image recipe are included in the app. No Microsoft DOS, '
+              'Windows, commercial game or proprietary BIOS is included.',
         ),
         const _Card(
           title: 'DOSBox',

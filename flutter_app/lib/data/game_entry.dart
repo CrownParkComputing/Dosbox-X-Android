@@ -20,6 +20,11 @@ enum GameKind {
   /// installed.
   discImage('CD'),
 
+  /// A bootable floppy image. Mounted as A: and booted directly. Kept
+  /// distinct from a CD image and a hard-disk image because DOSBox-X needs a
+  /// different imgmount type and boot drive for each.
+  floppyImage('FLOPPY'),
+
   /// A bootable hard disk image, typically a Windows 9x install. Booted
   /// directly rather than run from a DOS prompt.
   bootImage('BOOT'),

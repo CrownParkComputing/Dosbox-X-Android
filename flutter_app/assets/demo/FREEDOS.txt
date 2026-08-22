@@ -1,0 +1,34 @@
+FREEDOS DEMO IMAGE — PROVENANCE AND SOURCE
+==========================================
+
+FREEDOS.IMG was derived from the official FreeDOS 1.4 Floppy Edition,
+published by the FreeDOS Project on 5 April 2025:
+
+    https://www.freedos.org/download/
+    https://download.freedos.org/1.4/FD14-FloppyEdition.zip
+
+Official archive SHA-256:
+
+    45b1fa7c52dd996c3bfa5e352ffcd410781b952a6ad629f15a4c9ec4bbaefc5a
+
+The image contains only:
+
+  * FreeDOS Kernel 2043 — KERNEL.SYS — GNU GPL v2 or later
+  * FreeCOM 0.86 — COMMAND.COM — GNU GPL v2
+  * FDCONFIG.SYS and AUTOEXEC.BAT, written for this app
+  * RETRODEM.COM, the app's original MIT-licensed homebrew demo
+  * the licence and provenance text files shipped beside this image
+
+No Microsoft DOS, Microsoft Windows, commercial game, proprietary PC BIOS,
+ROM dump, or third-party game data is present.
+
+Complete corresponding source:
+
+    FreeDOS kernel: https://github.com/FDOS/kernel
+    FreeCOM shell:  https://github.com/FDOS/freecom
+    Demo and image build recipe:
+      https://github.com/CrownParkComputing/DosboxMultiplatform
+
+The exact reproducible image recipe is tools/build-freedos-demo.sh. It
+downloads the hash-verified official release, removes the installer and all
+unneeded packages, and adds the original demo and licence files.

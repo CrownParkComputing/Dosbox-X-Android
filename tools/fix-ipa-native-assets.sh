@@ -22,6 +22,13 @@ MANIFEST="$APP/Frameworks/App.framework/flutter_assets/NativeAssetsManifest.json
 
 [ -d "$APP" ] || { echo "error: no $APP - run the iosbox build first." >&2; exit 1; }
 
+# iosbox does not reliably process Xcode's Resources build phase. App Store
+# submissions require the app's privacy manifest at the bundle root, so copy
+# the same manifest Xcode uses explicitly before the IPA is repacked.
+echo "==> installing app privacy manifest"
+cp "$REPO_ROOT/flutter_app/ios/Runner/PrivacyInfo.xcprivacy" \
+    "$APP/PrivacyInfo.xcprivacy"
+
 shopt -s nullglob
 frameworks=("$OUT/flutter_assets/native_assets/"*.framework)
 if [ ${#frameworks[@]} -eq 0 ]; then
