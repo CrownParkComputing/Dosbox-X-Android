@@ -38,6 +38,13 @@ native/dosbox_core/**/*.so
 *.ima
 *.vhd
 
+# ...except the FreeDOS boot floppy, which is an app ASSET rather than
+# somebody's game: it is what lets the emulator boot a real DOS with nothing
+# supplied by the user, and it has to be in the repo for the cloud build to
+# bundle it. Unmodified, freely redistributable, provenance and licence in
+# assets/freedos/README.txt.
+!flutter_app/assets/freedos/FD13BOOT.img
+
 .DS_Store
 
 # Build output APKs are never committed.
