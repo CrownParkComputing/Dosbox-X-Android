@@ -25,7 +25,17 @@ set -euo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$HERE/../../.." && pwd)"
 CORE="$REPO_ROOT/native/dosbox_core"
-BUILD="$CORE/ios/build-macos"
+# IOS_PLATFORM=iphonesimulator builds the simulator slice instead. Everything
+# downstream keys off it -- SDK, triple, build tree and prefix are all separate,
+# because the two share no object that is valid for the other.
+IOS_PLATFORM="${IOS_PLATFORM:-iphoneos}"
+case "$IOS_PLATFORM" in
+  iphoneos)        SUFFIX="";     TRIPLE_SUFFIX="";           FMWK_PLATFORM=iPhoneOS ;;
+  iphonesimulator) SUFFIX="-sim"; TRIPLE_SUFFIX="-simulator"; FMWK_PLATFORM=iPhoneSimulator ;;
+  *) echo "error: IOS_PLATFORM must be iphoneos or iphonesimulator" >&2; exit 1 ;;
+esac
+
+BUILD="$CORE/ios/build-macos$SUFFIX"
 PREFIX="$BUILD/prefix"
 DOSBOX_X_SRC="${DOSBOX_X_SRC:-$HOME/dosbox-x-src}"
 
@@ -47,8 +57,8 @@ done
     exit 1
 }
 
-IOS_SDK="$(xcrun --sdk iphoneos --show-sdk-path)"
-TRIPLE="arm64-apple-ios$DEPLOYMENT_TARGET"
+IOS_SDK="$(xcrun --sdk "$IOS_PLATFORM" --show-sdk-path)"
+TRIPLE="arm64-apple-ios$DEPLOYMENT_TARGET$TRIPLE_SUFFIX"
 IOS_CFLAGS="-target $TRIPLE -isysroot $IOS_SDK -fPIC -O2 -I$PREFIX/include"
 
 echo "==> SDK: $IOS_SDK"
@@ -65,7 +75,7 @@ if [ "${SKIP_SDL:-0}" != "1" ]; then
     cmake -S "$BUILD/SDL" -B "$BUILD/sdl-build" -G Ninja \
         -DCMAKE_SYSTEM_NAME=iOS \
         -DCMAKE_OSX_ARCHITECTURES=arm64 \
-        -DCMAKE_OSX_SYSROOT=iphoneos \
+        -DCMAKE_OSX_SYSROOT="$IOS_PLATFORM" \
         -DCMAKE_OSX_DEPLOYMENT_TARGET="$DEPLOYMENT_TARGET" \
         -DCMAKE_INSTALL_PREFIX="$PREFIX" \
         -DSDL_SHARED=OFF -DSDL_STATIC=ON \
@@ -82,7 +92,7 @@ if [ "${SKIP_SDL:-0}" != "1" ]; then
     cmake -S "$BUILD/libpng" -B "$BUILD/png-build" -G Ninja \
         -DCMAKE_SYSTEM_NAME=iOS \
         -DCMAKE_OSX_ARCHITECTURES=arm64 \
-        -DCMAKE_OSX_SYSROOT=iphoneos \
+        -DCMAKE_OSX_SYSROOT="$IOS_PLATFORM" \
         -DCMAKE_OSX_DEPLOYMENT_TARGET="$DEPLOYMENT_TARGET" \
         -DCMAKE_INSTALL_PREFIX="$PREFIX" \
         -DPNG_SHARED=OFF -DPNG_STATIC=ON \
@@ -117,11 +127,11 @@ python3 "$CORE/linux/apply-bridge-hook.py" "$DBX"
 [ -f configure ] || ./autogen.sh
 
 export PATH="$PREFIX/bin:$PATH"          # so sdl2-config is found
-export CC="$(xcrun --sdk iphoneos -f clang)"
-export CXX="$(xcrun --sdk iphoneos -f clang++)"
-export AR="$(xcrun --sdk iphoneos -f ar)"
-export RANLIB="$(xcrun --sdk iphoneos -f ranlib)"
-export NM="$(xcrun --sdk iphoneos -f nm)"
+export CC="$(xcrun --sdk "$IOS_PLATFORM" -f clang)"
+export CXX="$(xcrun --sdk "$IOS_PLATFORM" -f clang++)"
+export AR="$(xcrun --sdk "$IOS_PLATFORM" -f ar)"
+export RANLIB="$(xcrun --sdk "$IOS_PLATFORM" -f ranlib)"
+export NM="$(xcrun --sdk "$IOS_PLATFORM" -f nm)"
 export CFLAGS="$IOS_CFLAGS"
 export CXXFLAGS="$IOS_CFLAGS -std=gnu++14"
 # automake compiles .mm through OBJCXX/OBJCXXFLAGS, which configure.ac sets
@@ -196,7 +206,7 @@ echo "==> $ARCHIVE_COUNT archives"
     exit 1
 }
 
-OUT="$CORE/ios/build-macos/out"
+OUT="$BUILD/out"
 mkdir -p "$OUT"
 
 echo "==> compiling the bridge"
@@ -251,7 +261,7 @@ done
 # Installed as a framework, committed, and embedded by Xcode -- NOT injected
 # into the IPA afterwards. Post-build repacking cannot work under Xcode Cloud,
 # which builds and uploads the IPA itself with nothing in between.
-DEST="$REPO_ROOT/flutter_app/ios/Frameworks/libdosboxcore.framework"
+DEST="$BUILD/libdosboxcore.framework"
 echo "==> installing $DEST"
 rm -rf "$DEST"
 mkdir -p "$DEST"
@@ -269,7 +279,7 @@ cat > "$DEST/Info.plist" <<PLIST
 	<key>CFBundlePackageType</key><string>FMWK</string>
 	<key>CFBundleShortVersionString</key><string>1.0</string>
 	<key>CFBundleVersion</key><string>1</string>
-	<key>CFBundleSupportedPlatforms</key><array><string>iPhoneOS</string></array>
+	<key>CFBundleSupportedPlatforms</key><array><string>$FMWK_PLATFORM</string></array>
 	<key>MinimumOSVersion</key><string>$DEPLOYMENT_TARGET</string>
 </dict>
 PLIST

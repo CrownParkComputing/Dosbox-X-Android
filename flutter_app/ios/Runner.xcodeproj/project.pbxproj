@@ -18,7 +18,7 @@
 		97C146FC1CF9000F007C117D /* Main.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 97C146FA1CF9000F007C117D /* Main.storyboard */; };
 		97C146FE1CF9000F007C117D /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 97C146FD1CF9000F007C117D /* Assets.xcassets */; };
 		97C147011CF9000F007C117D /* LaunchScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 97C146FF1CF9000F007C117D /* LaunchScreen.storyboard */; };
-		DOSBX0012F000000000001A /* libdosboxcore.framework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = DOSBX0032F000000000001A /* libdosboxcore.framework */; settings = {ATTRIBUTES = (CodeSignOnCopy, ); }; };
+		DOSBX0012F000000000001A /* libdosboxcore.xcframework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = DOSBX0032F000000000001A /* libdosboxcore.xcframework */; settings = {ATTRIBUTES = (CodeSignOnCopy, ); }; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -38,7 +38,7 @@
 			dstPath = "";
 			dstSubfolderSpec = 10;
 			files = (
-				DOSBX0012F000000000001A /* libdosboxcore.framework in Embed Frameworks */,
+				DOSBX0012F000000000001A /* libdosboxcore.xcframework in Embed Frameworks */,
 			);
 			name = "Embed Frameworks";
 			runOnlyForDeploymentPostprocessing = 0;
@@ -70,7 +70,7 @@
 		97C147021CF9000F007C117D /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		9900183BA21537D84EBBEFB0 /* Pods-Runner.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-Runner.release.xcconfig"; path = "Target Support Files/Pods-Runner/Pods-Runner.release.xcconfig"; sourceTree = "<group>"; };
 		CFD864A71B9994B81A819F6D /* Pods-Runner.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-Runner.debug.xcconfig"; path = "Target Support Files/Pods-Runner/Pods-Runner.debug.xcconfig"; sourceTree = "<group>"; };
-		DOSBX0032F000000000001A /* libdosboxcore.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = libdosboxcore.framework; path = Frameworks/libdosboxcore.framework; sourceTree = "<group>"; };
+		DOSBX0032F000000000001A /* libdosboxcore.xcframework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.xcframework; name = libdosboxcore.xcframework; path = Frameworks/libdosboxcore.xcframework; sourceTree = "<group>"; };
 		F46186C475F9E48FE756EF70 /* Pods_Runner.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = Pods_Runner.framework; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
