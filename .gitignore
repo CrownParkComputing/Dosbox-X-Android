@@ -52,3 +52,8 @@ native/dosbox_core/**/.tmp/
 # with Play Console under the com.dosboxx.app listing; never commit it.
 *.jks
 *.keystore
+
+# The Mac-native iOS core build tree (build-ios-macos.sh): SDL2, libpng and a
+# full DOSBox-X checkout with its objects. Multi-GB and reproducible from the
+# script; the built framework in flutter_app/ios/Frameworks IS committed.
+native/dosbox_core/ios/build-macos/
