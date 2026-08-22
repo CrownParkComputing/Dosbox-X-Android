@@ -4,8 +4,9 @@ activation key, or link to obtain copyrighted software.
 
 FASTEST REVIEW PATH — NO DOWNLOAD, ACCOUNT, NETWORK OR USER FILE REQUIRED
 
-1. Launch a clean install. The first screen explains Compliance Mode.
-2. Tap "Boot FreeDOS homebrew demo".
+1. Launch a clean install. The first screen offers Store Compliance or Regular
+   Mode before reading any user library.
+2. Tap "Store Compliance".
 3. The app boots a minimal FreeDOS 1.4 floppy image in DOSBox-X.
 4. RETRODEM.COM starts automatically. Its animated spinner proves the guest is
    running. Press any key to return to the FreeDOS prompt.
@@ -16,8 +17,9 @@ licence ship with the app.
 
 COMPLIANCE MODE
 
-Compliance Mode is ON by default for a clean install. A persistent amber banner
-on the main GUI says it is active. In this mode:
+Choosing Store Compliance on a clean install activates Compliance Mode and
+starts the included demo. A persistent amber banner on the main GUI says the
+mode is active. In this mode:
 
   * Games contains only the bundled FreeDOS homebrew demo.
   * The user's games folder is not resolved, scanned, listed or displayed.

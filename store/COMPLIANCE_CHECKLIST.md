@@ -6,8 +6,11 @@ submit until every applicable item below is checked against the actual archive.
 
 ## Binary and behavior
 
-- [ ] Clean install opens the compliance-first setup screen.
-- [ ] Compliance Mode defaults to ON.
+- [ ] Clean install opens the mode-choice setup screen before reading the user
+      library.
+- [ ] The wizard visibly offers `Store Compliance` and `Regular Mode`.
+- [ ] `Store Compliance` activates Compliance Mode and starts the bundled demo.
+- [ ] `Regular Mode` opens the normal library without queuing the demo.
 - [ ] The main GUI shows `COMPLIANCE MODE ACTIVE`.
 - [ ] Games shows only `Retro-DosBox Homebrew Demo` while active.
 - [ ] Paths and user-editable settings pages are absent, and the user library

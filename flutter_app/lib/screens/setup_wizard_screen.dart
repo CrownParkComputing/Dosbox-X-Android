@@ -2,9 +2,9 @@
 //
 // The VICE app's wizard imitates a C64 BASIC screen; this one imitates a PC
 // booting to a DOS prompt, for the same reason: the first thing a user sees
-// should tell them what they are about to run. The typing animation is not
-// decoration either -- it paces the wizard so each line is read before the
-// folder picker takes over the screen.
+// should tell them what they are about to run. Like Retro-C64, it asks one
+// question before touching the user's library: isolated Store Compliance, or
+// Regular Mode for the user's own lawfully obtained software.
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -13,10 +13,20 @@ import '../services/app_prefs.dart';
 import '../services/demo_program_service.dart';
 import '../theme/retrodosbox_theme.dart';
 
+Future<String> _prepareComplianceDemo() async {
+  final demo = await DemoProgramService.prepare();
+  return demo.entry.slug;
+}
+
 class SetupWizardScreen extends StatefulWidget {
   final VoidCallback onComplete;
+  final Future<String> Function() prepareComplianceDemo;
 
-  const SetupWizardScreen({super.key, required this.onComplete});
+  const SetupWizardScreen({
+    super.key,
+    required this.onComplete,
+    this.prepareComplianceDemo = _prepareComplianceDemo,
+  });
 
   @override
   State<SetupWizardScreen> createState() => _SetupWizardScreenState();
@@ -47,17 +57,19 @@ class _SetupWizardScreenState extends State<SetupWizardScreen> {
     'Memory Test: 640K OK',
     '',
     'This app runs PC software using the DOSBox-X emulator.',
-    'A clean install starts in COMPLIANCE MODE.',
+    'Choose how you want to begin.',
     '',
-    'Only a bundled FreeDOS 1.4 environment is visible.',
-    'It runs an original, MIT-licensed homebrew demo.',
-    'No external BIOS, account, download or user file is needed.',
+    'STORE COMPLIANCE MODE',
+    'Runs only the bundled FreeDOS 1.4 homebrew demo.',
+    'Your library is not scanned, displayed or launched.',
+    'No BIOS, account, download or user file is needed.',
     '',
+    'REGULAR MODE',
+    'Lets you add DOS software you have the right to use.',
     'No Microsoft DOS, Windows, commercial game, ROM or BIOS',
-    'dump is included. Use only software you have the right to use.',
+    'dump is supplied by this app.',
     '',
-    'Compliance mode can be changed anytime from the sidebar.',
-    'While active, your own library is not scanned or displayed.',
+    'You can change modes anytime from Compliance.',
     '',
   ];
 
@@ -106,20 +118,35 @@ class _SetupWizardScreenState extends State<SetupWizardScreen> {
     super.dispose();
   }
 
-  Future<void> _finish() async {
-    await AppPrefs.setComplianceMode(true);
+  Future<void> _finish({required bool complianceMode}) async {
+    await AppPrefs.setComplianceMode(complianceMode);
     await AppPrefs.setSetupCompleted(true);
     if (!mounted) return;
     widget.onComplete();
   }
 
-  Future<void> _runDemo() async {
+  Future<void> _storeCompliance() async {
     if (_busy) return;
     setState(() => _busy = true);
     try {
-      final demo = await DemoProgramService.prepare();
-      await AppPrefs.setPendingLaunch(demo.entry.slug);
-      await _finish();
+      final demoSlug = await widget.prepareComplianceDemo();
+      await AppPrefs.setPendingLaunch(demoSlug);
+      await _finish(complianceMode: true);
+    } on Object catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Could not prepare the FreeDOS demo: $error')),
+      );
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  Future<void> _regularMode() async {
+    if (_busy) return;
+    setState(() => _busy = true);
+    try {
+      await _finish(complianceMode: false);
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -158,7 +185,7 @@ class _SetupWizardScreenState extends State<SetupWizardScreen> {
                 ),
               ),
             ),
-            if (_awaitingChoice) _actions(),
+            _actions(),
           ],
         ),
       ),
@@ -178,16 +205,19 @@ class _SetupWizardScreenState extends State<SetupWizardScreen> {
         crossAxisAlignment: WrapCrossAlignment.center,
         children: [
           FilledButton.icon(
-            onPressed: _busy ? null : _runDemo,
-            icon: const Icon(Icons.play_arrow),
-            label: const Text('Boot FreeDOS homebrew demo'),
+            onPressed: _busy ? null : _storeCompliance,
+            icon: _busy
+                ? const SizedBox.square(
+                    dimension: 16,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : const Icon(Icons.verified_outlined),
+            label: const Text('Store Compliance'),
           ),
-          TextButton(
-            onPressed: _busy ? null : _finish,
-            child: const Text(
-              'Continue in compliance mode',
-              style: TextStyle(color: RetroDosboxColors.textMuted2),
-            ),
+          OutlinedButton.icon(
+            onPressed: _busy ? null : _regularMode,
+            icon: const Icon(Icons.folder_open),
+            label: const Text('Regular Mode'),
           ),
         ],
       ),

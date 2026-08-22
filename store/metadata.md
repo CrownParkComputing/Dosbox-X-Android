@@ -22,9 +22,10 @@ is required.
 
 COMPLIANCE MODE
 
-A clean install starts in an isolated compliance mode. Only the bundled
-FreeDOS demo is visible and your own library is not scanned. The mode is clearly
-shown on the main screen and can be changed at any time from Compliance.
+A clean install first offers Store Compliance or Regular Mode. Store
+Compliance uses an isolated library: only the bundled FreeDOS demo is visible
+and your own library is not scanned. The active mode is clearly shown on the
+main screen and can be changed at any time from Compliance.
 
 BRING SOFTWARE YOU MAY LEGALLY USE
 
