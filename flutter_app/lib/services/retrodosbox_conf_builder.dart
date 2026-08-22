@@ -286,7 +286,10 @@ class RetroDosboxConfBuilder {
   }
 
   static List<String> _floppyImageAutoexec(GameEntry entry) => <String>[
-    'imgmount a ${_quote(entry.path)} -t floppy -fs none',
+    // With -fs none DOSBox-X attaches a raw BIOS disk, so imgmount expects
+    // BIOS slot 0 (first floppy), not the DOS drive letter A. `boot -l a`
+    // below still names the boot drive by letter.
+    'imgmount 0 ${_quote(entry.path)} -t floppy -fs none',
     'boot -l a',
   ];
 

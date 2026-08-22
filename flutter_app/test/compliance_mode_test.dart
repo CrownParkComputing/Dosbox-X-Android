@@ -75,7 +75,7 @@ void main() {
     expect(
       conf,
       contains(
-        'imgmount a "/private/compliance-demo/FREEDOS.IMG" -t floppy -fs none',
+        'imgmount 0 "/private/compliance-demo/FREEDOS.IMG" -t floppy -fs none',
       ),
     );
     expect(conf, contains('boot -l a'));
