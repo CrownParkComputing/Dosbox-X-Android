@@ -63,6 +63,17 @@ jobs:
           channel: stable
           flutter-version: ${{ env.FLUTTER_VERSION }}
 
+      # gamepads_ios has no Swift Package Manager support, and Flutter 3.47
+      # enables SPM by default. The mixed SPM/CocoaPods registrant then fails
+      # to compile for device:
+      #   Parse Issue (Xcode): Module 'gamepads_ios' not found
+      #   ios/Runner/GeneratedPluginRegistrant.m:17:8
+      # which Flutter reports as the far less specific "No Xcode build settings
+      # have been found". CocoaPods handles every plugin here, including that
+      # one, so SPM is off until the plugin adopts it.
+      - name: Use CocoaPods rather than Swift Package Manager
+        run: flutter config --no-enable-swift-package-manager
+
       # An app that builds but ships no core installs fine and then reports
       # "Stub core: libdosboxcore not found" at runtime, which reads as a
       # signing or packaging fault and is neither. Both slices are checked:
