@@ -170,16 +170,24 @@ jobs:
           flutter build ios --release --no-codesign \
             --build-number=${{ steps.buildno.outputs.n }}
 
+          # Archive UNSIGNED, then let -exportArchive do the signing.
+          #
+          # Signing settings on the xcodebuild command line apply to every
+          # target in the workspace, including the CocoaPods ones, and pods
+          # reject them outright: "package_info_plus does not support
+          # provisioning profiles", once per pod. Export signs the app alone,
+          # which is the only thing that needs it.
           xcodebuild archive \
             -workspace ios/Runner.xcworkspace \
             -scheme Runner \
             -configuration Release \
             -destination 'generic/platform=iOS' \
             -archivePath build/ios/archive/Runner.xcarchive \
-            CODE_SIGN_STYLE=Manual \
-            DEVELOPMENT_TEAM="$TEAM_ID" \
-            CODE_SIGN_IDENTITY="$IDENTITY" \
-            PROVISIONING_PROFILE_SPECIFIER="$PROFILE_NAME"
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY="" \
+            CODE_SIGN_ENTITLEMENTS="" \
+            DEVELOPMENT_TEAM="$TEAM_ID"
 
           cat > ExportOptions.plist <<PLIST
           <?xml version="1.0" encoding="UTF-8"?>
