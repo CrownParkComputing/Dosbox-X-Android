@@ -139,6 +139,38 @@ jobs:
       # Prove the embed phase actually ran, at the exact path
       # RetroDosboxNativePaths._iosFrameworkLibrary opens at runtime. This is
       # the check that would have caught the core never being embedded at all.
+      # A build can upload with "UPLOAD SUCCEEDED with no errors", be given a
+      # delivery UUID, and then be discarded during processing -- reported only
+      # by email, so CI goes green and no build ever appears in App Store
+      # Connect. Missing purpose strings (ITMS-90683) do exactly that, and
+      # file_picker embeds DKImagePickerController, which links the photo
+      # library APIs whether this app calls them or not.
+      #
+      # So the bundle is checked here, where a failure is visible.
+      - name: Verify the bundle cannot be discarded in processing
+        run: |
+          set -euo pipefail
+          app=flutter_app/build/ios/iphoneos/Runner.app
+          plist="$app/Info.plist"
+
+          if [ -d "$app/Frameworks/DKImagePickerController.framework" ]; then
+            /usr/bin/plutil -extract NSPhotoLibraryUsageDescription raw -o - "$plist" >/dev/null 2>&1 \
+              || { echo "::error::DKImagePickerController is embedded but"
+                   echo "::error::NSPhotoLibraryUsageDescription is missing -- the build will"
+                   echo "::error::upload cleanly and then be discarded (ITMS-90683)."
+                   exit 1; }
+          fi
+
+          # Absent, this stops the submission to ask for it in the browser.
+          /usr/bin/plutil -extract ITSAppUsesNonExemptEncryption raw -o - "$plist" >/dev/null 2>&1 \
+            || { echo "::error::ITSAppUsesNonExemptEncryption is missing from Info.plist"; exit 1; }
+
+          # Icons live nested under CFBundleIcons; the top-level key is not the
+          # one Xcode writes.
+          /usr/bin/plutil -extract CFBundleIcons.CFBundlePrimaryIcon.CFBundleIconName raw -o - "$plist" >/dev/null 2>&1 \
+            || { echo "::error::no app icon declared in the built bundle"; exit 1; }
+
+          echo "bundle looks deliverable"
       - name: Verify the core is embedded in the app
         run: |
           app=flutter_app/build/ios/iphoneos/Runner.app

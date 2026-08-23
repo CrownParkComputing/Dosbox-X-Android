@@ -98,5 +98,16 @@
 		<string>UIInterfaceOrientationLandscapeLeft</string>
 		<string>UIInterfaceOrientationLandscapeRight</string>
 	</array>
+	<!-- file_picker embeds DKImagePickerController, which links the photo
+	     library APIs whether or not this app ever calls them. Without a purpose
+	     string Apple ACCEPTS the upload and then discards the build during
+	     processing (ITMS-90683), reporting it only by email -- so the symptom
+	     is a build that uploaded successfully and never appears. -->
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>Retro-DosBox only opens the photo library if you choose to import a file from it. It never reads your photos on its own.</string>
+	<!-- Answered here so the submission does not stop to ask. This app uses
+	     no encryption beyond what iOS itself provides. -->
+	<key>ITSAppUsesNonExemptEncryption</key>
+	<false/>
 </dict>
 </plist>
