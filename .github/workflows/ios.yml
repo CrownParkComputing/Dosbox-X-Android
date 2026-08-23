@@ -27,9 +27,37 @@ env:
 
 jobs:
   ios:
-    runs-on: macos-14
+    runs-on: macos-26
     steps:
       - uses: actions/checkout@v4
+
+      # Apple rejects any upload built against an iOS SDK older than 26, and
+      # says so only AFTER the whole IPA has transferred -- a full build plus a
+      # 30-second upload spent to learn the toolchain was wrong:
+      #   "This app was built with the iOS 17.5 SDK. All iOS and iPadOS apps
+      #    must be built with the iOS 26 SDK or later" (409)
+      # So the check runs first and fails in seconds. It picks the newest Xcode
+      # the image actually carries rather than trusting the label's default,
+      # which is what silently supplied the 17.5 SDK in the first place.
+      - name: Select an Xcode with the iOS 26 SDK or newer
+        run: |
+          set -euo pipefail
+          best=""; best_sdk=0
+          for app in /Applications/Xcode*.app; do
+            [ -x "$app/Contents/Developer/usr/bin/xcodebuild" ] || continue
+            sdk=$(DEVELOPER_DIR="$app/Contents/Developer" xcodebuild -showsdks 2>/dev/null \
+                  | sed -n 's/.*-sdk iphoneos\([0-9][0-9]*\).*/\1/p' | sort -n | tail -1)
+            [ -n "$sdk" ] || continue
+            echo "$app -> iOS SDK $sdk"
+            if [ "$sdk" -gt "$best_sdk" ]; then best_sdk=$sdk; best=$app; fi
+          done
+          if [ "$best_sdk" -lt 26 ]; then
+            echo "::error::No Xcode on this runner has the iOS 26 SDK (newest found: $best_sdk)."
+            echo "::error::App Store Connect refuses anything older. Bump runs-on."
+            exit 1
+          fi
+          sudo xcode-select -s "$best/Contents/Developer"
+          xcodebuild -version
       - uses: subosito/flutter-action@v2
         with:
           channel: stable
