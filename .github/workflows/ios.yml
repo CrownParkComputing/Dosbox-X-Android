@@ -153,13 +153,21 @@ jobs:
           app=flutter_app/build/ios/iphoneos/Runner.app
           plist="$app/Info.plist"
 
-          if [ -d "$app/Frameworks/DKImagePickerController.framework" ]; then
-            /usr/bin/plutil -extract NSPhotoLibraryUsageDescription raw -o - "$plist" >/dev/null 2>&1 \
-              || { echo "::error::DKImagePickerController is embedded but"
-                   echo "::error::NSPhotoLibraryUsageDescription is missing -- the build will"
-                   echo "::error::upload cleanly and then be discarded (ITMS-90683)."
-                   exit 1; }
-          fi
+          # One entry per framework that drags in a protected API, because
+          # missing ANY of them is the same ITMS-90683 and each is reported
+          # only after a delivery that said it succeeded. The photo library one
+          # discarded the build outright; the Bluetooth one came back as a
+          # warning on a delivery Apple had already accepted -- so checking
+          # only the first is how the second reached a shipped build.
+          need_string() {   # <framework dir> <Info.plist key>
+            [ -d "$app/Frameworks/$1" ] || return 0
+            /usr/bin/plutil -extract "$2" raw -o - "$plist" >/dev/null 2>&1 && return 0
+            echo "::error::$1 is embedded but $2 is missing from Info.plist."
+            echo "::error::Apple reports this as ITMS-90683, by email, after the upload."
+            exit 1
+          }
+          need_string DKImagePickerController.framework NSPhotoLibraryUsageDescription
+          need_string gamepads_ios.framework NSBluetoothAlwaysUsageDescription
 
           # Absent, this stops the submission to ask for it in the browser.
           /usr/bin/plutil -extract ITSAppUsesNonExemptEncryption raw -o - "$plist" >/dev/null 2>&1 \

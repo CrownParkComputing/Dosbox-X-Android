@@ -109,5 +109,16 @@
 	     no encryption beyond what iOS itself provides. -->
 	<key>ITSAppUsesNonExemptEncryption</key>
 	<false/>
+	<!-- The gamepads plugin links the Bluetooth APIs so it can see wireless
+	     controllers. Apple requires the purpose string whether or not the app
+	     ever calls them: without it the delivery comes back as ITMS-90683,
+	     "your app's code references one or more APIs that access sensitive
+	     user data", naming this key. It arrives by email AFTER a delivery that
+	     reported success. -->
+	<key>NSBluetoothAlwaysUsageDescription</key>
+	<string>Retro-DosBox uses Bluetooth only to connect game controllers. It collects no data and never scans for anything else.</string>
+	<!-- The older key, for the iOS versions that still ask for it. -->
+	<key>NSBluetoothPeripheralUsageDescription</key>
+	<string>Retro-DosBox uses Bluetooth only to connect game controllers. It collects no data and never scans for anything else.</string>
 </dict>
 </plist>
