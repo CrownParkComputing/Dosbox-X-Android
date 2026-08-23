@@ -23,10 +23,21 @@ class DemoProgram {
   static const String fileName = 'DEMO.COM';
   static const String _asset = 'assets/demo/DEMO.COM';
 
-  /// Where it lands: the folder DOSBox-X mounts as C:, so the demo is simply
+  /// The demo is a FOLDER containing the program, not a loose file.
+  ///
+  /// That is what the library scanner recognises. At the top level of the
+  /// games folder it indexes disc images and archives only -- .exe/.com/.bat
+  /// count only INSIDE a directory, which is the shape a DOS game actually
+  /// has and exactly what the empty shelf tells the user to provide. A loose
+  /// DEMO.COM installs correctly, is mounted correctly, and never appears.
+  ///
+  /// The folder name is the title on the shelf.
+  static const String folderName = 'Retro-DosBox Demo';
+
+  /// Where it lands: inside the folder DOSBox-X mounts as C:, so the demo is
   /// on the shelf beside whatever the user adds later.
   static Future<String> installedPath() async =>
-      p.join(await GamesFolder.resolve(), fileName);
+      p.join(await GamesFolder.resolve(), folderName, fileName);
 
   /// Writes the demo into the games folder if it is not already there.
   ///

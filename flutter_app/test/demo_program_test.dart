@@ -55,6 +55,20 @@ void main() {
     expect(p.basename(path), 'DEMO.COM');
   });
 
+  test('installs as a game FOLDER, not a loose program', () async {
+    // The scanner indexes .com/.exe only inside a directory -- at the top
+    // level it looks for disc images and archives. A loose DEMO.COM installs
+    // and mounts perfectly and never appears on the shelf, which is the whole
+    // point of the demo.
+    await DemoProgram.install();
+    final path = await DemoProgram.installedPath();
+    expect(p.basename(p.dirname(path)), DemoProgram.folderName);
+    expect(Directory(p.dirname(path)).existsSync(), isTrue);
+    // ...and it is the games folder that contains that folder, not a deeper
+    // nesting the scanner would not descend into.
+    expect(p.dirname(p.dirname(path)), games.path);
+  });
+
   test('does not overwrite a file the user already has there', () async {
     final path = await DemoProgram.installedPath();
     await File(path).parent.create(recursive: true);
