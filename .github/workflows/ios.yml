@@ -146,12 +146,63 @@ jobs:
         id: buildno
         run: echo "n=$(date -u +%Y%m%d%H%M)" >> "$GITHUB_OUTPUT"
 
+      # xcodebuild archive + export, NOT `flutter build ipa`.
+      #
+      # The Runner target is set to Automatic signing, and `flutter build ipa`
+      # honours that: it looks for a DEVELOPMENT certificate and a Development
+      # Team, finds neither on a runner with no Apple ID, and stops with "No
+      # development certificates available to code sign app for device
+      # deployment" -- while the distribution certificate and profile it
+      # actually needs are sitting right there, imported and installed.
+      #
+      # Manual signing is passed on the command line so the committed project
+      # keeps Automatic, which is what a developer opening it in Xcode wants.
       - name: Build signed IPA
         if: steps.creds.outputs.have == 'true'
         working-directory: flutter_app
+        env:
+          TEAM_ID: 88A3T9K9C5
+          BUNDLE_ID: com.crownparkcomputing.dosboxretro
+          PROFILE_NAME: Retro-Dosbox AppStore
+          IDENTITY: Apple Distribution
         run: |
-          flutter build ipa --release --export-method app-store \
+          set -euo pipefail
+          flutter build ios --release --no-codesign \
             --build-number=${{ steps.buildno.outputs.n }}
+
+          xcodebuild archive \
+            -workspace ios/Runner.xcworkspace \
+            -scheme Runner \
+            -configuration Release \
+            -destination 'generic/platform=iOS' \
+            -archivePath build/ios/archive/Runner.xcarchive \
+            CODE_SIGN_STYLE=Manual \
+            DEVELOPMENT_TEAM="$TEAM_ID" \
+            CODE_SIGN_IDENTITY="$IDENTITY" \
+            PROVISIONING_PROFILE_SPECIFIER="$PROFILE_NAME"
+
+          cat > ExportOptions.plist <<PLIST
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+            <key>method</key><string>app-store-connect</string>
+            <key>teamID</key><string>$TEAM_ID</string>
+            <key>signingStyle</key><string>manual</string>
+            <key>signingCertificate</key><string>$IDENTITY</string>
+            <key>provisioningProfiles</key>
+            <dict><key>$BUNDLE_ID</key><string>$PROFILE_NAME</string></dict>
+            <key>uploadSymbols</key><true/>
+          </dict>
+          </plist>
+          PLIST
+
+          xcodebuild -exportArchive \
+            -archivePath build/ios/archive/Runner.xcarchive \
+            -exportOptionsPlist ExportOptions.plist \
+            -exportPath build/ios/ipa
+
+          ls -l build/ios/ipa
 
       - name: Upload to App Store Connect
         if: steps.creds.outputs.have == 'true'
