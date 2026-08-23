@@ -1318,15 +1318,23 @@ class _GameDetailsSheetState extends State<_GameDetailsSheet> {
                 style: TextStyle(color: RetroDosboxColors.textMuted2, fontSize: 12),
               ),
               const SizedBox(height: 6),
+              // Its own Material, for the same reason as the compliance
+              // switch: this panel is a decorated Container, and a ListTile
+              // paints its ink onto the nearest Material ancestor -- above
+              // that decoration, where it cannot be seen. A launcher row that
+              // does not acknowledge a tap looks broken.
               for (final launcher in entry.launchers)
-                ListTile(
-                  dense: true,
-                  title: Text(
-                    launcher.split(RegExp(r'[/\\]')).last,
-                    style: const TextStyle(fontSize: 13, color: Colors.white),
+                Material(
+                  color: Colors.transparent,
+                  child: ListTile(
+                    dense: true,
+                    title: Text(
+                      launcher.split(RegExp(r'[/\\]')).last,
+                      style: const TextStyle(fontSize: 13, color: Colors.white),
+                    ),
+                    trailing: const Icon(Icons.play_arrow, size: 18),
+                    onTap: () => widget.onLaunch(launcher),
                   ),
-                  trailing: const Icon(Icons.play_arrow, size: 18),
-                  onTap: () => widget.onLaunch(launcher),
                 ),
             ],
             const SizedBox(height: 8),

@@ -72,9 +72,11 @@ class _ComplianceScreenState extends State<ComplianceScreen> {
     });
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Text(mode == DosMode.freeDos
-            ? 'FreeDOS will boot the next time a session starts.'
-            : "DOSBox-X's built-in DOS is back."),
+        content: Text(
+          mode == DosMode.freeDos
+              ? 'FreeDOS will boot the next time a session starts.'
+              : "DOSBox-X's built-in DOS is back.",
+        ),
       ),
     );
   }
@@ -85,8 +87,10 @@ class _ComplianceScreenState extends State<ComplianceScreen> {
     return ListView(
       padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
       children: <Widget>[
-        const Text('App Store / Play Store compliance',
-            style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+        const Text(
+          'App Store / Play Store compliance',
+          style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+        ),
         const SizedBox(height: 16),
 
         _Section('What this app ships', const <String>[
@@ -113,38 +117,55 @@ class _ComplianceScreenState extends State<ComplianceScreen> {
         ]),
 
         const SizedBox(height: 8),
-        const Text('Compliance mode',
-            style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+        const Text(
+          'Compliance mode',
+          style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+        ),
         const SizedBox(height: 4),
-        SwitchListTile(
-          value: _compliance,
-          onChanged: (on) async {
-            setState(() => _busy = true);
-            await ComplianceMode.set(on);
-            if (!mounted) return;
-            setState(() {
-              _compliance = on;
-              _busy = false;
-            });
-            if (!context.mounted) return;
-            ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-              content: Text(on
-                  ? 'Compliance mode on. The shelf now lists only the bundled '
-                      'demo.'
-                  : 'Compliance mode off. Your own games folder is back.'),
-            ));
-          },
-          title: const Text('Show only what the app shipped with'),
-          subtitle: const Text(
-            'The library reads a directory holding nothing but the bundled '
-            'demo, so the app can only run what came with it. Your own files '
-            'are untouched and return the moment this is switched off.',
+        // Its own Material. The workbench draws each panel as a decorated
+        // Container, and a ListTile paints its fill and ink splash onto the
+        // nearest Material ANCESTOR -- which sits above that decoration, so
+        // the ripple is painted where nothing can see it. Flutter asserts on
+        // exactly this in debug; in release the row simply never acknowledges
+        // a tap, which reads as an unresponsive control.
+        Material(
+          color: Colors.transparent,
+          child: SwitchListTile(
+            value: _compliance,
+            onChanged: (on) async {
+              setState(() => _busy = true);
+              await ComplianceMode.set(on);
+              if (!mounted) return;
+              setState(() {
+                _compliance = on;
+                _busy = false;
+              });
+              if (!context.mounted) return;
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Text(
+                    on
+                        ? 'Compliance mode on. The shelf now lists only the bundled '
+                              'demo.'
+                        : 'Compliance mode off. Your own games folder is back.',
+                  ),
+                ),
+              );
+            },
+            title: const Text('Show only what the app shipped with'),
+            subtitle: const Text(
+              'The library reads a directory holding nothing but the bundled '
+              'demo, so the app can only run what came with it. Your own files '
+              'are untouched and return the moment this is switched off.',
+            ),
           ),
         ),
 
         const SizedBox(height: 8),
-        const Text('Which DOS runs',
-            style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+        const Text(
+          'Which DOS runs',
+          style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+        ),
         const SizedBox(height: 4),
         const Text(
           'Both choices are free software and both are bundled. Neither is '
@@ -156,7 +177,8 @@ class _ComplianceScreenState extends State<ComplianceScreen> {
         _ModeTile(
           selected: _mode == DosMode.builtIn,
           title: "DOSBox-X's built-in DOS",
-          body: 'The default. Not a boot at all -- the emulator provides DOS '
+          body:
+              'The default. Not a boot at all -- the emulator provides DOS '
               'itself and mounts your games folder as C:. Starts fastest, and '
               'is what almost every DOS program wants.',
           onTap: () => _setMode(DosMode.builtIn),
@@ -164,7 +186,8 @@ class _ComplianceScreenState extends State<ComplianceScreen> {
         _ModeTile(
           selected: _mode == DosMode.freeDos,
           title: 'FreeDOS 1.3',
-          body: 'Boots the bundled FreeDOS floppy, so a genuine DOS kernel is '
+          body:
+              'Boots the bundled FreeDOS floppy, so a genuine DOS kernel is '
               'underneath. Slower to start, and your games folder arrives as a '
               'second drive rather than C:. Use it for software that insists '
               'on a real DOS.\n\nImage: $_imagePath',
@@ -172,7 +195,9 @@ class _ComplianceScreenState extends State<ComplianceScreen> {
         ),
 
         const SizedBox(height: 16),
-        _Section('Why FreeDOS at all, if the built-in DOS works', const <String>[
+        _Section('Why FreeDOS at all, if the built-in DOS works', const <
+          String
+        >[
           'Because "works" is not the same as "is a DOS". DOSBox-X '
               'reimplements the DOS calls a program makes; FreeDOS is an '
               'actual DOS that boots. Most software cannot tell the '
@@ -215,9 +240,12 @@ class _ModeTile extends StatelessWidget {
           selected ? Icons.radio_button_checked : Icons.radio_button_unchecked,
           color: selected ? Theme.of(context).colorScheme.primary : null,
         ),
-        title: Text(title,
-            style: TextStyle(
-                fontWeight: selected ? FontWeight.bold : FontWeight.normal)),
+        title: Text(
+          title,
+          style: TextStyle(
+            fontWeight: selected ? FontWeight.bold : FontWeight.normal,
+          ),
+        ),
         subtitle: Text(body, style: const TextStyle(height: 1.4)),
         isThreeLine: true,
       ),
@@ -238,8 +266,10 @@ class _Section extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
-          Text(title,
-              style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+          Text(
+            title,
+            style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+          ),
           const SizedBox(height: 6),
           for (final point in points)
             Padding(
@@ -248,7 +278,9 @@ class _Section extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: <Widget>[
                   const Text('•  '),
-                  Expanded(child: Text(point, style: const TextStyle(height: 1.4))),
+                  Expanded(
+                    child: Text(point, style: const TextStyle(height: 1.4)),
+                  ),
                 ],
               ),
             ),

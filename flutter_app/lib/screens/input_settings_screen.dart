@@ -243,14 +243,35 @@ class _InputSettingsScreenState extends State<InputSettingsScreen> {
               const Text('On-screen pad',
                   style: TextStyle(color: Colors.white, fontSize: 14)),
               const SizedBox(height: 8),
-              SegmentedButton<OnScreenPadMode>(
-                segments: [
-                  for (final mode in OnScreenPadMode.values)
-                    ButtonSegment(value: mode, label: Text(mode.label)),
-                ],
-                selected: {_padMode},
-                showSelectedIcon: false,
-                onSelectionChanged: (s) => _setPadMode(s.first),
+              // Horizontally scrollable so the segments size to their text.
+              // Given a narrow panel SegmentedButton divides the width evenly
+              // and lets each label WRAP, which on an iPhone rendered "Always"
+              // as "Alwa/ys" and "Never" as "Neve/r" -- unreadable, and in
+              // every screenshot of this screen. Unbounded width makes each
+              // segment take what it needs; the scroll only engages when the
+              // row genuinely does not fit.
+              SingleChildScrollView(
+                scrollDirection: Axis.horizontal,
+                child: SegmentedButton<OnScreenPadMode>(
+                  // Sized to fit the narrowest panel this screen has. At the
+                  // default size three labels do not fit an iPhone's content
+                  // column, and the row is then clipped at the edge -- which
+                  // hides the third choice rather than merely tightening it.
+                  style: SegmentedButton.styleFrom(
+                    textStyle: const TextStyle(fontSize: 12),
+                    padding: const EdgeInsets.symmetric(horizontal: 10),
+                    visualDensity: VisualDensity.compact,
+                  ),
+                  segments: [
+                    for (final mode in OnScreenPadMode.values)
+                      ButtonSegment(
+                          value: mode,
+                          label: Text(mode.label, maxLines: 1)),
+                  ],
+                  selected: {_padMode},
+                  showSelectedIcon: false,
+                  onSelectionChanged: (s) => _setPadMode(s.first),
+                ),
               ),
               const SizedBox(height: 8),
               // The description comes from the enum rather than being

@@ -55,7 +55,9 @@ class Sidebar extends StatelessWidget {
     this.pinLastGroupToBottom = false,
   });
 
-  static const double _iconColumnWidth = 22.0;
+  // Wide enough for an emoji at the button text size. Too narrow and the
+  // glyph steals room the label was measured to have, clipping it.
+  static const double _iconColumnWidth = 26.0;
   static const double _iconGap = 10.0;
 
   /// Destinations [from, to), with a hairline wherever the group changes.
@@ -120,9 +122,18 @@ class Sidebar extends StatelessWidget {
     final iconAllowance = hasIcons ? _iconColumnWidth + _iconGap : 0.0;
 
     final screenWidth = MediaQuery.sizeOf(context).width;
-    final railWidth =
-        (widest + iconAllowance + style.buttonSidePadding * 2 + style.navPadding * 2)
-            .clamp(style.minWidth, style.maxWidth(screenWidth));
+    // The panel draws a border and the buttons carry a bottom margin, none of
+    // which is in the padding constants above. Without this the sum comes out
+    // a few points short of what the row actually has to spend, and the
+    // longest label loses exactly one character.
+    const chromeAllowance = 8.0;
+
+    final railWidth = (widest +
+            iconAllowance +
+            style.buttonSidePadding * 2 +
+            style.navPadding * 2 +
+            chromeAllowance)
+        .clamp(style.minWidth, style.maxWidth(screenWidth));
 
     // Rows grow with the text rather than clipping it, but never get smaller
     // than a comfortable touch target.

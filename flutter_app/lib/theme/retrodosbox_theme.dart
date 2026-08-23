@@ -44,7 +44,12 @@ class RetroDosboxMetrics {
   /// Clamp bounds for the sidebar, whose width is measured from its widest
   /// label rather than fixed -- a flat value left a dead strip beside every
   /// label on wide devices.
-  static const double sidebarMinWidth = 118.0;
+  /// 128, not 118: the floor has to clear the widest label the rail actually
+  /// carries. "Compliance" needs about 122pt once the icon column and side
+  /// padding are counted, so at 118 the longest entry rendered as "Compl..."
+  /// on every screen of every phone -- and so in every store screenshot --
+  /// while looking like a deliberate width rather than a fault.
+  static const double sidebarMinWidth = 128.0;
 
   /// Never below [sidebarMinWidth], because this is a clamp's upper bound.
   ///
@@ -55,8 +60,12 @@ class RetroDosboxMetrics {
   /// sound and all, because the failure was in the launcher's UI rather than
   /// anywhere near the emulator.
   static double sidebarMaxWidth(double screenWidth) {
-    final quarter = screenWidth * 0.25;
-    final capped = quarter < 190.0 ? quarter : 190.0;
+    // A third, not a quarter. The rail sizes itself to its widest label, and a
+    // quarter of any iPhone is below what "Compliance" needs, so the cap was
+    // binding on all of them. A third still leaves two thirds for content, and
+    // the 190 ceiling keeps a wide tablet from growing a needlessly fat rail.
+    final share = screenWidth / 3;
+    final capped = share < 190.0 ? share : 190.0;
     return capped < sidebarMinWidth ? sidebarMinWidth : capped;
   }
 
