@@ -1,121 +1,61 @@
-# Release status and the last mile
+# Release status
 
-Written 2026-08-23. What is done, what is not, and the exact steps that finish
-it. The same document exists in Retro-Dosbox, because the two apps are in the
-same position.
+Updated 2026-08-23.
 
 ## Done
 
-**The app builds and runs on iOS.** It could not before, for three separate
-reasons, all fixed:
+**CI builds, signs and uploads.** A push to `main` produces a signed IPA and
+delivers it to App Store Connect. Five separate faults sat between "the code
+compiles" and that sentence, and each is commented where it was fixed:
 
-- `SUPPORTED_PLATFORMS` was `iphoneos` alone, so no simulator build was
-  possible whatever flag was passed.
-- The emulator core was never embedded at all. The Embed Frameworks phase was
-  empty, and the dylib was injected into the IPA *after* the build by
-  `tools/fix-ipa-native-assets.sh` -- which cannot work under any cloud build,
-  since CI produces the IPA and uploads it with nothing in between. Every
-  cloud build shipped an app reporting "Stub core: libdosboxcore not found".
-- The core had no Mac-native build. `build-ios.sh` needs Docker and an iOS SDK
-  unpacked by hand into a named volume; neither exists on a Mac or in a CI
-  image. `native/dosbox_core/ios/build-ios-macos.sh` builds it natively, for
-  device or simulator (`IOS_PLATFORM=iphonesimulator`).
+1. `flutter build ipa` honours the project's Automatic signing and looks for a
+   *development* certificate, which no runner has. Driving `xcodebuild`
+   directly fixed it.
+2. Signing settings on the xcodebuild command line apply to EVERY target,
+   including CocoaPods ones, which reject a provisioning profile outright. The
+   archive is unsigned now and `-exportArchive` does the signing.
+3. `macos-14` carries Xcode 15.4, and Apple refuses anything built below the
+   iOS 26 SDK -- reported only after the whole IPA has transferred.
+4. Flutter 3.47 enables Swift Package Manager; `gamepads_ios` has not adopted
+   it, and the mixed registrant fails to compile for device.
+5. The runner has a dozen side-by-side Xcodes and only the DEFAULT one has its
+   iOS platform components installed. Comparing major versions kept the first,
+   which lists the SDK and cannot build for a device.
 
-**The core is committed as an xcframework** carrying both device and simulator
-slices, embedded by Xcode's Embed Frameworks phase. Verified at runtime:
-`dosbox_core_start` resolves via `dlopen` on a simulator.
+**Builds are VALID in App Store Connect** and attached to the 1.0 version.
 
-**It runs with nothing supplied.** A PC needs no ROM -- DOSBox-X provides the
-DOS itself -- and the app now ships `DEMO.COM` (written for this app) plus an
-unmodified FreeDOS 1.3 boot floppy, selectable on the Compliance page.
-Compliance mode scans a directory holding only the bundled demo, under
-Application Support rather than Documents, so a user file cannot reach it.
+The first delivery of each app succeeded and then vanished: the bundle embeds
+DKImagePickerController via file_picker, which links the photo library APIs
+whether the app calls them or not, and with no `NSPhotoLibraryUsageDescription`
+that is ITMS-90683. Apple accepts the upload, discards the build in processing
+and says so by email only, so CI stays green and nothing appears. CI now checks
+the built bundle for that string, for `ITSAppUsesNonExemptEncryption` and for a
+declared icon, so this fails the build rather than failing silently.
 
-**The bundle ID** is `com.crownparkcomputing.dosboxretro`, matching the App
-Store record. It was `com.crownpark.retrodosbox`, which matched nothing.
+**Screenshots: 8 iPhone + 8 iPad, uploaded.** Captured by
+`flutter_app/tool/screenshots.sh`, which drives the app through every screen
+and writes them at the device's own pixel size -- 1320x2868 for the 6.9" iPhone
+slot and 2064x2752 for the 13" iPad one, the only two sizes Apple still asks
+for. Re-run it after any UI change.
 
-**CI builds and uploads.** `.github/workflows/ios.yml` signs and uploads to
-App Store Connect on push to `main`, and skips signing when the secrets are
-absent so forks still get a compile check.
+**Listing metadata** is complete: description, keywords, promotional text,
+support URL, subtitle, category, privacy policy URL, age rating, review contact
+and review notes.
 
-**The store listing** has description, keywords, promotional text, support
-URL, review contact, review notes, free pricing, age rating, categories,
-subtitle, privacy policy URL and content rights -- all set through the API.
+## Not done
 
-**No reviewer test material is needed.** The app runs with nothing supplied,
-which is what the review notes and the Compliance page both say.
+**App Privacy.** Every API path for it returns 404 to this key -- including for
+Retro-Amiga, which is in review, so the 404 says nothing about whether it is
+answered. It has to be done in the browser: App Store Connect -> App Privacy.
 
-**Provisioning profile** `Retro-Dosbox AppStore` created, ACTIVE, exported to
-`~/Documents/ios-signing/Retro-Dosbox.mobileprovision(.base64)` and installed
-locally.
+**Submission.** Deliberately left alone. Everything is staged for review in
+App Store Connect; pressing Submit is yours.
 
-## Not done, and why
+## Re-running the screenshots
 
-**No build has reached App Store Connect yet.** CI cannot sign until two
-secrets exist, and they cannot be produced without the signing keychain's
-password.
+    SHOT_SEED=<dir> flutter_app/tool/screenshots.sh <simulator-udid> <outdir>
 
-**No screenshots.** The listing needs at least one.
-
-**App Privacy** is unanswered. Every API path for it returns 404 to this key,
-so it is browser-only: App Store Connect -> App Privacy.
-
-## The last mile
-
-### 1. Unlock the signing keychain
-
-The distribution identity is shared across the family and lives in
-`c64retro-signing.keychain-db`. Exporting it needs that keychain's password.
-
-```sh
-security unlock-keychain ~/Library/Keychains/c64retro-signing.keychain-db
-
-# Also repairs LOCAL signing, which fails with errSecInternalComponent
-# without it: the key imports, `security find-identity` calls it valid, and
-# every signing attempt fails anyway.
-security set-key-partition-list -S apple-tool:,apple:,codesign: \
-  -s -k 'KEYCHAIN_PASSWORD' ~/Library/Keychains/c64retro-signing.keychain-db
-```
-
-If that password is lost the certificate cannot be exported and must be
-revoked and reissued. It still appears healthy in `find-identity` either way,
-so a lost password looks like a working certificate right up until this step.
-
-### 2. Export the certificate
-
-```sh
-security export -k ~/Library/Keychains/c64retro-signing.keychain-db \
-  -t identities -f pkcs12 -P 'CHOOSE_A_PASSWORD' \
-  -o ~/Documents/ios-signing/dist.p12
-
-base64 -i ~/Documents/ios-signing/dist.p12 | pbcopy
-```
-
-`CHOOSE_A_PASSWORD` does not exist yet -- you invent it here, and it is only
-what CI uses to import the `.p12`.
-
-### 3. Set the remaining repository secrets
-
-Settings -> Secrets and variables -> Actions. Three are already set
-(`ASC_KEY_ID`, `ASC_ISSUER_ID`, `ASC_KEY_P8_BASE64`).
-
-| Secret | Value |
-|---|---|
-| `APPSTORE_CERT_BASE64` | the base64 from step 2 |
-| `APPSTORE_CERT_PASSWORD` | the password chosen in step 2 |
-| `APPSTORE_PROFILE_BASE64` | contents of `~/Documents/ios-signing/Retro-Dosbox.mobileprovision.base64` |
-
-The profile secret cannot be shared between apps: each bundle ID needs its
-own. Retro-Dosbox has its own file in the same directory.
-
-### 4. Push, and the build uploads itself
-
-Any push to `main` now builds, signs and uploads. The build number is a UTC
-timestamp, because App Store Connect refuses a `CFBundleVersion` it has seen
-before and only says so after the whole upload has transferred.
-
-### 5. Finish the listing in the browser
-
-- **App Privacy** -- required, and not reachable through the API.
-- **Screenshots** -- at least one.
-- Attach the build, then submit.
+`SHOT_SEED` holds fixtures copied into the app's Documents -- its CONTENTS
+land there, so point it at the folder containing the app folder, not at the app
+folder itself. `SHOT_SKIP_RUNNING=1` skips the launch-a-title shot, which boots
+the real core and can outlast the driver's connection.
