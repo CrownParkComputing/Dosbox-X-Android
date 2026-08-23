@@ -1,0 +1,181 @@
+name: iOS
+
+# Builds the iOS app and, when the secrets are present, signs it and uploads it
+# to App Store Connect.
+#
+# WHY IT DOES NOT BUILD THE CORE. libdosboxcore is DOSBox-X cross-configured
+# with autotools against an SDL2 and libpng built for iOS -- minutes of work
+# from a source tree that lives outside this repository. It is committed as an
+# xcframework for exactly that reason, the same as Retro-C64, Retro-Amiga and
+# Retro-Saturn do with theirs. Rebuild it locally with
+# native/dosbox_core/ios/build-ios-macos.sh (add IOS_PLATFORM=iphonesimulator
+# for the simulator slice) and commit the result.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+env:
+  # Pinned, and the same version ios/ci_scripts/ci_post_clone.sh installs. An
+  # untracked toolchain resolves different transitive packages and rewrites
+  # pubspec.lock mid-build, so CI and the cloud build would differ for reasons
+  # that have nothing to do with the commit being built.
+  FLUTTER_VERSION: "3.47.1"
+
+jobs:
+  ios:
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+
+      # An app that builds but ships no core installs fine and then reports
+      # "Stub core: libdosboxcore not found" at runtime, which reads as a
+      # signing or packaging fault and is neither. Both slices are checked:
+      # a device binary in the simulator slot builds green and dies at dlopen
+      # on a simulator, and only there.
+      - name: Verify the committed core carries both slices
+        run: |
+          xc=flutter_app/ios/Frameworks/libdosboxcore.xcframework
+          for slice in ios-arm64 ios-arm64-simulator; do
+            bin="$xc/$slice/libdosboxcore.framework/libdosboxcore"
+            if [ ! -f "$bin" ]; then
+              echo "::error::$bin is missing -- rebuild with"
+              echo "::error::native/dosbox_core/ios/build-ios-macos.sh and commit it."
+              exit 1
+            fi
+          done
+          vtool -show-build "$xc/ios-arm64/libdosboxcore.framework/libdosboxcore" \
+            | grep -q "platform IOS$" \
+            || { echo "::error::ios-arm64 slice is not a device binary"; exit 1; }
+          vtool -show-build "$xc/ios-arm64-simulator/libdosboxcore.framework/libdosboxcore" \
+            | grep -q "platform IOSSIMULATOR" \
+            || { echo "::error::simulator slice is not a simulator binary"; exit 1; }
+
+      - name: Analyze and test
+        working-directory: flutter_app
+        run: |
+          flutter pub get
+          flutter analyze lib/
+          flutter test
+
+      - name: Build (unsigned)
+        working-directory: flutter_app
+        run: flutter build ios --release --no-codesign
+
+      # Prove the embed phase actually ran, at the exact path
+      # RetroDosboxNativePaths._iosFrameworkLibrary opens at runtime. This is
+      # the check that would have caught the core never being embedded at all.
+      - name: Verify the core is embedded in the app
+        run: |
+          app=flutter_app/build/ios/iphoneos/Runner.app
+          bin="$app/Frameworks/libdosboxcore.framework/libdosboxcore"
+          if [ ! -f "$bin" ]; then
+            echo "::error::libdosboxcore.framework is missing from $app/Frameworks --"
+            echo "::error::the Runner target's Embed Frameworks phase did not copy it."
+            exit 1
+          fi
+          file "$bin"
+
+      # The demo and FreeDOS are what make the app usable with nothing supplied,
+      # so their absence from the bundle is a shipping fault, not a detail.
+      - name: Verify the bundled demo and FreeDOS shipped
+        run: |
+          assets=flutter_app/build/ios/iphoneos/Runner.app/Frameworks/App.framework/flutter_assets/assets
+          for f in demo/DEMO.COM freedos/FD13BOOT.img; do
+            [ -f "$assets/$f" ] || { echo "::error::$f missing from the bundle"; exit 1; }
+          done
+          ls -l "$assets/demo" "$assets/freedos"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ios-app
+          path: flutter_app/build/ios/iphoneos/Runner.app
+
+      # --- Signed build and upload. Skipped without secrets, so forks and
+      # --- pull requests still build the unsigned app rather than failing on
+      # --- a credential they cannot have.
+      - name: Do we have signing and API credentials?
+        id: creds
+        run: |
+          if [ -n "${{ secrets.APPSTORE_CERT_BASE64 }}" ] \
+             && [ -n "${{ secrets.ASC_KEY_P8_BASE64 }}" ]; then
+            echo "have=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "have=false" >> "$GITHUB_OUTPUT"
+            echo "note: no signing/API secrets -- skipping the App Store upload"
+          fi
+
+      - name: Import signing certificate
+        if: steps.creds.outputs.have == 'true'
+        env:
+          CERT_BASE64: ${{ secrets.APPSTORE_CERT_BASE64 }}
+          CERT_PASSWORD: ${{ secrets.APPSTORE_CERT_PASSWORD }}
+          PROFILE_BASE64: ${{ secrets.APPSTORE_PROFILE_BASE64 }}
+        run: |
+          KEYCHAIN=build.keychain
+          security create-keychain -p actions "$KEYCHAIN"
+          security default-keychain -s "$KEYCHAIN"
+          security set-keychain-settings "$KEYCHAIN"     # no auto-lock mid-build
+          security unlock-keychain -p actions "$KEYCHAIN"
+          echo "$CERT_BASE64" | base64 -d > cert.p12
+          security import cert.p12 -k "$KEYCHAIN" -P "$CERT_PASSWORD" \
+            -T /usr/bin/codesign
+          # codesign: belongs in this list. Without it the key imports,
+          # `security find-identity` reports it valid, and every signing attempt
+          # fails with errSecInternalComponent -- which reads as a broken
+          # certificate and is not one.
+          security set-key-partition-list -S apple-tool:,apple:,codesign: \
+            -s -k actions "$KEYCHAIN"
+          mkdir -p ~/Library/MobileDevice/Provisioning\ Profiles
+          echo "$PROFILE_BASE64" | base64 -d \
+            > ~/Library/MobileDevice/Provisioning\ Profiles/build.mobileprovision
+          rm cert.p12
+
+      # App Store Connect refuses a CFBundleVersion it has already seen, and
+      # says so only AFTER the whole upload has transferred. A UTC timestamp is
+      # monotonic without having to ask the server what it already holds.
+      - name: Choose a build number
+        if: steps.creds.outputs.have == 'true'
+        id: buildno
+        run: echo "n=$(date -u +%Y%m%d%H%M)" >> "$GITHUB_OUTPUT"
+
+      - name: Build signed IPA
+        if: steps.creds.outputs.have == 'true'
+        working-directory: flutter_app
+        run: |
+          flutter build ipa --release --export-method app-store \
+            --build-number=${{ steps.buildno.outputs.n }}
+
+      - name: Upload to App Store Connect
+        if: steps.creds.outputs.have == 'true'
+        env:
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+          ASC_KEY_P8_BASE64: ${{ secrets.ASC_KEY_P8_BASE64 }}
+        run: |
+          # altool finds the key by this exact filename, derived from the key
+          # id -- it is not configurable.
+          mkdir -p ~/private_keys
+          printf '%s' "$ASC_KEY_P8_BASE64" | base64 -d \
+            > ~/private_keys/AuthKey_${ASC_KEY_ID}.p8
+          ipa=$(ls flutter_app/build/ios/ipa/*.ipa | head -1)
+          echo "uploading $ipa"
+          # No --validate-app first: the structural checks run server-side AFTER
+          # the transfer, so a clean validation proves nothing and only costs a
+          # second upload of the same bytes.
+          xcrun altool --upload-app -f "$ipa" -t ios \
+            --apiKey "$ASC_KEY_ID" --apiIssuer "$ASC_ISSUER_ID"
+          rm -f ~/private_keys/AuthKey_${ASC_KEY_ID}.p8
+
+      - uses: actions/upload-artifact@v4
+        if: steps.creds.outputs.have == 'true'
+        with:
+          name: ios-ipa
+          path: flutter_app/build/ios/ipa/*.ipa
