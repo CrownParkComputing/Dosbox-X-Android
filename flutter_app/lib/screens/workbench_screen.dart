@@ -17,6 +17,7 @@ import '../services/app_prefs.dart';
 import '../services/app_restart_service.dart';
 import '../services/retrodosbox_conf_builder.dart';
 import '../services/game_settings_store.dart';
+import '../services/compliance_mode.dart';
 import '../services/games_folder.dart';
 import 'package:file_picker/file_picker.dart';
 
@@ -32,6 +33,7 @@ import '../widgets/emulator_control_strip.dart';
 import '../widgets/sidebar.dart';
 import '../widgets/sidebar_style.dart';
 import 'about_screen.dart';
+import 'compliance_screen.dart';
 import 'retrodosbox_config_screen.dart';
 import 'emulator_screen.dart';
 import 'input_settings_screen.dart';
@@ -55,6 +57,10 @@ enum WorkbenchTab {
   input('\u{1F579}\u{FE0F}', 'Input', 1),
   engine('\u{2699}\u{FE0F}', 'Engine', 1),
   paths('\u{1F4C2}', 'Paths', 1),
+  // Compliance is its own destination, not a row inside Paths: it is the page
+  // a store reviewer is sent to, and it has to be findable by someone who has
+  // never seen this app before.
+  compliance('\u{2696}\u{FE0F}', 'Compliance', 2),
   about('\u{2139}\u{FE0F}', 'About', 2);
 
   final String icon;
@@ -280,7 +286,12 @@ class _WorkbenchScreenState extends State<WorkbenchScreen>
     // Retro-DosBox folder and creates it. On iOS that folder existing is what
     // makes the app appear in Files at all, so there is nowhere to drop a game
     // until something has made it.
-    final folder = await GamesFolder.resolve();
+    // In compliance mode the library IS the bundled demo's directory. Listing
+    // the user's own games would defeat the mode: the whole claim it makes is
+    // that everything on screen arrived in the app bundle.
+    final folder = await ComplianceMode.isOn()
+        ? await ComplianceMode.rootPath()
+        : await GamesFolder.resolve();
 
     setState(() => _scanning = true);
 
@@ -1178,6 +1189,8 @@ class _WorkbenchScreenState extends State<WorkbenchScreen>
           onGamesFolderChanged: _rescan,
           onRunSetupWizard: widget.onRunSetupWizard,
         );
+      case WorkbenchTab.compliance:
+        return const ComplianceScreen();
       case WorkbenchTab.about:
         return const AboutScreen();
     }

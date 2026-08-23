@@ -18,6 +18,7 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 
+import '../services/compliance_mode.dart';
 import '../services/demo_program.dart';
 import '../services/dos_mode.dart';
 
@@ -30,6 +31,7 @@ class ComplianceScreen extends StatefulWidget {
 
 class _ComplianceScreenState extends State<ComplianceScreen> {
   DosMode _mode = DosMode.builtIn;
+  bool _compliance = false;
   bool _busy = true;
   String _imagePath = '';
   String _demoPath = '';
@@ -43,11 +45,13 @@ class _ComplianceScreenState extends State<ComplianceScreen> {
 
   Future<void> _load() async {
     final mode = await DosModeService.current();
+    final compliance = await ComplianceMode.isOn();
     final image = await DosModeService.imagePath();
     final demo = await DemoProgram.installedPath();
     if (!mounted) return;
     setState(() {
       _mode = mode;
+      _compliance = compliance;
       _imagePath = image;
       _demoPath = demo;
       _demoPresent = File(demo).existsSync();
@@ -107,6 +111,36 @@ class _ComplianceScreenState extends State<ComplianceScreen> {
               ? 'DEMO.COM is on the shelf now, at $_demoPath'
               : 'DEMO.COM installs onto the shelf at first launch.',
         ]),
+
+        const SizedBox(height: 8),
+        const Text('Compliance mode',
+            style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+        const SizedBox(height: 4),
+        SwitchListTile(
+          value: _compliance,
+          onChanged: (on) async {
+            setState(() => _busy = true);
+            await ComplianceMode.set(on);
+            if (!mounted) return;
+            setState(() {
+              _compliance = on;
+              _busy = false;
+            });
+            if (!context.mounted) return;
+            ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+              content: Text(on
+                  ? 'Compliance mode on. The shelf now lists only the bundled '
+                      'demo.'
+                  : 'Compliance mode off. Your own games folder is back.'),
+            ));
+          },
+          title: const Text('Show only what the app shipped with'),
+          subtitle: const Text(
+            'The library reads a directory holding nothing but the bundled '
+            'demo, so the app can only run what came with it. Your own files '
+            'are untouched and return the moment this is switched off.',
+          ),
+        ),
 
         const SizedBox(height: 8),
         const Text('Which DOS runs',

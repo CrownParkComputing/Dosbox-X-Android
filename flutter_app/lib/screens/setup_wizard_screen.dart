@@ -10,6 +10,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import '../services/app_prefs.dart';
+import '../services/compliance_mode.dart';
 import '../services/storage_access.dart';
 import '../theme/retrodosbox_theme.dart';
 
@@ -156,6 +157,24 @@ class _SetupWizardScreenState extends State<SetupWizardScreen> {
     );
   }
 
+  /// The store-compliance route: the app runs on nothing but what it shipped
+  /// with.
+  ///
+  /// Named for what it is FOR rather than what it does mechanically. It is the
+  /// thing a store reviewer is pointed at, and it has to be recognisable as
+  /// that on a screen they have never seen before -- the sidebar entry it
+  /// matches is called Compliance for the same reason.
+  ///
+  /// The whole point is that the reviewer sees a PC working before being asked
+  /// for anything. A first run that ends at "choose a folder of DOS games" is
+  /// a poor way to meet a program, and gives a reviewer -- who has no DOS
+  /// games and nowhere to get any -- nothing at all to look at.
+  Future<void> _storeCompliance() async {
+    await ComplianceMode.set(true);
+    if (!mounted) return;
+    await _finish();
+  }
+
   Widget _actions() {
     return Padding(
       padding: const EdgeInsets.only(top: 12),
@@ -168,6 +187,16 @@ class _SetupWizardScreenState extends State<SetupWizardScreen> {
         runSpacing: 8,
         crossAxisAlignment: WrapCrossAlignment.center,
         children: [
+          // FIRST, and deliberately: the only button that needs nothing from
+          // the user. Everything else on this screen asks for something.
+          OutlinedButton(
+            onPressed: _storeCompliance,
+            style: OutlinedButton.styleFrom(
+              foregroundColor: RetroDosboxColors.accentAmber,
+              side: const BorderSide(color: RetroDosboxColors.accentAmber),
+            ),
+            child: const Text('Store Compliance'),
+          ),
           OutlinedButton(
             onPressed: _chooseFolder,
             style: OutlinedButton.styleFrom(
