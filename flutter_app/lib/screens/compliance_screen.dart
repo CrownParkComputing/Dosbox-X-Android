@@ -16,6 +16,9 @@
 // ships FreeDOS anyway, for the software that wants a real DOS underneath it.
 import 'dart:io';
 
+import 'package:path_provider/path_provider.dart';
+import 'package:retro_dosbox/data/friendly_path.dart';
+
 import 'package:flutter/material.dart';
 
 import '../services/compliance_mode.dart';
@@ -33,7 +36,6 @@ class _ComplianceScreenState extends State<ComplianceScreen> {
   DosMode _mode = DosMode.builtIn;
   bool _compliance = false;
   bool _busy = true;
-  String _imagePath = '';
   String _demoPath = '';
   bool _demoPresent = false;
 
@@ -46,14 +48,16 @@ class _ComplianceScreenState extends State<ComplianceScreen> {
   Future<void> _load() async {
     final mode = await DosModeService.current();
     final compliance = await ComplianceMode.isOn();
-    final image = await DosModeService.imagePath();
     final demo = await DemoProgram.installedPath();
+    final docs = await getApplicationDocumentsDirectory();
     if (!mounted) return;
     setState(() {
       _mode = mode;
       _compliance = compliance;
-      _imagePath = image;
-      _demoPath = demo;
+      // Shown as a Files-app location, not a container path: the raw one is
+      // unreachable for the user and puts the build machine's directory
+      // layout into every screenshot of this screen.
+      _demoPath = friendlyPath(demo, docs.path);
       _demoPresent = File(demo).existsSync();
       _busy = false;
     });
@@ -190,7 +194,12 @@ class _ComplianceScreenState extends State<ComplianceScreen> {
               'Boots the bundled FreeDOS floppy, so a genuine DOS kernel is '
               'underneath. Slower to start, and your games folder arrives as a '
               'second drive rather than C:. Use it for software that insists '
-              'on a real DOS.\n\nImage: $_imagePath',
+              // Deliberately no path. The image lives in Application Support,
+              // which the Files app does not publish, so a path there is
+              // something the user can neither visit nor act on -- and it
+              // named the build machine's home directory in the bargain.
+              'on a real DOS.\n\nThe image ships inside the app; nothing is '
+                  'downloaded and there is nothing to install.',
           onTap: () => _setMode(DosMode.freeDos),
         ),
 
