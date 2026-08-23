@@ -42,22 +42,50 @@ jobs:
       - name: Select an Xcode with the iOS 26 SDK or newer
         run: |
           set -euo pipefail
-          best=""; best_sdk=0
-          for app in /Applications/Xcode*.app; do
-            [ -x "$app/Contents/Developer/usr/bin/xcodebuild" ] || continue
-            sdk=$(DEVELOPER_DIR="$app/Contents/Developer" xcodebuild -showsdks 2>/dev/null \
-                  | sed -n 's/.*-sdk iphoneos\([0-9][0-9]*\).*/\1/p' | sort -n | tail -1)
-            [ -n "$sdk" ] || continue
-            echo "$app -> iOS SDK $sdk"
-            if [ "$sdk" -gt "$best_sdk" ]; then best_sdk=$sdk; best=$app; fi
-          done
-          if [ "$best_sdk" -lt 26 ]; then
-            echo "::error::No Xcode on this runner has the iOS 26 SDK (newest found: $best_sdk)."
+          sdk_major() {
+            DEVELOPER_DIR="$1/Contents/Developer" xcodebuild -showsdks 2>/dev/null \
+              | sed -n 's/.*-sdk iphoneos\([0-9][0-9]*\).*/\1/p' | sort -n | tail -1
+          }
+
+          # The image default comes first, deliberately. The runner carries a
+          # dozen side-by-side Xcodes and they are NOT equivalent: only the
+          # default has its iOS platform components downloaded. Picking another
+          # one gets an Xcode that lists the iOS 26 SDK and still cannot build
+          # for a device -- "iOS 26.0 is not installed. Please download and
+          # install the platform from Xcode > Settings > Components" -- which
+          # surfaces at build time, not here.
+          pick=""
+          if [ -d /Applications/Xcode.app ]; then
+            v=$(sdk_major /Applications/Xcode.app || true)
+            if [ -n "$v" ] && [ "$v" -ge 26 ]; then pick=/Applications/Xcode.app; fi
+          fi
+
+          # Only if the default is too old. Compared on the full version, not
+          # the major: every Xcode here reports iOS SDK 26, so a major-only
+          # comparison never advances and silently keeps whichever sorted first.
+          if [ -z "$pick" ]; then
+            best=""
+            for app in $(ls -d /Applications/Xcode_*.app 2>/dev/null | sort -V); do
+              v=$(sdk_major "$app" || true)
+              [ -n "$v" ] && [ "$v" -ge 26 ] || continue
+              best="$app"
+            done
+            pick="$best"
+          fi
+
+          if [ -z "$pick" ]; then
+            echo "::error::No Xcode on this runner has the iOS 26 SDK."
             echo "::error::App Store Connect refuses anything older. Bump runs-on."
+            ls -d /Applications/Xcode*.app || true
             exit 1
           fi
-          sudo xcode-select -s "$best/Contents/Developer"
+
+          sudo xcode-select -s "$pick/Contents/Developer"
+          echo "selected $pick"
           xcodebuild -version
+          # Listed is not the same as installed, so prove the platform is real.
+          sdks="$(xcode-select -p)/Platforms/iPhoneOS.platform/Developer/SDKs"
+          ls "$sdks" || { echo "::error::no iPhoneOS SDKs under $sdks"; exit 1; }
       - uses: subosito/flutter-action@v2
         with:
           channel: stable
