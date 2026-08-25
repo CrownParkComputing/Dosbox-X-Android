@@ -125,6 +125,38 @@ jobs:
             | grep -q "platform IOSSIMULATOR" \
             || { echo "::error::simulator slice is not a simulator binary"; exit 1; }
 
+      # The committed core must export every symbol the Dart side looks up.
+      #
+      # These lookups are SOFT on purpose -- a missing symbol degrades a feature
+      # instead of killing the app -- which is also how the core and the bridge
+      # source drift apart silently. It has happened: Retro-C64's core was
+      # missing vice_core_set_prg_inject, so setPrgInject did nothing, the
+      # bundled demo fell back to a drive the free ROMs cannot serve, and the
+      # reviewer flow ended at "?DEVICE NOT PRESENT" with nothing pointing at a
+      # stale binary as the reason.
+      - name: Verify the committed core exports what Dart calls
+        run: |
+          set -euo pipefail
+          cd flutter_app
+          grep -rhoE "'dosbox_[a-z_0-9]+'" lib/ffi/ \
+            | tr -d "'" | sort -u > /tmp/wanted.txt
+          echo "Dart references $(wc -l < /tmp/wanted.txt) dosbox_* symbols"
+          rc=0
+          for slice in ios-arm64 ios-arm64-simulator; do
+            core="ios/Frameworks/libdosboxcore.xcframework/$slice/libdosboxcore.framework/libdosboxcore"
+            [ -f "$core" ] || { echo "::error::missing $core"; exit 1; }
+            nm -gU "$core" | awk '{print $NF}' | sed 's/^_//' | sort -u > /tmp/have.txt
+            missing=$(comm -23 /tmp/wanted.txt /tmp/have.txt || true)
+            if [ -n "$missing" ]; then
+              echo "::error::$slice is stale -- it does not export:"
+              echo "$missing" | while read -r s; do echo "::error::    $s"; done
+              rc=1
+            else
+              echo "$slice: all symbols present"
+            fi
+          done
+          exit $rc
+
       - name: Analyze and test
         working-directory: flutter_app
         run: |
