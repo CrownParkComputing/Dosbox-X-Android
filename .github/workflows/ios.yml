@@ -125,34 +125,52 @@ jobs:
             | grep -q "platform IOSSIMULATOR" \
             || { echo "::error::simulator slice is not a simulator binary"; exit 1; }
 
-      # The committed core must export every symbol the Dart side looks up.
+      # The committed cores must export every symbol the Dart side looks up.
       #
-      # These lookups are SOFT on purpose -- a missing symbol degrades a feature
-      # instead of killing the app -- which is also how the core and the bridge
-      # source drift apart silently. It has happened: Retro-C64's core was
-      # missing vice_core_set_prg_inject, so setPrgInject did nothing, the
-      # bundled demo fell back to a drive the free ROMs cannot serve, and the
-      # reviewer flow ended at "?DEVICE NOT PRESENT" with nothing pointing at a
-      # stale binary as the reason.
-      - name: Verify the committed core exports what Dart calls
+      # These lookups are SOFT on purpose -- a missing symbol degrades one
+      # feature instead of killing the app -- which is also how a prebuilt core
+      # and the bridge source drift apart in silence. Retro-C64 is the proof:
+      # its core was missing vice_core_set_prg_inject, so setPrgInject did
+      # nothing, the bundled demo fell back to a drive the free ROMs cannot
+      # serve, and the flow the App Store notes tell Apple to follow ended at
+      # "?DEVICE NOT PRESENT".
+      #
+      # Two details this got wrong first time round, both worth keeping:
+      #   - the lookup wraps onto the next line, so the symbol has to be read
+      #     from `.lookup` plus its continuation, not from any quoted string.
+      #     Matching bare strings picked up prose in comments and failed the
+      #     build on a symbol that never existed.
+      #   - an app can ship MORE THAN ONE core, and Retro-C64 does. The symbols
+      #     have to be checked against the union, or the SID player's API looks
+      #     absent because it lives in the other binary.
+      - name: Verify the committed cores export what Dart calls
         run: |
           set -euo pipefail
           cd flutter_app
-          grep -rhoE "'dosbox_[a-z_0-9]+'" lib/ffi/ \
-            | tr -d "'" | sort -u > /tmp/wanted.txt
-          echo "Dart references $(wc -l < /tmp/wanted.txt) dosbox_* symbols"
+          grep -rhA1 "\.lookup" lib/ffi/ \
+            | grep -oE "'dosbox_[a-z_0-9]+'" | tr -d "'" | sort -u > /tmp/wanted.txt
+          echo "Dart looks up $(wc -l < /tmp/wanted.txt) dosbox_* symbols"
           rc=0
           for slice in ios-arm64 ios-arm64-simulator; do
-            core="ios/Frameworks/libdosboxcore.xcframework/$slice/libdosboxcore.framework/libdosboxcore"
-            [ -f "$core" ] || { echo "::error::missing $core"; exit 1; }
-            nm -gU "$core" | awk '{print $NF}' | sed 's/^_//' | sort -u > /tmp/have.txt
+            : > /tmp/have.txt
+            found=0
+            for xc in ios/Frameworks/*.xcframework; do
+              name="$(basename "$xc" .xcframework)"
+              bin="$xc/$slice/$name.framework/$name"
+              [ -f "$bin" ] || continue
+              found=1
+              nm -gU "$bin" | awk '{print $NF}' | sed 's/^_//' >> /tmp/have.txt
+            done
+            [ "$found" = 1 ] || { echo "::error::no cores found for $slice"; exit 1; }
+            sort -u /tmp/have.txt -o /tmp/have.txt
             missing=$(comm -23 /tmp/wanted.txt /tmp/have.txt || true)
             if [ -n "$missing" ]; then
-              echo "::error::$slice is stale -- it does not export:"
+              echo "::error::$slice is stale -- no core exports:"
               echo "$missing" | while read -r s; do echo "::error::    $s"; done
+              echo "::error::Rebuild from the bridge source and commit the result."
               rc=1
             else
-              echo "$slice: all symbols present"
+              echo "$slice: all $(wc -l < /tmp/wanted.txt) symbols present"
             fi
           done
           exit $rc
