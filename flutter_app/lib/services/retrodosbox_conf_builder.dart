@@ -141,6 +141,18 @@ class RetroDosboxConfBuilder {
     sb.writeln('captures=${_quote(capturesDir)}');
     sb.writeln();
 
+    // DOSBox-X's own log, beside the config it came from.
+    //
+    // The engine reports everything it decides through LOG_MSG, which goes to
+    // stdout -- and on iOS stdout goes nowhere anyone can read. When
+    // dosbox_x_main gives up during startup, that silence is total: the app
+    // shows "Waiting for first frame..." and there is no account anywhere of
+    // what the engine objected to. A log file costs one line here and is the
+    // difference between a diagnosis and a guess.
+    sb.writeln('[log]');
+    sb.writeln('logfile=${_quote(p.join(capturesDir, 'dosbox.log'))}');
+    sb.writeln();
+
     sb.writeln('[cpu]');
     sb.writeln('core=$cpuCore');
     sb.writeln('cputype=pentium');
@@ -394,13 +406,25 @@ class RetroDosboxConfBuilder {
 
   // --- Per-title heuristics ------------------------------------------------
 
-  /// `normal` for 80s titles, `dynamic` otherwise.
+  /// `normal` for 80s titles, `auto` otherwise.
   ///
   /// The dynamic core is much faster but recompiles blocks, which some very
   /// old software defeats by writing to its own code. The 80s preset does not
   /// need the speed anyway.
+  ///
+  /// `auto` rather than `dynamic`, because naming it is a promise the binary
+  /// cannot always keep. The iOS core is built --disable-dynamic-core
+  /// --disable-dynamic-x86 --disable-dynrec, since those need a JIT that iOS
+  /// forbids and whose headers the SDK ships only to say "unsupported" -- so
+  /// the interpreter is the only core there IS on iOS. Asking for one that was
+  /// compiled out made dosbox_x_main return 1 the moment it read the config:
+  /// the engine was gone before it drew a frame, the panel sat on "Waiting for
+  /// first frame..." for ever, and nothing said why.
+  ///
+  /// `auto` lets DOSBox-X pick the best core it actually has, which is dynamic
+  /// where one was built and the interpreter where one was not.
   static String _cpuCoreFor(GameSettings settings) =>
-      settings.preset == CpuPreset.era80s ? 'normal' : 'dynamic';
+      settings.preset == CpuPreset.era80s ? 'normal' : 'auto';
 
   /// The `cycles` value, which is the single most important compatibility knob
   /// DOSBox has.

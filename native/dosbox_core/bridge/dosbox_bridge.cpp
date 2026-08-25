@@ -248,8 +248,38 @@ void *mainloop_thread(void *)
      * here is entirely synthetic, so the physical one must be refused. */
     SDL_SetHint(SDL_HINT_ACCELEROMETER_AS_JOYSTICK, "0");
 
+    /* Record how the engine leaves, beside the conf it was given.
+     *
+     * dosbox_core_start returns OK as soon as THIS THREAD exists, so an engine
+     * that gives up immediately looks identical to one still booting: the app
+     * sits on "Waiting for first frame..." with isRunning false and nothing
+     * anywhere saying why. DOSBox-X reports its own reasons through LOG_MSG,
+     * which goes to stdout -- and on iOS stdout goes nowhere anyone can read.
+     *
+     * A file next to the conf costs nothing, survives the process, and is the
+     * only account of an exit that is otherwise silent. */
+    const std::string exit_log = g_conf_path + ".exit.log";
+    auto record = [&exit_log](const char *what, int rc) {
+        FILE *f = fopen(exit_log.c_str(), "w");
+        if (!f) return;
+        fprintf(f, "dosbox_x_main %s (rc=%d)\n", what, rc);
+        fclose(f);
+    };
+
     g_running.store(true);
-    dosbox_x_main(3, argv);
+    int rc = -1;
+    try {
+        rc = dosbox_x_main(3, argv);
+        record("returned", rc);
+    } catch (int e) {
+        /* The kill switch throws 1 through DOSBOX_RunMachine; that is a normal
+         * shutdown, not a fault. */
+        record(e == 1 ? "exited via the kill switch" : "threw an int", e);
+    } catch (const std::exception &e) {
+        record(e.what(), -1);
+    } catch (...) {
+        record("threw an unknown exception", -1);
+    }
     g_running.store(false);
 
     /* The engine ran its teardown and returned -- the kill-switch Quit did
