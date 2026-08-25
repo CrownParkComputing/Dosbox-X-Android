@@ -77,7 +77,7 @@ DEFINES=()
 
 SHOT_UDID="$UDID" SHOT_DIR="$OUT" flutter drive \
   --driver=test_driver/screenshot_driver.dart \
-  --target=integration_test/screenshots_test.dart \
+  --target="${SHOT_TARGET:-integration_test/screenshots_test.dart}" \
   "${DEFINES[@]+"${DEFINES[@]}"}" \
   -d "$UDID"
 

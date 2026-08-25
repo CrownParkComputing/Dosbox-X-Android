@@ -44,6 +44,9 @@ class _FramebufferViewState extends State<FramebufferView> {
   ui.Image? _image;
   Timer? _timer;
   bool _decoding = false;
+  /// When the view first appeared, so "no frame yet" can be told apart from
+  /// "no frame ever".
+  final DateTime _since = DateTime.now();
   int _lastW = 0, _lastH = 0;
   int _lastFrameCounter = -1;
   double _lastAspect = 4 / 3;
@@ -113,10 +116,33 @@ class _FramebufferViewState extends State<FramebufferView> {
   Widget build(BuildContext context) {
     final img = _image;
     if (img == null) {
-      return const Center(
-        child: Text(
-          'Waiting for first frame...',
-          style: TextStyle(color: Colors.white54),
+      // "Waiting for first frame..." was the only thing this could ever say,
+      // including when the engine had already died -- and that is not a wait,
+      // it is a failure with no end. dosbox_core_start returns OK as soon as
+      // the mainloop THREAD exists, so a core whose dosbox_x_main returns
+      // immediately leaves isRunning false, frameCounter at zero and this
+      // panel apparently loading for ever. Saying so is the difference between
+      // a bug someone can report and one they can only describe as "it hangs".
+      //
+      // The grace period matters: isRunning is false for the moment between
+      // the thread being created and the engine setting it, so reporting
+      // instantly would call every healthy launch a failure.
+      final grace = DateTime.now().difference(_since) >
+          const Duration(seconds: 8);
+      final dead = grace && !widget.core.isRunning;
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Text(
+            dead
+                ? 'The emulator stopped before drawing anything.\n\n'
+                    'The engine started and exited immediately, so there is '
+                    'nothing to show. Close this and try again; if it keeps '
+                    'happening the core needs looking at rather than the game.'
+                : 'Waiting for first frame...',
+            textAlign: TextAlign.center,
+            style: const TextStyle(color: Colors.white54, height: 1.4),
+          ),
         ),
       );
     }
