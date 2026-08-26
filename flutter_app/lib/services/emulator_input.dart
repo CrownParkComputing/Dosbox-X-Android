@@ -30,6 +30,13 @@ abstract class EmulatorInput {
   /// Put a disc in the drive of the running machine. Empty path ejects.
   void cdInsert(String isoPath);
 
+  /// Save / load the per-title state slot on the running machine. Slots are
+  /// [0, 10); slot 0 is reserved for the pause snapshot. Fire-and-forget
+  /// like the rest of this interface -- the state files land on disk either
+  /// way, and the UI's record of the save is the index it writes itself.
+  void saveState(int slot);
+  void loadState(int slot);
+
   /// Change an emulator setting on the running machine. Fire-and-forget:
   /// nothing comes back, so a rejected value looks the same as an accepted
   /// one. See EngineConfig.
@@ -56,6 +63,12 @@ class _CoreInput implements EmulatorInput {
 
   @override
   void cdInsert(String isoPath) => core.cdInsert(isoPath);
+
+  @override
+  void saveState(int slot) => core.saveState(slot);
+
+  @override
+  void loadState(int slot) => core.loadState(slot);
 
   @override
   void configSet(String section, String property, String value) =>
@@ -89,6 +102,14 @@ class _ProcessInput implements EmulatorInput {
   @override
   void cdInsert(String isoPath) =>
       EmulatorProcess.sendInput('cdInsert', text: isoPath);
+
+  @override
+  void saveState(int slot) =>
+      EmulatorProcess.sendInput('saveState', a: slot);
+
+  @override
+  void loadState(int slot) =>
+      EmulatorProcess.sendInput('loadState', a: slot);
 
   @override
   void configSet(String section, String property, String value) =>

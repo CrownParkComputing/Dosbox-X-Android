@@ -4,6 +4,8 @@
 // scanned library, the gamepad service, and which title is running. Tabs are
 // swapped in the content panel rather than pushed as routes, which is what
 // keeps a running session alive while the user goes to change a setting.
+import '../services/save_state_service.dart';
+import 'save_states_screen.dart';
 import '../services/app_log.dart';
 import 'dart:async';
 import 'dart:io';
@@ -54,6 +56,7 @@ enum WorkbenchTab {
   // its hairlines between; About is pinned to the far end the way it always is.
   games('\u{1F3AE}', 'Games', 0),
   running('\u{25B6}\u{FE0F}', 'Running', 0),
+  states('\u{1F4BE}', 'States', 0),
   video('\u{1F4FA}', 'Video', 1),
   input('\u{1F579}\u{FE0F}', 'Input', 1),
   engine('\u{2699}\u{FE0F}', 'Engine', 1),
@@ -469,7 +472,13 @@ class _WorkbenchScreenState extends State<WorkbenchScreen>
     }
   }
 
-  Future<void> _launch(GameEntry entry, {String? launcher}) async {
+  /// The state slot the NEXT session should load once the machine is up
+  /// -- set by the States tab's resume, consumed by _openSession.
+  int? _pendingResumeSlot;
+
+  Future<void> _launch(GameEntry entry,
+      {String? launcher, int? resumeSlot}) async {
+    _pendingResumeSlot = resumeSlot;
     if (_complianceMode && entry.path != _demoEntry?.path) {
       setState(
         () => _launchError =
@@ -669,6 +678,8 @@ class _WorkbenchScreenState extends State<WorkbenchScreen>
   Future<void> _openSession() async {
     final session = _session;
     if (session == null || !mounted) return;
+    final int? resumeSlot = _pendingResumeSlot;
+    _pendingResumeSlot = null;
     await Navigator.of(context).push<SessionExit>(
       MaterialPageRoute<SessionExit>(
         fullscreenDialog: true,
@@ -677,6 +688,7 @@ class _WorkbenchScreenState extends State<WorkbenchScreen>
           input: _input,
           ui: _emulatorUi,
           entry: session,
+          resumeSlot: resumeSlot,
           controllerConnected: _controllerConnected,
           setEnginePaused: _setEnginePaused,
           onSaveAndExit: _onSessionPause,
@@ -1188,6 +1200,27 @@ class _WorkbenchScreenState extends State<WorkbenchScreen>
     setState(() => _pausedSession = null);
   }
 
+  /// Tap on a States card: relaunch that title and load the slot once the
+  /// machine is up. The entry is looked up in the current scan first; a
+  /// title the scan no longer lists gets a plain error rather than a
+  /// half-guessed launch.
+  Future<void> _resumeSavedState(SaveStateEntry state) async {
+    GameEntry? entry;
+    for (final e in _entries) {
+      if (e.path == state.gamePath) {
+        entry = e;
+        break;
+      }
+    }
+    if (entry == null) {
+      setState(() => _launchError =
+          '${state.title} is not in the library any more -- rescan, or '
+          'check the games folder.');
+      return;
+    }
+    await _launch(entry, resumeSlot: state.slot);
+  }
+
   Widget _tabContent() {
     switch (_tab) {
       case WorkbenchTab.games:
@@ -1206,6 +1239,10 @@ class _WorkbenchScreenState extends State<WorkbenchScreen>
               ),
             ),
           ],
+        );
+      case WorkbenchTab.states:
+        return SaveStatesScreen(
+          onResume: _resumeSavedState,
         );
       case WorkbenchTab.running:
         final session = _session;

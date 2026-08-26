@@ -1,8 +1,11 @@
 import 'dart:async';
 
+import 'package:path/path.dart' as p;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../services/save_state_service.dart';
+import '../services/app_log.dart';
 import '../services/video_settings.dart';
 import '../data/emulator_ui_state.dart';
 import '../data/game_entry.dart';
@@ -47,6 +50,10 @@ class EmulatorSessionScreen extends StatefulWidget {
   /// engine.
   final Future<void> Function() onClose;
 
+  /// Load this per-title state slot once the machine is up -- the States
+  /// tab's resume path. Null for an ordinary launch.
+  final int? resumeSlot;
+
   const EmulatorSessionScreen({
     super.key,
     required this.core,
@@ -57,6 +64,7 @@ class EmulatorSessionScreen extends StatefulWidget {
     required this.setEnginePaused,
     required this.onSaveAndExit,
     required this.onClose,
+    this.resumeSlot,
   });
 
   @override
@@ -85,8 +93,90 @@ class _EmulatorSessionScreenState extends State<EmulatorSessionScreen> {
     // duration and give them back on the way out. Sticky, because an edge
     // swipe on a handheld is easy to do by accident mid-game.
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
+    final int? slot = widget.resumeSlot;
+    if (slot != null) _loadStateWhenReady(slot);
     _restartControlsTimer();
   }
+
+  /// Waits for the engine to actually be emulating (the frame counter
+  /// moving) before asking it to load the slot -- a load fired during boot
+  /// lands before the state machinery exists and is silently dropped.
+  void _loadStateWhenReady(int slot) {
+    final int startCounter = widget.core.frameCounter;
+    var polls = 0;
+    Timer.periodic(const Duration(milliseconds: 250), (Timer t) {
+      if (!mounted) {
+        t.cancel();
+        return;
+      }
+      polls++;
+      if (widget.core.frameCounter > startCounter + 8) {
+        t.cancel();
+        widget.input.loadState(slot);
+        AppLog.log('resume: loadState($slot) sent');
+      } else if (polls > 120) {
+        t.cancel();
+        AppLog.log('resume: engine never started producing frames');
+      }
+    });
+  }
+
+  /// Saves the running game into its next rotating slot, with a thumbnail
+  /// from the live framebuffer, and says so.
+  Future<void> _saveNamedState() async {
+    final entry = widget.entry;
+    final int slot = await SaveStateService.nextSlotFor(entry.slug);
+    widget.input.saveState(slot);
+    await SaveStateService.record(
+      slug: entry.slug,
+      title: entry.title,
+      gamePath: entry.path,
+      slot: slot,
+      frame: widget.core.getFramebuffer(),
+    );
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('Saved — slot $slot. The States tab lists it.')),
+    );
+  }
+
+  /// The rail's Disk tool: put another disc of this game in the drive.
+  /// The machine keeps running -- DOSBox-X raises a real "medium changed"
+  /// to the guest, exactly like swapping a CD.
+  Future<void> _swapDisc() async {
+    final String? chosen = await showModalBottomSheet<String>(
+      context: context,
+      backgroundColor: RetroDosboxColors.cardFill,
+      builder: (BuildContext context) => SafeArea(
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const ListTile(title: Text('Swap disc')),
+              const Divider(height: 1),
+              for (final d in widget.entry.discs)
+                ListTile(
+                  leading: Icon(d == _currentDisc
+                      ? Icons.album
+                      : Icons.album_outlined),
+                  title: Text(p.basename(d),
+                      maxLines: 1, overflow: TextOverflow.ellipsis),
+                  onTap: () => Navigator.pop(context, d),
+                ),
+            ],
+          ),
+        ),
+      ),
+    );
+    if (chosen == null || !mounted) return;
+    widget.input.cdInsert(chosen);
+    setState(() => _currentDisc = chosen);
+  }
+
+  /// The disc currently in the drive, for the chooser's tick. Starts as
+  /// the first of the set (which is what launch mounts).
+  late String? _currentDisc =
+      widget.entry.discs.isNotEmpty ? widget.entry.discs.first : null;
 
   @override
   void dispose() {
@@ -290,6 +380,25 @@ class _EmulatorSessionScreenState extends State<EmulatorSessionScreen> {
                   modes.length];
               VideoSettings.instance.setAspect(next);
               setState(() {});
+            },
+          ),
+          if (widget.entry.discs.length > 1)
+            _RailTool(
+              icon: Icons.album,
+              label: 'Disk',
+              tooltip: 'Swap to another disc of this game',
+              onTap: () {
+                _wakeControls();
+                unawaited(_swapDisc());
+              },
+            ),
+          _RailTool(
+            icon: Icons.save_outlined,
+            label: 'Save',
+            tooltip: 'Save your place into a named slot (States tab)',
+            onTap: () {
+              _wakeControls();
+              unawaited(_saveNamedState());
             },
           ),
           _RailTool(

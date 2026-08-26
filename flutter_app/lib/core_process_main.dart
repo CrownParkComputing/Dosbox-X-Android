@@ -105,6 +105,10 @@ void _input(Map<String, Object?> event) {
       core.mouseMotion(a, b);
     case 'cdInsert':
       core.cdInsert(event['text'] as String? ?? '');
+    case 'saveState':
+      core.saveState(event['a'] as int? ?? 0);
+    case 'loadState':
+      core.loadState(event['a'] as int? ?? 0);
     case 'configSet':
       core.configSet(
         event['text'] as String? ?? '',
