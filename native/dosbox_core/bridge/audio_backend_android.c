@@ -13,6 +13,7 @@
  * which needs org.libsdl.app.SDLAudioManager and a live SDL JNI environment
  * that a Flutter host cannot provide.
  */
+#include <pthread.h>
 #include "audio_backend.h"
 
 #include <aaudio/AAudio.h>
@@ -213,6 +214,90 @@ static void teardown_stream(void) {
     free(g_ring);
     g_ring = NULL;
     atomic_store_explicit(&g_ring_capacity_frames, 0, memory_order_release);
+}
+
+static atomic_bool g_reopening = false;
+static void audio_error_callback(AAudioStream *stream, void *user,
+                                 aaudio_result_t error);
+
+/* Rebuilds only the stream after a device disconnect, keeping the ring and
+ * the negotiated rate/channels. If the new route refuses the old shape the
+ * reopen gives up and logs -- resampling into a ring sized for a different
+ * rate would corrupt the audio rather than restore it. */
+static void *reopen_thread_main(void *unused) {
+    (void)unused;
+    if (g_stream != NULL) {
+        AAudioStream_close(g_stream);
+        g_stream = NULL;
+    }
+
+    AAudioStreamBuilder *builder = NULL;
+    if (AAudio_createStreamBuilder(&builder) != AAUDIO_OK || builder == NULL) {
+        LOGE("reopen: AAudio builder creation failed");
+        atomic_store(&g_reopening, false);
+        return NULL;
+    }
+    AAudioStreamBuilder_setDirection(builder, AAUDIO_DIRECTION_OUTPUT);
+    AAudioStreamBuilder_setFormat(builder, AAUDIO_FORMAT_PCM_I16);
+    AAudioStreamBuilder_setSampleRate(builder, g_rate);
+    AAudioStreamBuilder_setChannelCount(builder, g_channels);
+    AAudioStreamBuilder_setPerformanceMode(builder, AAUDIO_PERFORMANCE_MODE_NONE);
+    AAudioStreamBuilder_setSharingMode(builder, AAUDIO_SHARING_MODE_SHARED);
+    AAudioStreamBuilder_setFramesPerDataCallback(builder, 512);
+    AAudioStreamBuilder_setDataCallback(builder, audio_data_callback, NULL);
+    AAudioStreamBuilder_setErrorCallback(builder, audio_error_callback, NULL);
+    AAudioStreamBuilder_setErrorCallback(builder, audio_error_callback, NULL);
+
+    AAudioStream *stream = NULL;
+    aaudio_result_t rc = AAudioStreamBuilder_openStream(builder, &stream);
+    AAudioStreamBuilder_delete(builder);
+    if (rc != AAUDIO_OK || stream == NULL) {
+        LOGE("reopen: stream open failed: %s", AAudio_convertResultToText(rc));
+        atomic_store(&g_reopening, false);
+        return NULL;
+    }
+    if (AAudioStream_getSampleRate(stream) != g_rate ||
+        AAudioStream_getChannelCount(stream) != g_channels) {
+        LOGE("reopen: new device wants rate=%d ch=%d (had rate=%d ch=%d); "
+             "staying silent rather than corrupting the ring",
+             AAudioStream_getSampleRate(stream),
+             AAudioStream_getChannelCount(stream), g_rate, g_channels);
+        AAudioStream_close(stream);
+        atomic_store(&g_reopening, false);
+        return NULL;
+    }
+    ring_reset();
+    if (AAudioStream_requestStart(stream) != AAUDIO_OK) {
+        LOGE("reopen: stream start failed");
+        AAudioStream_close(stream);
+        atomic_store(&g_reopening, false);
+        return NULL;
+    }
+    g_stream = stream;
+    LOGI("reopen: audio restored on the new route");
+    atomic_store(&g_reopening, false);
+    return NULL;
+}
+
+/* Disconnects happen in normal use -- headphones unplugged, a Bluetooth
+ * speaker going away, a phone call taking the device. Left unhandled the
+ * stream simply stops and the game plays silently for the rest of the
+ * session, which reads as a bug in the emulator. AAudio forbids rebuilding
+ * the stream from this callback, so a detached thread does it. */
+static void audio_error_callback(AAudioStream *stream, void *user,
+                                 aaudio_result_t error) {
+    (void)stream;
+    (void)user;
+    if (error != AAUDIO_ERROR_DISCONNECTED) return;
+    bool expected = false;
+    if (!atomic_compare_exchange_strong(&g_reopening, &expected, true)) return;
+    LOGW("audio device disconnected; reopening on the new route");
+    pthread_t t;
+    pthread_attr_t attr;
+    pthread_attr_init(&attr);
+    pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_DETACHED);
+    pthread_create(&t, &attr, reopen_thread_main, NULL);
+    pthread_attr_destroy(&attr);
 }
 
 int audio_backend_init(int freq, int blocksize, int channels,
