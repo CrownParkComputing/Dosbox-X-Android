@@ -2,7 +2,7 @@
     <!-- A DOS collection is folders of .exe/.com/.bat plus .iso/.img/.zip.
          None of those are media types, so READ_MEDIA_* does not cover them
          and all-files access is the only permission that allows reading a
-         games folder the user chose IN PLACE -- which is how the whole
+         games folder the user chose IN PLACE - which is how the whole
          Retro-* family now works (Retro-Amiga shipped this way and passed
          Play's sensitive-permission review with the "Core functionality"
          declaration). The SAF folder grant (MediaFolderAccess.kt) remains
