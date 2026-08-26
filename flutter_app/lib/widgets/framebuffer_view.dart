@@ -79,6 +79,9 @@ class _FramebufferViewState extends State<FramebufferView> {
   /// a counter so a cancelled or lost pointer cannot leave the tally wrong.
   final Set<int> _pointers = <int>{};
 
+  /// The finger whose motion moves the pointer -- the first one down.
+  int? _dragPointer;
+
   /// Where the finger was last seen, for turning absolute touch positions
   /// into the relative movement a PS/2 mouse actually reports.
   Offset? _lastLocal;
@@ -240,11 +243,19 @@ class _FramebufferViewState extends State<FramebufferView> {
           behavior: HitTestBehavior.opaque,
           onPointerDown: (e) {
             _pointers.add(e.pointer);
-            _lastLocal = e.localPosition;
+            // The FIRST finger is the pointer; any later finger is a button
+            // (see TouchPointerGestures). Only the first finger's motion may
+            // move the pointer -- mixing deltas from two fingers reads as
+            // the pointer jumping between them.
+            if (_pointers.length == 1) {
+              _dragPointer = e.pointer;
+              _lastLocal = e.localPosition;
+            }
             widget.onTouchDown
                 ?.call(_normalise(e.localPosition, size), _pointers.length);
           },
           onPointerMove: (e) {
+            if (e.pointer != _dragPointer) return;
             final previous = _lastLocal;
             _lastLocal = e.localPosition;
             if (previous == null || size.width <= 0 || size.height <= 0) {
@@ -262,12 +273,18 @@ class _FramebufferViewState extends State<FramebufferView> {
           },
           onPointerUp: (e) {
             _pointers.remove(e.pointer);
-            if (_pointers.isEmpty) _lastLocal = null;
+            if (e.pointer == _dragPointer) {
+              _dragPointer = null;
+              _lastLocal = null;
+            }
             widget.onTouchUp?.call(_pointers.length);
           },
           onPointerCancel: (e) {
             _pointers.remove(e.pointer);
-            if (_pointers.isEmpty) _lastLocal = null;
+            if (e.pointer == _dragPointer) {
+              _dragPointer = null;
+              _lastLocal = null;
+            }
             widget.onTouchUp?.call(_pointers.length);
           },
           child: painter,

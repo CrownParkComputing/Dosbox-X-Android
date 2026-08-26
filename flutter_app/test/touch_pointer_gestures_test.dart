@@ -1,10 +1,11 @@
+
 // The touch gestures, pinned.
 //
 // Worth testing precisely because this logic fails quietly: a tap slop too
 // tight means taps are never recognised and look like a dead button, and a
-// two-finger tap that also emits a left click looks like a bug in the mouse
-// rather than in the gesture. Every case below is one the device actually
-// produced at some point.
+// second finger that also emits a click looks like a bug in the mouse rather
+// than in the gesture. Every case below is one a device actually produced at
+// some point -- here or on the Amiga front end this grammar came from.
 import 'package:flutter_test/flutter_test.dart';
 import 'package:retro_dosbox/data/touch_pointer_gestures.dart';
 
@@ -12,14 +13,13 @@ void main() {
   late TouchPointerGestures g;
   setUp(() => g = TouchPointerGestures());
 
-  const still = Offset.zero;
   const nudge = Offset(1, 1); // inside the slop
   const drag = Offset(40, 30); // well outside it
 
   group('one finger', () {
     test('landing does nothing on its own', () {
-      // It might become a drag or a tap; the pointer must not twitch and no
-      // button may be pressed until we know which.
+      // It might become a drag, a tap or a hold; the pointer must not twitch
+      // and no button may be pressed until we know which.
       expect(g.onDown(1), TouchAction.none);
     });
 
@@ -57,55 +57,83 @@ void main() {
       g.onDown(1);
       expect(g.onUp(0), TouchAction.leftClick);
     });
+  });
 
-    test('slop accumulates, so a slow drag is still a drag', () {
-      // Many small moves that individually sit inside the slop must still add
-      // up to a drag, or a careful slow drag would end in a stray click.
+  group('hold-still right click', () {
+    test('a still finger right-clicks when the hold expires', () {
       g.onDown(1);
-      for (var i = 0; i < 12; i++) {
-        g.onMove(nudge);
-      }
+      expect(g.onHoldExpired(), TouchAction.rightClick);
+    });
+
+    test('lifting after the hold is NOT also a left click', () {
+      // The left click on the lift dismissed whatever the right click had
+      // just opened -- which read as the right click not working at all.
+      g.onDown(1);
+      g.onHoldExpired();
       expect(g.onUp(0), TouchAction.none);
+    });
+
+    test('a drag disarms the hold', () {
+      g.onDown(1);
+      g.onMove(drag);
+      expect(g.holdArmed, isFalse);
+      expect(g.onHoldExpired(), TouchAction.none);
+    });
+
+    test('a wobble does not disarm it', () {
+      g.onDown(1);
+      g.onMove(nudge);
+      expect(g.holdArmed, isTrue);
+      expect(g.onHoldExpired(), TouchAction.rightClick);
+    });
+
+    test('a second finger disarms the hold', () {
+      // Two fingers is a held drag, not a press-and-wait.
+      g.onDown(1);
+      g.onDown(2);
+      expect(g.holdArmed, isFalse);
+      expect(g.onHoldExpired(), TouchAction.none);
     });
   });
 
-  group('two fingers', () {
-    test('right clicks as the second finger lands', () {
+  group('second finger holds the button', () {
+    test('landing presses and holds', () {
       g.onDown(1);
-      expect(g.onDown(2), TouchAction.rightClick);
+      expect(g.onDown(2), TouchAction.leftDown);
     });
 
-    test('does not move the pointer', () {
-      g.onDown(1);
-      expect(g.onDown(2), isNot(TouchAction.move));
-    });
-
-    test('lifting the fingers does not also left click', () {
-      // The finger already down was a tap in waiting; the right click has to
-      // cancel it or every right click would be followed by a left one.
+    test('moving with the button held still moves -- the drag itself', () {
       g.onDown(1);
       g.onDown(2);
-      expect(g.onUp(1), TouchAction.none);
+      expect(g.onMove(drag), TouchAction.move);
+    });
+
+    test('the second finger lifting is the drop', () {
+      g.onDown(1);
+      g.onDown(2);
+      expect(g.onUp(1), TouchAction.leftUp);
+      // The remaining finger lifting afterwards is nothing: the touch was a
+      // drag, not a tap.
       expect(g.onUp(0), TouchAction.none);
     });
 
-    test('the second finger sliding does not move the pointer', () {
+    test('lifting both at once still releases the button exactly once', () {
+      // Releasing on ANY finger going -- rather than only the second --
+      // means the guest can never be left holding a button with nothing to
+      // release it.
       g.onDown(1);
       g.onDown(2);
-      expect(g.onMove(drag), TouchAction.none);
+      expect(g.onUp(1), TouchAction.leftUp);
+      expect(g.onUp(0), TouchAction.none);
     });
 
-    test('once every finger is up, one-finger gestures work again', () {
+    test('a third finger does not press again', () {
       g.onDown(1);
       g.onDown(2);
-      g.onUp(1);
-      g.onUp(0);
-      g.onDown(1);
-      expect(g.onMove(drag), TouchAction.move);
-      expect(g.onUp(0), TouchAction.none, reason: 'that was a drag');
+      expect(g.onDown(3), TouchAction.none);
     });
 
-    test('and a tap still clicks afterwards', () {
+    test('the next touch after a drag-and-drop is a fresh tap', () {
       g.onDown(1);
       g.onDown(2);
       g.onUp(1);
@@ -113,11 +141,5 @@ void main() {
       g.onDown(1);
       expect(g.onUp(0), TouchAction.leftClick);
     });
-  });
-
-  test('perfectly still is a tap, not a drag', () {
-    g.onDown(1);
-    g.onMove(still);
-    expect(g.onUp(0), TouchAction.leftClick);
   });
 }

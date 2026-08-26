@@ -178,6 +178,7 @@ class _EmulatorScreenState extends State<EmulatorScreen> {
   void dispose() {
     widget.ui.removeListener(_onUiChanged);
     _statusTimer?.cancel();
+    _holdTimer?.cancel();
     _focusNode.dispose();
     super.dispose();
   }
@@ -316,6 +317,9 @@ class _EmulatorScreenState extends State<EmulatorScreen> {
   static const int _unitsPerPixel = 2;
 
   void _apply(TouchAction action, Offset deltaEmulatedPixels) {
+    // The hold timer only runs while a right click is still possible: one
+    // still finger, nothing held, nothing fired.
+    if (!_gestures.holdArmed) _holdTimer?.cancel();
     switch (action) {
       case TouchAction.none:
         break;
@@ -323,6 +327,10 @@ class _EmulatorScreenState extends State<EmulatorScreen> {
         _click(0);
       case TouchAction.rightClick:
         _click(1);
+      case TouchAction.leftDown:
+        widget.input.mouseButton(0, true);
+      case TouchAction.leftUp:
+        widget.input.mouseButton(0, false);
       case TouchAction.move:
         final dx = (deltaEmulatedPixels.dx * _unitsPerPixel).round();
         final dy = (deltaEmulatedPixels.dy * _unitsPerPixel).round();
@@ -333,14 +341,28 @@ class _EmulatorScreenState extends State<EmulatorScreen> {
     }
   }
 
-  void _onTouchDown(Offset n, int pointers) =>
-      _apply(_gestures.onDown(pointers), Offset.zero);
+  /// Arms the hold-still right click; TouchPointerGestures decides on
+  /// expiry whether it still applies. The timer lives here because the
+  /// grammar class is deliberately synchronous, so it can be tested.
+  Timer? _holdTimer;
+
+  void _onTouchDown(Offset n, int pointers) {
+    _apply(_gestures.onDown(pointers), Offset.zero);
+    if (pointers == 1) {
+      _holdTimer?.cancel();
+      _holdTimer = Timer(TouchPointerGestures.holdDuration, () {
+        if (mounted) _apply(_gestures.onHoldExpired(), Offset.zero);
+      });
+    }
+  }
 
   void _onTouchMove(Offset deltaEmulatedPixels) =>
       _apply(_gestures.onMove(deltaEmulatedPixels), deltaEmulatedPixels);
 
-  void _onTouchUp(int pointers) =>
-      _apply(_gestures.onUp(pointers), Offset.zero);
+  void _onTouchUp(int pointers) {
+    _holdTimer?.cancel();
+    _apply(_gestures.onUp(pointers), Offset.zero);
+  }
 
   /// Press and release together, where the pointer already is.
   void _click(int button) {
