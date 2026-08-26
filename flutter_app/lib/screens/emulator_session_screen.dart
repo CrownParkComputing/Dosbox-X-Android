@@ -280,6 +280,48 @@ class _EmulatorSessionScreenState extends State<EmulatorSessionScreen> {
                   children: [
                     _ResumeButton(onTap: () => _setMenu(false)),
                     const SizedBox(height: 28),
+                    // Occasional actions live HERE, not on the rail: the
+                    // rail is for things touched mid-play, and a column of
+                    // nine circles was a menu pretending to be a toolbar.
+                    _MenuChoice(
+                      icon: Icons.save_outlined,
+                      label: 'Save state',
+                      detail: 'Keep your place and stay in the game '
+                          '(listed on the States tab)',
+                      onTap: () {
+                        // Resume first: a paused engine serves no save
+                        // request.
+                        _setMenu(false);
+                        unawaited(_saveNamedState());
+                      },
+                    ),
+                    if (widget.entry.discs.length > 1) ...[
+                      const SizedBox(height: 12),
+                      _MenuChoice(
+                        icon: Icons.album,
+                        label: 'Swap disc',
+                        detail: 'Put another disc of this game in the drive',
+                        onTap: () {
+                          _setMenu(false);
+                          unawaited(_swapDisc());
+                        },
+                      ),
+                    ],
+                    const SizedBox(height: 12),
+                    _MenuChoice(
+                      icon: Icons.aspect_ratio,
+                      label: 'Screen shape: '
+                          '${VideoSettings.instance.aspect.label}',
+                      detail: 'Tap for the next mode',
+                      onTap: () {
+                        final modes = AspectMode.values;
+                        VideoSettings.instance.setAspect(modes[
+                            (VideoSettings.instance.aspect.index + 1) %
+                                modes.length]);
+                        setState(() {});
+                      },
+                    ),
+                    const SizedBox(height: 12),
                     _MenuChoice(
                       icon: Icons.bookmark_add_outlined,
                       label: 'Save and exit',
@@ -359,48 +401,6 @@ class _EmulatorSessionScreenState extends State<EmulatorSessionScreen> {
       builder: (context, _) => Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          // Screen shape without leaving the game -- cycles the same four
-          // modes as the Video tab (VideoSettings is a global listenable,
-          // so the picture follows instantly).
-          _RailTool(
-            icon: switch (VideoSettings.instance.aspect) {
-              AspectMode.stretch => Icons.fit_screen,
-              AspectMode.integer => Icons.grid_on,
-              AspectMode.square => Icons.crop_square,
-              AspectMode.authentic => Icons.aspect_ratio,
-            },
-            label: 'Shape',
-            tooltip:
-                '${VideoSettings.instance.aspect.label} — tap for the next '
-                'mode',
-            onTap: () {
-              _wakeControls();
-              final modes = AspectMode.values;
-              final next = modes[(VideoSettings.instance.aspect.index + 1) %
-                  modes.length];
-              VideoSettings.instance.setAspect(next);
-              setState(() {});
-            },
-          ),
-          if (widget.entry.discs.length > 1)
-            _RailTool(
-              icon: Icons.album,
-              label: 'Disk',
-              tooltip: 'Swap to another disc of this game',
-              onTap: () {
-                _wakeControls();
-                unawaited(_swapDisc());
-              },
-            ),
-          _RailTool(
-            icon: Icons.save_outlined,
-            label: 'Save',
-            tooltip: 'Save your place into a named slot (States tab)',
-            onTap: () {
-              _wakeControls();
-              unawaited(_saveNamedState());
-            },
-          ),
           _RailTool(
             icon: Icons.videogame_asset,
             label: 'Pad',
