@@ -4,6 +4,8 @@
 // skipped and store notes can be missed; the running app itself remains the
 // authoritative explanation of what ships, how the demo works, and why no
 // proprietary BIOS or commercial software belongs in the bundle.
+import 'dart:io';
+import 'package:path/path.dart' as p;
 import 'package:flutter/material.dart';
 
 import '../services/demo_program_service.dart';
@@ -74,6 +76,39 @@ class _ComplianceScreenState extends State<ComplianceScreen> {
     } finally {
       if (mounted) setState(() => _busy = false);
     }
+  }
+
+  /// Opens one of the bundled compliance files as plain text.
+  Future<void> _showBundledFile(
+      BuildContext context, DemoProgramInstallation inst, String name) async {
+    String text;
+    try {
+      text = await File(p.join(inst.directory.path, name)).readAsString();
+    } catch (e) {
+      text = '(could not read $name: $e)';
+    }
+    if (!context.mounted) return;
+    await showDialog<void>(
+      context: context,
+      builder: (BuildContext context) => AlertDialog(
+        title: Text(name, style: const TextStyle(fontSize: 14)),
+        content: SizedBox(
+          width: 600,
+          child: SingleChildScrollView(
+            child: SelectableText(
+              text,
+              style: const TextStyle(fontFamily: 'monospace', fontSize: 11),
+            ),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('Close'),
+          ),
+        ],
+      ),
+    );
   }
 
   @override
@@ -185,13 +220,21 @@ class _ComplianceScreenState extends State<ComplianceScreen> {
             ),
           ),
           const SizedBox(height: 6),
+          // Tappable, not just listed: the claim "recipes and hashes are
+          // included in the app" is only checkable by a reviewer if the
+          // app can OPEN them -- the private directory is unreachable
+          // from a file manager on iOS/Android.
           for (final file in installation.files)
-            Text(
-              '  • $file',
-              style: const TextStyle(
-                color: RetroDosboxColors.textMuted,
-                fontFamily: 'monospace',
-                fontSize: 11,
+            InkWell(
+              onTap: () => _showBundledFile(context, installation, file),
+              child: Text(
+                '  • $file',
+                style: const TextStyle(
+                  color: RetroDosboxColors.accentAmber,
+                  fontFamily: 'monospace',
+                  fontSize: 11,
+                  decoration: TextDecoration.underline,
+                ),
               ),
             ),
         ],

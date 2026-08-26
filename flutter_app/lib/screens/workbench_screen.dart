@@ -4,6 +4,7 @@
 // scanned library, the gamepad service, and which title is running. Tabs are
 // swapped in the content panel rather than pushed as routes, which is what
 // keeps a running session alive while the user goes to change a setting.
+import '../services/app_log.dart';
 import 'dart:async';
 import 'dart:io';
 
@@ -229,7 +230,7 @@ class _WorkbenchScreenState extends State<WorkbenchScreen>
         // Kept: an attach that takes suspiciously long, or never happens, is
         // the difference between a black panel and a working one, and it is
         // not visible from anywhere else.
-        debugPrint('dosbox: attached shared frame after ${i * 100}ms');
+        AppLog.log('attached shared frame after ${i * 100}ms');
         return;
       }
       await Future<void>.delayed(const Duration(milliseconds: 100));
@@ -269,7 +270,7 @@ class _WorkbenchScreenState extends State<WorkbenchScreen>
     try {
       demo = (await DemoProgramService.prepare()).entry;
     } on Object catch (error) {
-      debugPrint('dosbox: could not prepare bundled FreeDOS demo: $error');
+      AppLog.log('could not prepare bundled FreeDOS demo: $error');
     }
 
     // Compliance mode is a read barrier, not a display filter. Return before
@@ -300,7 +301,20 @@ class _WorkbenchScreenState extends State<WorkbenchScreen>
     // "Add game" button, which calls ZipImporter for one file at a time.
     await Future.value();
 
-    final result = await LibraryScanner.scan(folder);
+    LibraryScanResult result;
+    try {
+      result = await LibraryScanner.scan(folder);
+    } catch (error) {
+      // Surfaced, not swallowed: "no games found" and "the scan failed"
+      // need different fixes, and a silent failure reads as the former.
+      AppLog.log('library scan failed: $error');
+      if (!mounted) return;
+      setState(() {
+        _scanning = false;
+        _launchError = 'The library scan failed: $error';
+      });
+      return;
+    }
     await GameSettingsStore.instance.preload(result.entries.map((e) => e.slug));
     if (!mounted) return;
     setState(() {
@@ -1073,6 +1087,15 @@ class _WorkbenchScreenState extends State<WorkbenchScreen>
               ),
             ),
           ),
+          // The same Discard the Running tab offers -- the banner used to
+          // promise a dismiss it never rendered.
+          IconButton(
+            onPressed: _discardPausedSession,
+            icon: const Icon(Icons.close, size: 16),
+            color: RetroDosboxColors.accentAmber,
+            visualDensity: VisualDensity.compact,
+            tooltip: 'Discard this session',
+          ),
         ],
       ),
     );
@@ -1149,21 +1172,19 @@ class _WorkbenchScreenState extends State<WorkbenchScreen>
     );
   }
 
-  /// Drops [_pausedSession] without resuming. The core stays paused but
-  /// orphaned; until the user either resumes or kills it via the toolbar X
-  /// in the emulator screen, the snapshot in slot 0 sits unused.
+  /// Drops [_pausedSession] AND ends the engine behind it.
   ///
-  /// Why a separate Discard from X: X tears the core down, ending the
-  /// "one core per process" lifecycle. Discard only clears the Dart-side
-  /// pointer; the core is still running with the snapshot in slot 0. The
-  /// user can then launch a different game (no -- actually no they can't,
-  /// the running core still says alreadyStarted). Discard is therefore
-  /// really "I don't want this snapshot anymore, take me back to the
-  /// library" and is equivalent to clicking the same title in the games
-  /// grid -- but the latter goes through the launcher flow, which writes
-  /// the conf file again. Both are intentional exits from the paused
-  /// state.
+  /// It used to clear only the Dart-side pointer, leaving the core alive
+  /// and orphaned -- which on desktop meant every subsequent launch failed
+  /// with "a session is already running", a trap this method's own comment
+  /// admitted to. Discard now means what it says: the session is over.
   void _discardPausedSession() {
+    if (EmulatorProcess.isSupported) {
+      unawaited(EmulatorProcess.stop());
+      widget.core.detachSharedFrameIfAttached();
+    } else {
+      widget.core.stop();
+    }
     setState(() => _pausedSession = null);
   }
 
@@ -1226,14 +1247,6 @@ class _WorkbenchScreenState extends State<WorkbenchScreen>
           config: EngineConfig.forSession(core: widget.core, input: _input),
         );
       case WorkbenchTab.paths:
-        if (_complianceMode) {
-          return const Center(
-            child: Text(
-              'Paths is unavailable while compliance mode is active.',
-              style: TextStyle(color: RetroDosboxColors.textMuted2),
-            ),
-          );
-        }
         return PathsSettingsScreen(
           onGamesFolderChanged: _rescan,
           onRunSetupWizard: widget.onRunSetupWizard,

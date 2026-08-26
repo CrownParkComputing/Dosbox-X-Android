@@ -416,7 +416,9 @@ void main() {
         ),
       ));
       await tester.enterText(find.byType(TextField), 'quake');
-      await tester.pump();
+      // The search debounces 150 ms so typing does not re-filter per
+      // keystroke; wait it out.
+      await tester.pump(const Duration(milliseconds: 200));
       expect(find.text('DOOM'), findsNothing);
       expect(find.text('Quake'), findsOneWidget);
       expect(find.text('1 of 2 titles'), findsOneWidget);
@@ -437,7 +439,9 @@ void main() {
         ),
       ));
       await tester.enterText(find.byType(TextField), 'zzzz');
-      await tester.pump();
+      // The search debounces 150 ms so typing does not re-filter per
+      // keystroke; wait it out.
+      await tester.pump(const Duration(milliseconds: 200));
       expect(find.text('No titles match this search.'), findsOneWidget);
     });
 

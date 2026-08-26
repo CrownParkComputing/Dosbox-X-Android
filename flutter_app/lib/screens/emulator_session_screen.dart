@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../services/video_settings.dart';
 import '../data/emulator_ui_state.dart';
 import '../data/game_entry.dart';
 import '../services/emulator_input.dart';
@@ -268,6 +269,29 @@ class _EmulatorSessionScreenState extends State<EmulatorSessionScreen> {
       builder: (context, _) => Column(
         mainAxisSize: MainAxisSize.min,
         children: [
+          // Screen shape without leaving the game -- cycles the same four
+          // modes as the Video tab (VideoSettings is a global listenable,
+          // so the picture follows instantly).
+          _RailTool(
+            icon: switch (VideoSettings.instance.aspect) {
+              AspectMode.stretch => Icons.fit_screen,
+              AspectMode.integer => Icons.grid_on,
+              AspectMode.square => Icons.crop_square,
+              AspectMode.authentic => Icons.aspect_ratio,
+            },
+            label: 'Shape',
+            tooltip:
+                '${VideoSettings.instance.aspect.label} — tap for the next '
+                'mode',
+            onTap: () {
+              _wakeControls();
+              final modes = AspectMode.values;
+              final next = modes[(VideoSettings.instance.aspect.index + 1) %
+                  modes.length];
+              VideoSettings.instance.setAspect(next);
+              setState(() {});
+            },
+          ),
           _RailTool(
             icon: Icons.videogame_asset,
             label: 'Pad',

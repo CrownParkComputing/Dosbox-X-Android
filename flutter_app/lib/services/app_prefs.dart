@@ -311,4 +311,17 @@ class AppPrefs {
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove(_keyControlPositions);
   }
+
+  /// Whether Delete in the library asks first. On by default.
+  static const _keyConfirmDelete = 'confirm_delete';
+
+  static Future<bool> getConfirmDelete() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getBool(_keyConfirmDelete) ?? true;
+  }
+
+  static Future<void> setConfirmDelete(bool v) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_keyConfirmDelete, v);
+  }
 }

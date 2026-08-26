@@ -9,6 +9,8 @@
 // no version numbers, no author lists, no sponsor credits -- because anything
 // else would have to be maintained in step with an upstream this app does not
 // control.
+import 'logs_screen.dart';
+import 'getting_started.dart';
 import 'package:flutter/material.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 
@@ -57,6 +59,43 @@ class AboutScreen extends StatelessWidget {
             onPressed: () => WhyNotWindowsScreen.show(context),
             icon: const Icon(Icons.help_outline, size: 18),
             label: const Text('Why not Windows 95/98?'),
+          ),
+        ),
+        // The guide setup shows, re-readable any time -- the questions it
+        // answers ("where do I put my files?") are asked most often by
+        // someone who finished setup long ago.
+        Padding(
+          padding: const EdgeInsets.only(bottom: 12),
+          child: OutlinedButton.icon(
+            onPressed: () => Navigator.of(context).push(
+              MaterialPageRoute<void>(
+                builder: (BuildContext context) => Scaffold(
+                  backgroundColor: Colors.black,
+                  body: SafeArea(
+                    child: GettingStartedGuide(
+                      steps: [
+                        GettingStartedSteps.whatYouNeed(),
+                        GettingStartedSteps.whereFilesGo(),
+                        GettingStartedSteps.firstGame(),
+                      ],
+                      onClose: () => Navigator.of(context).pop(),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+            icon: const Icon(Icons.school_outlined, size: 18),
+            label: const Text('Getting started guide'),
+          ),
+        ),
+        Padding(
+          padding: const EdgeInsets.only(bottom: 12),
+          child: OutlinedButton.icon(
+            onPressed: () => Navigator.of(context).push(
+              MaterialPageRoute<void>(builder: (_) => const LogsScreen()),
+            ),
+            icon: const Icon(Icons.terminal, size: 18),
+            label: const Text('App log'),
           ),
         ),
         _Card(

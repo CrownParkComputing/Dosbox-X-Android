@@ -12,6 +12,7 @@
 // source, was annotated as an entry point, and still could not be resolved:
 // "Could not resolve main entrypoint function". Same reason Retro-Amiga's
 // main.dart imports its overlay entrypoint.
+import 'services/app_log.dart';
 import 'dart:async';
 
 import 'core_process_main.dart' show dosboxCoreMain;
@@ -39,6 +40,10 @@ import 'theme/retrodosbox_theme.dart';
 const _keepCoreEntrypoint = dosboxCoreMain;
 
 void main() {
+  WidgetsFlutterBinding.ensureInitialized();
+  // Fire-and-forget: the log must never delay first frame, and early
+  // lines are buffered in memory until the file is ready.
+  unawaited(AppLog.init());
   runApp(const RetroDosboxApp());
 }
 
@@ -86,7 +91,7 @@ class _DosboxAppState extends State<RetroDosboxApp>
       // Package metadata can be unavailable under a test binding or on a new
       // platform integration. Fall back to the legacy boolean rather than
       // trapping that platform in a wizard on every launch.
-      debugPrint(
+      AppLog.log(
         'dosbox: app build unavailable; setup is not build-keyed: '
         '$error',
       );
@@ -113,7 +118,7 @@ class _DosboxAppState extends State<RetroDosboxApp>
       // "no core was built" and "the core is there and dlopen refused it" is
       // invisible from the banner alone, and only this message distinguishes
       // them.
-      debugPrint(
+      AppLog.log(
         'dosbox: falling back to the stub core. '
         'path=${RetroDosboxNativePaths.coreLibraryPath} error=$e',
       );

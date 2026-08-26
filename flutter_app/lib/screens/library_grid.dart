@@ -1,7 +1,12 @@
-// The games list: search, kind filter, and a measured grid of cards.
+// The games list: search, letter filter, and a measured grid of cards.
+import 'dart:async';
+import 'dart:io';
+
 import 'package:flutter/material.dart';
+import 'package:path/path.dart' as p;
 
 import '../data/game_entry.dart';
+import '../services/app_prefs.dart';
 import '../services/retrodosbox_conf_builder.dart';
 import '../theme/retrodosbox_theme.dart';
 import '../widgets/media_card.dart';
@@ -44,7 +49,46 @@ class LibraryGrid extends StatefulWidget {
 class _LibraryGridState extends State<LibraryGrid> {
   String _query = '';
 
-  /// null means "All".
+  /// Search waits for the typing to pause: filtering per keystroke walks
+  /// the whole library once per character, which reads as a stiff keyboard
+  /// on a large collection -- the lesson the Amiga library learned.
+  Timer? _searchDebounce;
+
+  /// Cached derivations, recomputed only when their inputs change --
+  /// getters called from build() re-walked the list on every frame.
+  List<GameEntry> _filteredCache = const [];
+  List<String> _lettersCache = const [];
+
+  @override
+  void initState() {
+    super.initState();
+    _recompute();
+  }
+
+  @override
+  void didUpdateWidget(LibraryGrid old) {
+    super.didUpdateWidget(old);
+    if (!identical(old.entries, widget.entries)) _recompute();
+  }
+
+  @override
+  void dispose() {
+    _searchDebounce?.cancel();
+    super.dispose();
+  }
+
+  void _recompute() {
+    _filteredCache = _filter();
+    _lettersCache = _letters();
+  }
+
+  void _setQuery(String v) {
+    _query = v;
+    _searchDebounce?.cancel();
+    _searchDebounce = Timer(const Duration(milliseconds: 150), () {
+      if (mounted) setState(_recompute);
+    });
+  }
 
   /// null means "All letters". Otherwise the first letter the title must
   /// start with (case-insensitive). Shown above the grid as A-Z tiles so the
@@ -52,7 +96,7 @@ class _LibraryGridState extends State<LibraryGrid> {
   /// typing.
   String? _letterFilter;
 
-  List<GameEntry> get _filtered {
+  List<GameEntry> _filter() {
     final q = _query.trim().toLowerCase();
     final letter = _letterFilter;
     return widget.entries.where((e) {
@@ -82,7 +126,7 @@ class _LibraryGridState extends State<LibraryGrid> {
   /// dominate the row for collections that begin with year-prefixed titles
   /// ("1...", "2...", "007...") without buying the user any useful
   /// filtering, so all of them collapse into '#'.
-  List<String> get _presentLetters {
+  List<String> _letters() {
     final hasAlpha = <String>{};
     var hasDigit = false;
     var hasOther = false;
@@ -107,17 +151,15 @@ class _LibraryGridState extends State<LibraryGrid> {
     return result;
   }
 
-  /// Only the kinds actually present, so the filter row never offers a tab
-  /// that leads to an empty list.
   @override
   Widget build(BuildContext context) {
-    final filtered = _filtered;
+    final filtered = _filteredCache;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         _searchRow(),
         const SizedBox(height: 8),
-        if (_presentLetters.length > 1) _letterRow(),
+        if (_lettersCache.length > 1) _letterRow(),
         _statusLine(filtered.length),
         const SizedBox(height: 4),
         Expanded(
@@ -132,7 +174,7 @@ class _LibraryGridState extends State<LibraryGrid> {
       children: [
         Expanded(
           child: TextField(
-            onChanged: (v) => setState(() => _query = v),
+            onChanged: _setQuery,
             style: const TextStyle(fontSize: 13, color: Colors.white),
             decoration: InputDecoration(
               isDense: true,
@@ -178,7 +220,7 @@ class _LibraryGridState extends State<LibraryGrid> {
   }
 
   Widget _letterRow() {
-    final letters = _presentLetters;
+    final letters = _lettersCache;
     return SizedBox(
       height: 26,
       child: ListView(
@@ -191,6 +233,7 @@ class _LibraryGridState extends State<LibraryGrid> {
               selected: _letterFilter == l,
               onTap: () => setState(() {
                 _letterFilter = _letterFilter == l ? null : l;
+                _recompute();
               }),
             ),
             const SizedBox(width: 4),
@@ -199,7 +242,10 @@ class _LibraryGridState extends State<LibraryGrid> {
             _LetterChip(
               label: '×',
               selected: false,
-              onTap: () => setState(() => _letterFilter = null),
+              onTap: () => setState(() {
+                _letterFilter = null;
+                _recompute();
+              }),
               tooltip: 'Clear letter filter',
             ),
         ],
@@ -252,7 +298,7 @@ class _LibraryGridState extends State<LibraryGrid> {
             const SizedBox(height: 6),
             Text(
               filtering
-                  ? 'Try clearing the search or the format filter.'
+                  ? 'Try clearing the search or the letter filter.'
                   : 'Point the app at a folder of DOS games in Paths, then '
                       'rescan. A game is normally a folder containing its '
                       'EXE files, or a CD image.',
@@ -263,6 +309,144 @@ class _LibraryGridState extends State<LibraryGrid> {
         ),
       ),
     );
+  }
+
+  /// Long-press on a card: the per-title actions. Settings keeps the
+  /// existing per-game sheet; Rename and Delete act on the file or folder
+  /// itself and rescan.
+  Future<void> _showEntryActions(GameEntry entry) async {
+    final action = await showModalBottomSheet<String>(
+      context: context,
+      backgroundColor: RetroDosboxColors.cardFill,
+      builder: (BuildContext context) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              title: Text(entry.title,
+                  maxLines: 1, overflow: TextOverflow.ellipsis),
+              subtitle: Text(entry.path,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style:
+                      const TextStyle(fontSize: 11, color: Colors.white38)),
+            ),
+            const Divider(height: 1),
+            ListTile(
+              leading: const Icon(Icons.play_arrow),
+              title: const Text('Play'),
+              onTap: () => Navigator.pop(context, 'play'),
+            ),
+            if (widget.onShowDetails != null)
+              ListTile(
+                leading: const Icon(Icons.tune),
+                title: const Text('Game settings'),
+                onTap: () => Navigator.pop(context, 'settings'),
+              ),
+            ListTile(
+              leading: const Icon(Icons.drive_file_rename_outline),
+              title: const Text('Rename'),
+              onTap: () => Navigator.pop(context, 'rename'),
+            ),
+            ListTile(
+              leading: const Icon(Icons.delete_outline),
+              title: const Text('Delete'),
+              onTap: () => Navigator.pop(context, 'delete'),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (!mounted || action == null) return;
+    switch (action) {
+      case 'play':
+        widget.onLaunch(entry);
+      case 'settings':
+        widget.onShowDetails?.call(entry);
+      case 'rename':
+        await _renameEntry(entry);
+      case 'delete':
+        await _deleteEntry(entry);
+    }
+  }
+
+  Future<void> _renameEntry(GameEntry entry) async {
+    final controller = TextEditingController(text: p.basename(entry.path));
+    final newName = await showDialog<String>(
+      context: context,
+      builder: (BuildContext context) => AlertDialog(
+        title: const Text('Rename'),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          decoration: const InputDecoration(labelText: 'Name'),
+        ),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Cancel')),
+          FilledButton(
+              onPressed: () => Navigator.pop(context, controller.text.trim()),
+              child: const Text('Rename')),
+        ],
+      ),
+    );
+    if (newName == null || newName.isEmpty || !mounted) return;
+    try {
+      final target = p.join(p.dirname(entry.path), newName);
+      if (File(target).existsSync() || Directory(target).existsSync()) {
+        throw const FileSystemException('that name already exists');
+      }
+      final isDir = Directory(entry.path).existsSync();
+      if (isDir) {
+        await Directory(entry.path).rename(target);
+      } else {
+        await File(entry.path).rename(target);
+      }
+      widget.onRescan?.call();
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text('Could not rename: $e')));
+    }
+  }
+
+  Future<void> _deleteEntry(GameEntry entry) async {
+    if (await AppPrefs.getConfirmDelete()) {
+      if (!mounted) return;
+      final sure = await showDialog<bool>(
+        context: context,
+        builder: (BuildContext context) => AlertDialog(
+          title: const Text('Delete this game?'),
+          content: Text('${p.basename(entry.path)} will be deleted from '
+              'disk -- the whole folder if it is one. This cannot be '
+              'undone.'),
+          actions: [
+            TextButton(
+                onPressed: () => Navigator.pop(context, false),
+                child: const Text('Cancel')),
+            FilledButton(
+                onPressed: () => Navigator.pop(context, true),
+                child: const Text('Delete')),
+          ],
+        ),
+      );
+      if (sure != true) return;
+    }
+    if (!mounted) return;
+    try {
+      final dir = Directory(entry.path);
+      if (dir.existsSync()) {
+        await dir.delete(recursive: true);
+      } else {
+        await File(entry.path).delete();
+      }
+      widget.onRescan?.call();
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text('Could not delete: $e')));
+    }
   }
 
   Widget _grid(List<GameEntry> entries) {
@@ -286,9 +470,7 @@ class _LibraryGridState extends State<LibraryGrid> {
           itemBuilder: (context, index) {
             final entry = entries[index];
             return GestureDetector(
-              onLongPress: widget.onShowDetails == null
-                  ? null
-                  : () => widget.onShowDetails!(entry),
+              onLongPress: () => _showEntryActions(entry),
               child: MediaCard(
                 title: entry.title,
                 kindLabel: entry.kindLabel,

@@ -15,6 +15,7 @@
 // read the game port at all. Turning pad input into key presses for those is
 // a mapping concern that lives above this service -- all this produces is
 // a [JoystickState] (mask + axes), which the caller forwards to the core.
+import 'app_log.dart';
 import 'dart:async';
 
 import 'package:flutter/foundation.dart';
@@ -100,7 +101,7 @@ class GamepadService {
         // Logged because this value silently decides whether the on-screen
         // joystick appears: in `auto` mode a controller the user does not have
         // makes the pad vanish with no way to tell why from the screen alone.
-        debugPrint('dosbox: controllers=${list.length} '
+        AppLog.log('controllers=${list.length} '
             '[${list.map((g) => '${g.id}/${g.name}').join(', ')}]');
       }
       connected.value = next;

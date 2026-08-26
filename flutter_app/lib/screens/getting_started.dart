@@ -211,6 +211,44 @@ class GettingStartedSteps {
         ],
       );
 
+  /// "I finished setup -- now what?"
+  static GuideStep firstGame() => GuideStep(
+        title: 'Playing your first game',
+        icon: Icons.sports_esports_outlined,
+        body: <Widget>[
+          _p('From the Games shelf, tap a title. Long-press it for '
+              'per-game settings: which program runs, the CPU era, the '
+              'disc in the drive.'),
+          _point(
+            Icons.menu,
+            'The corner button',
+            'While playing, the button in the top-left corner opens the '
+                'pause menu: resume, save your place and leave, or close.',
+          ),
+          _point(
+            Icons.videogame_asset_outlined,
+            'The tool rail',
+            'Down the right edge while playing: the on-screen pad, the PC '
+                'keyboard, moving the controls, trackpad mouse mode, and '
+                'the left/right click buttons.',
+          ),
+          _point(
+            Icons.mouse,
+            'The touch mouse',
+            'One finger moves the pointer; a tap is a click. A SECOND '
+                'finger holds the left button down -- that is how you drag '
+                'and lasso. Hold one finger still for a right click.',
+          ),
+          _point(
+            Icons.save_outlined,
+            'Your place is kept',
+            'Save and exit keeps your place and the workbench offers it '
+                'back; the library banner and the Running tab both resume '
+                'it.',
+          ),
+        ],
+      );
+
   /// The platform's own answer to "where do I put my files?".
   static GuideStep whereFilesGo() {
     if (Platform.isIOS) {
