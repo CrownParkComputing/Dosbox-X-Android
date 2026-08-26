@@ -7,6 +7,7 @@
 // this scanner classifies directories, and only falls back to treating loose
 // files as titles when they are self-contained (a CD image, a bootable disk
 // image, an un-imported archive).
+import 'dart:isolate';
 import 'dart:io';
 
 import 'package:path/path.dart' as p;
@@ -95,7 +96,15 @@ class LibraryScanner {
   /// the titles, and everything below that belongs to a title. Recursing would
   /// turn a game's own SAVE/, DATA/ and CDROM/ subdirectories into bogus
   /// library entries.
-  static Future<LibraryScanResult> scan(String folderPath) async {
+  static Future<LibraryScanResult> scan(String folderPath) =>
+      // A background isolate, not chunked yields on the UI isolate: the
+      // sync directory walks below still burned UI-thread CPU between
+      // yields, and the deep CD-image recursion never yielded at all --
+      // which is the frame-drop class the Amiga live release taught us to
+      // move off the UI thread entirely.
+      Isolate.run(() => _scanOnIsolate(folderPath));
+
+  static Future<LibraryScanResult> _scanOnIsolate(String folderPath) async {
     final root = Directory(folderPath);
     if (!root.existsSync()) {
       return const LibraryScanResult(entries: [], unreadable: []);

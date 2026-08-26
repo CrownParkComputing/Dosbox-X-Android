@@ -190,7 +190,7 @@ class _EmulatorSessionScreenState extends State<EmulatorSessionScreen> {
                     _ResumeButton(onTap: () => _setMenu(false)),
                     const SizedBox(height: 28),
                     _MenuChoice(
-                      icon: Icons.save_outlined,
+                      icon: Icons.bookmark_add_outlined,
                       label: 'Save and exit',
                       detail:
                           'Keep your place and return to the workbench',
@@ -288,6 +288,22 @@ class _EmulatorSessionScreenState extends State<EmulatorSessionScreen> {
               ui.toggleKeyboard();
             },
           ),
+          // Only while the pad is up: moving controls that are not on
+          // screen is a mode with nothing in it. Same tool, same glyph, as
+          // the rest of the family.
+          if (ui.padVisible)
+            _RailTool(
+              icon: ui.editingLayout ? Icons.check : Icons.open_with,
+              label: 'Layout',
+              lit: ui.editingLayout,
+              tooltip: ui.editingLayout
+                  ? 'Finish moving controls'
+                  : 'Move the on-screen controls',
+              onTap: () {
+                _wakeControls();
+                ui.toggleLayoutEditing();
+              },
+            ),
           _RailTool(
             icon: Icons.mouse,
             label: 'Mouse',

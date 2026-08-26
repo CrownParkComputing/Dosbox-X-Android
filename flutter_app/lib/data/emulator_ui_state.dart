@@ -15,6 +15,7 @@ class EmulatorUiState extends ChangeNotifier {
   bool _keyboardVisible = false;
   bool _mouseMode = false;
   bool _padVisible = false;
+  bool _editingLayout = false;
 
   /// Whether the pad's visibility was decided by the player this session
   /// rather than by the saved preference. Once it was, the preference stops
@@ -32,6 +33,7 @@ class EmulatorUiState extends ChangeNotifier {
   bool get keyboardVisible => _keyboardVisible;
   bool get mouseMode => _mouseMode;
   bool get padVisible => _padVisible;
+  bool get editingLayout => _editingLayout;
 
   set keyboardVisible(bool value) {
     if (_keyboardVisible == value) return;
@@ -88,13 +90,27 @@ class EmulatorUiState extends ChangeNotifier {
   /// ask for -- trackpad mouse especially, which turns the whole picture into
   /// a pointer surface and makes a joystick game unplayable until it is found
   /// and turned off.
+  set editingLayout(bool value) {
+    if (_editingLayout == value) return;
+    _editingLayout = value;
+    notifyListeners();
+  }
+
+  void toggleLayoutEditing() => editingLayout = !_editingLayout;
+
   void reset() {
     _padChosen = false;
     _mouseChosen = false;
-    if (!_keyboardVisible && !_mouseMode && !_padVisible) return;
+    if (!_keyboardVisible &&
+        !_mouseMode &&
+        !_padVisible &&
+        !_editingLayout) {
+      return;
+    }
     _keyboardVisible = false;
     _mouseMode = false;
     _padVisible = false;
+    _editingLayout = false;
     notifyListeners();
   }
 }

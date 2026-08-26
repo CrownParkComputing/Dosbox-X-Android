@@ -154,9 +154,15 @@ class _DosboxAppState extends State<RetroDosboxApp>
         unawaited(EmulatorProcess.setPaused(false));
         _pausedByLifecycle = false;
       }
-    } else {
+    } else if (state == AppLifecycleState.paused ||
+        state == AppLifecycleState.hidden) {
+      // Only a REAL backgrounding pauses the machine. `inactive` fires for a
+      // notification shade, a permission dialog, or losing window focus on
+      // desktop -- pausing there freezes the game under a still-visible
+      // window, which is the bug Retro-Amiga's live release taught us about.
+      //
       // Idempotent across the multi-event transition: only the first
-      // non-resumed event pauses and marks; later ones see the mark and do
+      // backgrounding event pauses and marks; later ones see the mark and do
       // nothing.
       if (!_pausedByLifecycle && !core.isPaused) {
         core.setPaused(true);

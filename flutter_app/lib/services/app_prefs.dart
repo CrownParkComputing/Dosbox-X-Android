@@ -8,6 +8,7 @@
 // Video settings deliberately live elsewhere (VideoSettings, which is a
 // listenable singleton because the emulator screen has to repaint when they
 // change); these are read-on-demand one-shot values, so they stay static.
+import 'dart:ui' show Offset;
 import 'dart:convert';
 
 import 'package:shared_preferences/shared_preferences.dart';
@@ -266,5 +267,48 @@ class AppPrefs {
         ? _keyActionButtonAScancode
         : _keyActionButtonBScancode;
     await prefs.setInt(key, scancode ?? _mappingDefault);
+  }
+
+  // --- On-screen control positions -------------------------------------
+
+  static const _keyControlPositions = 'on_screen_control_positions';
+
+  /// Where each on-screen control sits, as fractions of the play area
+  /// (0..1, centre of the control). Fractions rather than pixels so a
+  /// layout made in landscape still means the same place after a resize or
+  /// on the next device. Same contract as Retro-C64 and Retro-Spectrum.
+  static Future<Map<String, Offset>> getControlPositions() async {
+    final prefs = await SharedPreferences.getInstance();
+    final raw = prefs.getString(_keyControlPositions);
+    if (raw == null || raw.isEmpty) return const {};
+    try {
+      final decoded = jsonDecode(raw) as Map<String, dynamic>;
+      return {
+        for (final e in decoded.entries)
+          e.key: Offset(
+            ((e.value as List)[0] as num).toDouble(),
+            ((e.value as List)[1] as num).toDouble(),
+          ),
+      };
+    } catch (_) {
+      return const {};
+    }
+  }
+
+  static Future<void> setControlPosition(String id, Offset fraction) async {
+    final prefs = await SharedPreferences.getInstance();
+    final all = Map<String, Offset>.from(await getControlPositions());
+    all[id] = fraction;
+    await prefs.setString(
+      _keyControlPositions,
+      jsonEncode({
+        for (final e in all.entries) e.key: [e.value.dx, e.value.dy],
+      }),
+    );
+  }
+
+  static Future<void> clearControlPositions() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove(_keyControlPositions);
   }
 }

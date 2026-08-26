@@ -19,6 +19,7 @@ import '../ffi/retrodosbox_core.dart';
 import '../services/app_prefs.dart';
 import '../services/emulator_input.dart';
 import '../theme/retrodosbox_theme.dart';
+import '../widgets/movable_control.dart';
 import '../widgets/assignable_action_button.dart';
 import '../widgets/framebuffer_view.dart';
 import '../widgets/on_screen_keyboard.dart';
@@ -76,6 +77,10 @@ class _EmulatorScreenState extends State<EmulatorScreen> {
 
   bool _joystickEnabled = false;
   bool _leftHanded = false;
+
+  /// Centre of each on-screen control as fractions of the play area --
+  /// the family's layout contract (see AppPrefs.getControlPositions).
+  Map<String, Offset> _controlPositions = const {};
   OnScreenPadMode _padMode = OnScreenPadMode.auto;
   List<int> _customButtons = const <int>[];
   int? _buttonAScancode;
@@ -110,6 +115,11 @@ class _EmulatorScreenState extends State<EmulatorScreen> {
   @override
   void initState() {
     super.initState();
+    AppPrefs.getControlPositions().then((stored) {
+      if (mounted && stored.isNotEmpty) {
+        setState(() => _controlPositions = stored);
+      }
+    });
     // The toolbar's keyboard, mouse, and pad buttons live on the workbench's
     // status row and change state this screen draws from, so it has to follow
     // that state. It used to arrive only via the half-second status timer
@@ -264,14 +274,17 @@ class _EmulatorScreenState extends State<EmulatorScreen> {
         //
         // The pad and keyboard stay here: those belong over the picture,
         // because they are how you play it.
-        child: Stack(
-          children: [
-            Positioned.fill(child: _picture()),
-            if (_showStatus) _statusOverlay(),
-            if (showPad) _pad(),
-            if (_showKeyboard) _keyboard(),
-          ],
-        ),
+        child: LayoutBuilder(builder: (context, constraints) {
+          final area = constraints.biggest;
+          return Stack(
+            children: [
+              Positioned.fill(child: _picture()),
+              if (_showStatus) _statusOverlay(),
+              if (showPad) ..._padControls(area),
+              if (_showKeyboard) _keyboard(),
+            ],
+          );
+        }),
       ),
     );
   }
@@ -397,40 +410,64 @@ class _EmulatorScreenState extends State<EmulatorScreen> {
     );
   }
 
-  Widget _pad() {
-    final stick = WobbleJoystick(onJoystick: _onStick);
-    final buttons = Column(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        ActionButton(
-          binding: _buttonAScancode == null
-              ? JoyButtonBinding(RetroDosboxJoyBits.button1)
-              : KeyActionBinding(_buttonAScancode!),
-          onAction: _onAction,
-        ),
-        const SizedBox(height: 10),
-        ActionButton(
-          binding: _buttonBScancode == null
-              ? JoyButtonBinding(RetroDosboxJoyBits.button2)
-              : KeyActionBinding(_buttonBScancode!),
-          onAction: _onAction,
-        ),
-      ],
-    );
+  /// The stick and the button pair, each movable in layout mode and
+  /// remembered -- the same fraction-of-play-area contract as Retro-C64,
+  /// Retro-Spectrum and Retro-Saturn. Left-handed mode only chooses the
+  /// DEFAULT sides; a dragged position always wins.
+  List<Widget> _padControls(Size area) {
+    final stickDefault =
+        _leftHanded ? const Offset(0.88, 0.78) : const Offset(0.12, 0.78);
+    final buttonsDefault =
+        _leftHanded ? const Offset(0.12, 0.78) : const Offset(0.88, 0.78);
+    final editing = widget.ui.editingLayout;
 
-    // Left-handed mode swaps the stick and the buttons rather than mirroring
-    // the whole layout, which is what left-handed players actually want.
-    final children = _leftHanded ? [buttons, stick] : [stick, buttons];
-    return Positioned(
-      left: 16,
-      right: 16,
-      bottom: 20,
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        crossAxisAlignment: CrossAxisAlignment.end,
-        children: children,
+    Widget movable(String id, Offset fallback, String label, Widget child) {
+      return MovableControl(
+        area: area,
+        fraction: _controlPositions[id] ?? fallback,
+        editing: editing,
+        label: label,
+        onMoved: (f) =>
+            setState(() => _controlPositions = {..._controlPositions, id: f}),
+        onMoveEnd: () {
+          final f = _controlPositions[id];
+          if (f != null) AppPrefs.setControlPosition(id, f);
+        },
+        child: child,
+      );
+    }
+
+    return [
+      movable(
+        'stick',
+        stickDefault,
+        'Stick',
+        WobbleJoystick(onJoystick: _onStick),
       ),
-    );
+      movable(
+        'buttons',
+        buttonsDefault,
+        'Buttons',
+        Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ActionButton(
+              binding: _buttonAScancode == null
+                  ? JoyButtonBinding(RetroDosboxJoyBits.button1)
+                  : KeyActionBinding(_buttonAScancode!),
+              onAction: _onAction,
+            ),
+            const SizedBox(height: 10),
+            ActionButton(
+              binding: _buttonBScancode == null
+                  ? JoyButtonBinding(RetroDosboxJoyBits.button2)
+                  : KeyActionBinding(_buttonBScancode!),
+              onAction: _onAction,
+            ),
+          ],
+        ),
+      ),
+    ];
   }
 
   /// The full on-screen keyboard.
