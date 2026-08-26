@@ -16,6 +16,14 @@ idempotent, so re-running after an upstream pull is safe.
 2. sdlmain.cpp -- expose main() under a second name. The bridge runs the engine
    on a background thread, and calling main() directly from C++ is not
    something the standard permits.
+
+3. sdlmain.cpp -- pump the bridge from GFX_Events(). Normal_Loop calls
+   GFX_Events() every tick whether or not anything was drawn, which is exactly
+   the property the frame hook lacks: DOSBox-X publishes a frame only when the
+   picture changes, so a booted guest OS sitting on a still desktop stopped
+   reaching the hook at all and the app's input/pause/quit queue went dead.
+   Applied as its own edit with its own marker so a tree already patched for
+   (2) still picks it up.
 """
 import os
 import sys
@@ -38,6 +46,20 @@ HOOK_CALL = '''    if (DOSBOX_BRIDGE_PublishFrame) {
             (int32_t)sdl.gamelink.pitch,
             render.src.ratio);
     }
+
+'''
+
+PUMP_DECL = '''
+/* Implemented by the DosboxMultiplatform bridge when it is linked in. Weak so
+ * a plain dosbox-x build resolves it to null and skips the call below. */
+extern "C" void DOSBOX_BRIDGE_Pump(void) __attribute__((weak));
+'''
+
+PUMP_CALL = '''    /* The bridge's tick-rate pump. GFX_Events() is where a real user's input
+     * arrives, and Normal_Loop calls it whether or not a frame was drawn --
+     * which is why the app's queue is drained here and not only when the
+     * picture changes. */
+    if (DOSBOX_BRIDGE_Pump) DOSBOX_BRIDGE_Pump();
 
 '''
 
@@ -84,6 +106,22 @@ def patch_gamelink(text):
 
 def patch_sdlmain(text):
     return text + MAIN_ALIAS
+
+
+def patch_sdlmain_pump(text):
+    # GFX_Events() opens with CheckMapperKeyboardLayout() and has done for
+    # years; anchoring on the pair keeps this from matching a declaration.
+    anchor = 'void GFX_Events() {\n    CheckMapperKeyboardLayout();\n'
+    if anchor not in text:
+        return None
+    # The declaration goes at the top of the file rather than beside the call:
+    # GFX_Events() is deep in the file and an extern "C" declaration has to be
+    # at namespace scope.
+    decl_anchor = '#include "sdlmain.h"'
+    if decl_anchor not in text:
+        return None
+    text = text.replace(decl_anchor, decl_anchor + "\n" + PUMP_DECL, 1)
+    return text.replace(anchor, anchor + PUMP_CALL, 1)
 
 
 # --- mixer.cpp ------------------------------------------------------------
@@ -202,6 +240,8 @@ edit(os.path.join(TREE, "src/output/output_gamelink.cpp"),
      "DOSBOX_BRIDGE_PublishFrame", patch_gamelink)
 edit(os.path.join(TREE, "src/gui/sdlmain.cpp"),
      "dosbox_x_main", patch_sdlmain)
+edit(os.path.join(TREE, "src/gui/sdlmain.cpp"),
+     "DOSBOX_BRIDGE_Pump", patch_sdlmain_pump)
 edit(os.path.join(TREE, "src/hardware/mixer.cpp"),
      "dosbox_audio_backend", patch_mixer)
 print("==> done")

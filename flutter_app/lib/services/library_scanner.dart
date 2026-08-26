@@ -12,13 +12,18 @@ import 'dart:io';
 import 'package:path/path.dart' as p;
 
 import '../data/game_entry.dart';
+import 'games_folder.dart';
+import 'disk_image.dart';
 
 /// Extensions that make a loose file a title in its own right.
 const Set<String> _discExtensions = {'.iso', '.cue', '.bin'};
 
 /// Disk images. These are ambiguous: a .img can be a floppy, a bootable hard
 /// disk, or a raw CD. Size is used to disambiguate -- see [_classifyImage].
-const Set<String> _imageExtensions = {'.img', '.ima', '.dsk', '.vhd'};
+const Set<String> _imageExtensions = {
+  '.img', '.ima', '.dsk', // ambiguous: floppy or hard disk, decided by size
+  '.vhd', '.hdd', '.hdi', // always hard disks, whatever their length
+};
 
 const Set<String> _archiveExtensions = {
   '.zip',
@@ -112,6 +117,10 @@ class LibraryScanner {
       // Hidden entries, plus the '.c' directory this app creates to hold the
       // writable C: drives it makes for CD titles.
       if (name.startsWith('.')) continue;
+      // The CD shelf. Its contents are discs to put in a drive, not titles to
+      // launch, and listing them as titles would bury the games under every
+      // ISO the user owns.
+      if (name == GamesFolder.cdFolderName) continue;
 
       try {
         if (child is Directory) {
@@ -178,6 +187,55 @@ class LibraryScanner {
       (a, b) => a.title.toLowerCase().compareTo(b.title.toLowerCase()),
     );
     return LibraryScanResult(entries: entries, unreadable: unreadable);
+  }
+
+  /// Every CD image under [root], for the "which disc is in the drive"
+  /// pickers.
+  ///
+  /// Recursive, so the CD shelf can be organised into subfolders and still
+  /// browse as one list.
+  ///
+  /// Deliberately a folder walk rather than a file picker over the whole
+  /// device: on Android an arbitrary path handed back by the document picker
+  /// is frequently one the engine process cannot open (it runs in :dosbox and
+  /// has no claim on the caller's URI permission), and a disc that mounts as
+  /// nothing is worse than one that was never offered. Anything under the
+  /// games folder is readable by construction.
+  static Future<List<String>> findDiscImages(String root) async {
+    final dir = Directory(root);
+    if (!dir.existsSync()) return const <String>[];
+    final found = <String>[];
+    try {
+      for (final e in dir.listSync(recursive: true, followLinks: false)) {
+        if (e is! File) continue;
+        if (p.basename(e.path).startsWith('.')) continue;
+        if (_discExtensions.contains(p.extension(e.path).toLowerCase())) {
+          found.add(e.path);
+        }
+      }
+    } on FileSystemException {
+      // A partly-unreadable tree still yields whatever was reachable.
+    }
+    found.sort((a, b) => p.basename(a).toLowerCase().compareTo(
+          p.basename(b).toLowerCase(),
+        ));
+    return found;
+  }
+
+  /// Classifies a single path the way a scan would, without walking a whole
+  /// games folder to reach it.
+  ///
+  /// Exposed for the host-side boot tests, which need the app's own verdict
+  /// on one image rather than a second opinion written alongside them.
+  static Future<GameEntry?> classify(String path) async {
+    switch (FileSystemEntity.typeSync(path)) {
+      case FileSystemEntityType.directory:
+        return _classifyDirectory(Directory(path));
+      case FileSystemEntityType.file:
+        return _classifyFile(File(path));
+      default:
+        return null;
+    }
   }
 
   /// A directory is a DOS game if it contains a runnable program anywhere in
@@ -354,15 +412,17 @@ class LibraryScanner {
   /// Whether an ambiguous image file is a hard disk image (bootable) rather
   /// than a floppy or CD image.
   ///
-  /// Size is the only cheap signal available. Reading the partition table
-  /// would be more accurate, and is worth doing once the FAT32/MBR reader is
-  /// ported over from the Java Fat32Reader -- until then a large .img is
-  /// treated as bootable, which is right far more often than not.
+  /// Size is the only cheap signal available for the ambiguous extensions.
+  /// Reading the partition table would be more accurate, and is worth doing
+  /// once the FAT32/MBR reader is ported over from the Java Fat32Reader --
+  /// until then a large .img is treated as bootable, which is right far more
+  /// often than not. .vhd and friends skip the test entirely: a dynamic VHD
+  /// that has not been filled yet is a few kilobytes long and would fail it
+  /// while still being a hard disk.
   static Future<bool> _isHardDiskImage(File file) async {
-    try {
-      return await file.length() >= _minHardDiskImageBytes;
-    } on FileSystemException {
-      return false;
-    }
+    return DiskImage.isHardDisk(
+      file.path,
+      minHardDiskBytes: _minHardDiskImageBytes,
+    );
   }
 }

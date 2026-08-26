@@ -23,6 +23,10 @@ Audio and clean shutdown remain open.
   checklist, and the per-game compatibility knowledge that must not be lost.
 - `docs/PLATFORM_STATUS.md` -- per-platform core bundling, platform-specific
   code, and the divergences to track.
+- `docs/WINDOWS_9X.md` -- why Windows 95/98 is NOT supported. It was built and
+  it booted; on ARM there is no working recompiler for a Windows guest, so
+  every 3D title is a black screen with healthy audio. Read before rebuilding
+  it.
 
 ## Layout
 

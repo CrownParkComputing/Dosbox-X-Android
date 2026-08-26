@@ -43,6 +43,7 @@
 #include <atomic>
 #include <cstdio>
 #include <cstring>
+#include <cstdlib>
 #include <deque>
 #include <mutex>
 #include <string>
@@ -59,6 +60,7 @@
 #include "mapper.h"
 #include "joystick.h"
 #include "cpu.h"
+#include "../src/dos/cdrom.h"
 
 #include "dosbox_bridge.h"
 #include "audio_backend.h"
@@ -77,12 +79,38 @@ extern bool warn_on_mem_write;
 /* State                                                                    */
 /* ------------------------------------------------------------------------ */
 
+/* Runtime CD swapping, all owned by DOSBox-X.
+ *
+ * IDE_ATAPI_MediaChangeNotify is what its own Drive menu calls to change a
+ * disc under a running guest: it advances the drive, sets has_changed and
+ * schedules the insertion event, so the guest gets a real "medium may have
+ * changed" and auto-insert notification fires. Declared here rather than
+ * included because ide.cpp exports it without a header -- every caller in the
+ * tree forward-declares it the same way.
+ *
+ * qmount suppresses the "could not load image" message SetDevice would
+ * otherwise write to the DOS console. There is no DOS console once a guest OS
+ * has booted, which is exactly when this is used. */
+extern void IDE_ATAPI_MediaChangeNotify(signed char index, bool slave, bool immediate);
+extern bool qmount;
+
+/* DOSBox-X's mouse-capture flag, a plain global owned by sdlmain.cpp.
+ *
+ * Declared HERE, at file scope, and deliberately not inside the anonymous
+ * namespace below: a name declared in an anonymous namespace mangles to a
+ * translation-unit-private symbol, so the reference became
+ * _ZN12_GLOBAL__N_118user_cursor_lockedE and the whole core failed to load
+ * with "cannot locate symbol" -- which the app reports only as falling back
+ * to the stub. */
+extern bool user_cursor_locked;
+
 namespace {
 
 /* One queued request for the mainloop to perform at a frame boundary. */
 struct Request {
     enum Kind {
-        Key, MouseMotion, MouseButton, Joystick, SaveState_, LoadState_, Quit
+        Key, MouseMotion, MouseButton, Joystick, SaveState_, LoadState_,
+        CdInsert, Quit
     } kind;
     int32_t a, b, c, d;
 };
@@ -109,6 +137,40 @@ std::atomic<bool> g_thread_exited{false};
 /* One-shot: the emulated joystick is attached at the first frame. */
 std::atomic<bool> g_joystick_attached{false};
 std::atomic<int32_t> g_fps{0};
+
+/* Where we believe the guest's pointer is, in guest pixels, or -1 for
+ * "no idea". A PS/2 mouse reports only movement, so placing the pointer
+ * somewhere means steering it from where it already is -- which means
+ * remembering. Reset whenever a session starts or ends, because the next
+ * guest's pointer is somewhere else entirely. */
+int32_t g_ptr_x = -1, g_ptr_y = -1;
+/* Where the finger last asked the pointer to be, and whether the belief has
+ * to be re-established against a corner before steering there. */
+int32_t g_ptr_target_x = -1, g_ptr_target_y = -1;
+bool g_ptr_rehome = false;
+int32_t g_ptr_home_left = 0;
+
+/* Button events that arrived while the pointer was still travelling.
+ *
+ * Pressing on touch-down and only then moving is what drew a selection box
+ * across the desktop on every single tap: the button went down where the
+ * pointer happened to be, the pointer then travelled to the finger, and
+ * Windows quite correctly rubber-banded the whole journey. A click has to
+ * happen where the user touched, so it waits for the pointer to get there. */
+struct PendingButton { int32_t button; bool pressed; };
+PendingButton g_ptr_btn_queue[8];
+int32_t g_ptr_btn_count = 0;
+
+bool ptr_is_travelling()
+{
+    return g_ptr_rehome ||
+           (g_ptr_target_x >= 0 &&
+            (g_ptr_x != g_ptr_target_x || g_ptr_y != g_ptr_target_y));
+}
+
+/* Path for a pending CD insert. The request queue carries ints only, so the
+ * string travels beside it under the same lock. */
+std::string g_cd_path;
 
 std::string g_resource_dir;
 std::string g_conf_path;
@@ -155,6 +217,20 @@ void run_request(const Request &r)
                           0, 0, true /*emulate*/);
         break;
     case Request::MouseButton:
+        /* Hold the click back while the pointer is still on its way to where
+         * the finger touched -- see g_ptr_btn_queue. Both press AND release
+         * queue, so a tap that completes mid-flight still arrives as a press
+         * followed by a release, in order, at the right place. Letting the
+         * release through early would strand the button down. */
+        if (ptr_is_travelling() &&
+            g_ptr_btn_count <
+                static_cast<int32_t>(sizeof(g_ptr_btn_queue) /
+                                     sizeof(g_ptr_btn_queue[0]))) {
+            g_ptr_btn_queue[g_ptr_btn_count].button = r.a;
+            g_ptr_btn_queue[g_ptr_btn_count].pressed = r.b != 0;
+            g_ptr_btn_count++;
+            break;
+        }
         if (r.b) {
             Mouse_ButtonPressed(static_cast<uint8_t>(r.a));
         } else {
@@ -202,6 +278,59 @@ void run_request(const Request &r)
         g_reply_pending.store(0);
         break;
     }
+    case Request::CdInsert: {
+        /* Secondary master -- the slot the Windows profile mounts the CD on
+         * (-ide 2m), and where a period PC's CD-ROM lived. */
+        const signed char kIdeIndex = 1;
+        const bool kIdeSlave = false;
+
+        std::string path;
+        {
+            std::lock_guard<std::mutex> guard(g_lock);
+            path = g_cd_path;
+        }
+
+        if (path.empty()) {
+            /* Eject: hand the drive an empty list is not possible, so an
+             * empty path simply notifies a change with nothing new attached,
+             * which the guest sees as the door having been opened. */
+            IDE_ATAPI_MediaChangeNotify(kIdeIndex, kIdeSlave, false);
+            break;
+        }
+
+        auto *iface = new CDROM_Interface_Image(0);
+        const bool saved_qmount = qmount;
+        qmount = true;
+        const bool loaded = iface->SetDevice(path.c_str(), 0);
+        qmount = saved_qmount;
+
+        if (!loaded) {
+            fprintf(stderr, "[bridge] could not load CD image %s\n",
+                    path.c_str());
+            delete iface;
+            break;
+        }
+
+        std::vector<CDROM_Interface*> cds;
+        cds.push_back(iface);
+        /* opt_replace: rebind the CD-ROM already on that slot rather than
+         * refusing because it is occupied. */
+        if (!IDE_CDROM_Attach(kIdeIndex, kIdeSlave, cds, true)) {
+            fprintf(stderr,
+                    "[bridge] no CD-ROM on IDE 2m to replace; the title was "
+                    "launched without one\n");
+            delete iface;
+            break;
+        }
+
+        /* Not immediate: the guest is an OS, and it wants the spin-up delay
+         * (cd-rom insertion delay, 4000ms in the Windows profile) before the
+         * new disc appears, which is what makes auto-insert notification
+         * fire rather than the medium silently changing underneath it. */
+        IDE_ATAPI_MediaChangeNotify(kIdeIndex, kIdeSlave, false);
+        break;
+    }
+
     case Request::Quit:
         /* The kill switch (sdlmain.cpp's KillSwitch / Ctrl+F9), minus
          * CheckQuit: that shows a host message box, and there is no host UI.
@@ -431,20 +560,149 @@ extern "C" void dosbox_shared_frame_detach(void)
 }
 
 /* ------------------------------------------------------------------------ */
-/* Hook called by the patched OUTPUT_GAMELINK_Transfer                      */
+/* Hooks called by the patched engine                                       */
 /* ------------------------------------------------------------------------ */
+
+/* Honour a pause request and drain everything the app has queued.
+ *
+ * Both hooks below call this, and that redundancy is the point. It used to
+ * live only on the frame-publish path, on the reasonable-looking assumption
+ * that a running machine draws. A booted guest OS breaks that assumption
+ * outright: DOSBox-X publishes a frame only when the picture changes, and a
+ * Windows desktop sitting idle changes nothing at all. The queue is the only
+ * channel the app has -- keys, mouse, pause, save-state, quit -- so on a
+ * still screen the machine went deaf, and because input is what would have
+ * changed the picture, it could never wake up again. stop() then timed out
+ * against a thread still executing guest code, and the process took its
+ * chances at exit.
+ *
+ * Called on the mainloop thread from both sites, so no two drains overlap. */
+static void pump_requests()
+{
+    /* The emulated machine always owns the pointer.
+     *
+     * DOSBox-X only accumulates PS/2 mouse movement when user_cursor_locked
+     * is set -- see KEYBOARD_AUX_Event, which throws the delta away
+     * otherwise while still reporting the buttons. That flag is assigned in
+     * exactly one place, HandleMouseMotion, from SDL's real mouse-capture
+     * state, and this core has no window and no real mouse: the handler
+     * never runs, the flag stays false from init, and a guest OS therefore
+     * receives clicks that work and motion that does not. Which is precisely
+     * how it looked: the cursor sat still while taps registered under it.
+     *
+     * Set every pump rather than once at start, so nothing that runs later
+     * can quietly clear it. It is a plain bool write on the mainloop thread. */
+    user_cursor_locked = true;
+
+    /* One mouse packet per pump, at most.
+     *
+     * This is called every tick from GFX_Events, so the pointer still crosses
+     * the screen in a fraction of a second, but each packet gets a chance to
+     * be consumed instead of landing in a full buffer and being thrown away.
+     * Pacing IS the algorithm here; the arithmetic is trivial. */
+    if (g_ptr_target_x >= 0 && g_width > 0 && g_height > 0) {
+        const int32_t kMaxPerPacket = 200;
+        if (g_ptr_rehome) {
+            /* Pin against the top-left corner, the one position a relative
+             * device can be certain of, then steer from there. */
+            if (g_ptr_home_left == 0) {
+                g_ptr_home_left = (g_width + g_height) / 32 + 8;
+            }
+            Mouse_CursorMoved(-(float)kMaxPerPacket, -(float)kMaxPerPacket,
+                              0, 0, true);
+            if (--g_ptr_home_left <= 0) {
+                g_ptr_rehome = false;
+                g_ptr_x = 0;
+                g_ptr_y = 0;
+            }
+        } else {
+            /* How many units of movement make one guest pixel.
+             *
+             * KEYBOARD_AUX_Event turns accumulated movement into a packet as
+             *     x2 = (acx * (1 << resolution)) / 16
+             * so a delta has to be scaled by 16 to survive the division --
+             * and then divided by (1 << resolution) again, which is the part
+             * that was missing. Windows sets the PS/2 resolution to 3, giving
+             * 16/8 = 2. Compensating for only the /16 made every movement
+             * eight times too far, which is exactly how it felt.
+             *
+             * resolution is private to keyboard.cpp, so this assumes the
+             * value Windows actually programs rather than reading it. A guest
+             * that picks a different one will be off by a constant factor --
+             * the reason this is a named constant and not a literal. */
+            const int32_t kUnitsPerPixel = 2;
+            int32_t dx = (g_ptr_target_x - g_ptr_x) * kUnitsPerPixel;
+            int32_t dy = (g_ptr_target_y - g_ptr_y) * kUnitsPerPixel;
+            if (dx != 0 || dy != 0) {
+                int32_t sx = dx > kMaxPerPacket ? kMaxPerPacket
+                           : (dx < -kMaxPerPacket ? -kMaxPerPacket : dx);
+                int32_t sy = dy > kMaxPerPacket ? kMaxPerPacket
+                           : (dy < -kMaxPerPacket ? -kMaxPerPacket : dy);
+                Mouse_CursorMoved((float)sx, (float)sy, 0, 0, true);
+                g_ptr_x += sx / kUnitsPerPixel;
+                g_ptr_y += sy / kUnitsPerPixel;
+                /* A step too small to divide cleanly still arrived, so treat
+                 * the axis as settled rather than looping on it forever. */
+                if (sx != 0 && sx / kUnitsPerPixel == 0) {
+                    g_ptr_x = g_ptr_target_x;
+                }
+                if (sy != 0 && sy / kUnitsPerPixel == 0) {
+                    g_ptr_y = g_ptr_target_y;
+                }
+            }
+        }
+    }
+
+    /* Arrived: let any held-back clicks happen, now that they will happen
+     * under the finger rather than along the way to it. */
+    if (!ptr_is_travelling() && g_ptr_btn_count > 0) {
+        for (int32_t i = 0; i < g_ptr_btn_count; ++i) {
+            if (g_ptr_btn_queue[i].pressed) {
+                Mouse_ButtonPressed(
+                    static_cast<uint8_t>(g_ptr_btn_queue[i].button));
+            } else {
+                Mouse_ButtonReleased(
+                    static_cast<uint8_t>(g_ptr_btn_queue[i].button));
+            }
+        }
+        g_ptr_btn_count = 0;
+    }
+
+    /* Pausing blocks the mainloop here, which is the only place it is safe to
+     * stop: no CPU emulation runs, no new frames are produced, and the last
+     * frame stays intact for the UI to keep showing. */
+    while (g_paused.load() && g_running.load()) {
+        usleep(10 * 1000);
+    }
+
+    /* Every mutation of engine state happens here, on the mainloop thread --
+     * that is the safe point the header promises. */
+    for (;;) {
+        Request r;
+        {
+            std::lock_guard<std::mutex> guard(g_lock);
+            if (g_pending.empty()) {
+                break;
+            }
+            r = g_pending.front();
+            g_pending.pop_front();
+        }
+        run_request(r);
+    }
+}
+
+/* Called from the patched GFX_Events(), which DOSBox-X's Normal_Loop runs
+ * every tick whether or not anything was drawn. This is the hook that keeps a
+ * guest OS reachable; the frame hook alone is not enough. */
+extern "C" void DOSBOX_BRIDGE_Pump(void)
+{
+    pump_requests();
+}
 
 extern "C" void DOSBOX_BRIDGE_PublishFrame(const uint32_t *pixels, int32_t width,
                                            int32_t height, int32_t pitch_bytes,
                                            double ratio)
 {
-    /* Pausing blocks the mainloop here, at a frame boundary, which is the only
-     * place it is safe to stop: no CPU emulation runs, no new frames are
-     * produced, and the last frame stays intact for the UI to keep showing. */
-    while (g_paused.load() && g_running.load()) {
-        usleep(10 * 1000);
-    }
-
     if (pixels != nullptr && width > 0 && height > 0 && pitch_bytes > 0) {
         const size_t needed =
             static_cast<size_t>(height) * static_cast<size_t>(pitch_bytes) / 4;
@@ -482,20 +740,11 @@ extern "C" void DOSBOX_BRIDGE_PublishFrame(const uint32_t *pixels, int32_t width
     g_aspect_x1000.store(static_cast<int32_t>(ratio * 1000.0));
     g_frame_counter.fetch_add(1);
 
-    /* Drain the request queue. This is the frame boundary the header promises:
-     * every mutation of engine state happens here, on the mainloop thread. */
-    for (;;) {
-        Request r;
-        {
-            std::lock_guard<std::mutex> guard(g_lock);
-            if (g_pending.empty()) {
-                break;
-            }
-            r = g_pending.front();
-            g_pending.pop_front();
-        }
-        run_request(r);
-    }
+    /* Drain at the frame boundary too. GFX_Events() already pumps every tick,
+     * but a frame is the point at which the app's view of the machine is
+     * newest, so a request queued against what the user just saw takes effect
+     * without waiting for the next tick. */
+    pump_requests();
 }
 
 /* ------------------------------------------------------------------------ */
@@ -522,6 +771,11 @@ extern "C" int32_t dosbox_core_start(const char *conf_path)
         return DOSBOX_ERR;
     }
     g_conf_path = conf_path;
+    g_ptr_x = g_ptr_y = -1;
+    g_ptr_target_x = g_ptr_target_y = -1;
+    g_ptr_rehome = false;
+    g_ptr_home_left = 0;
+    g_ptr_btn_count = 0;
 
     if (pthread_create(&g_thread, nullptr, mainloop_thread, nullptr) != 0) {
         g_started.store(false);
@@ -587,6 +841,12 @@ extern "C" int32_t dosbox_core_stop(void)
     g_aspect_x1000.store(0);
     g_started.store(false);
     g_joystick_attached.store(false);
+    /* The next session's pointer is somewhere else entirely. */
+    g_ptr_x = g_ptr_y = -1;
+    g_ptr_target_x = g_ptr_target_y = -1;
+    g_ptr_rehome = false;
+    g_ptr_home_left = 0;
+    g_ptr_btn_count = 0;
     return DOSBOX_OK;
 }
 
@@ -652,6 +912,19 @@ extern "C" void dosbox_core_key_event(int32_t sdl_scancode, int32_t pressed)
     queue(Request::Key, sdl_scancode, pressed, 0, 0);
 }
 
+extern "C" int32_t dosbox_core_cd_insert(const char *iso_path)
+{
+    if (!g_started.load()) {
+        return DOSBOX_ERR_NOT_RUNNING;
+    }
+    {
+        std::lock_guard<std::mutex> guard(g_lock);
+        g_cd_path = iso_path ? iso_path : "";
+    }
+    queue(Request::CdInsert, 0, 0, 0, 0);
+    return DOSBOX_OK;
+}
+
 extern "C" void dosbox_core_mouse_motion(int32_t dx, int32_t dy)
 {
     queue(Request::MouseMotion, dx, dy, 0, 0);
@@ -659,22 +932,64 @@ extern "C" void dosbox_core_mouse_motion(int32_t dx, int32_t dy)
 
 extern "C" void dosbox_core_mouse_position(int32_t x_per_mille, int32_t y_per_mille)
 {
-    /* DOSBox-X's mouse emulation wants deltas, so an absolute position is
-     * converted against the last one we sent. The first call therefore only
-     * establishes the origin and moves nothing, which is correct for a touch:
-     * the pointer should not leap on finger-down. */
-    static int32_t last_x = -1, last_y = -1;
+    /* Put the guest pointer AT a place, which a PS/2 mouse cannot be told to
+     * do: it is a relative device and reports only movement. The previous
+     * implementation sent (target - last_target), which silently assumes the
+     * guest pointer went exactly where the last call aimed it. Under a DOS
+     * mouse driver that is roughly true. Under a guest OS it is not -- the OS
+     * applies its own pointer speed and acceleration -- so the pointer drifted
+     * away from the finger immediately and never came back. A touchscreen
+     * needs the pointer to BE under the finger, so this tracks where we
+     * believe it is and steers toward the target.
+     *
+     * The only position a relative device can be certain of is a corner: push
+     * far enough in one direction and the pointer is pinned against the edge
+     * however much acceleration was applied. That is the fixed point this
+     * homes to whenever the belief is unusable. */
     if (g_width <= 0 || g_height <= 0) {
         return;
     }
-    const int32_t x = x_per_mille * g_width / 1000;
-    const int32_t y = y_per_mille * g_height / 1000;
-    if (last_x >= 0) {
-        queue(Request::MouseMotion, x - last_x, y - last_y, 0, 0);
+
+    const int32_t tx = x_per_mille * g_width / 1000;
+    const int32_t ty = y_per_mille * g_height / 1000;
+
+    /* Home ONLY when there is no belief at all -- once per session.
+     *
+     * This used to re-home on any jump over a quarter of the screen, meaning
+     * nearly every tap. The pointer visibly flew to the top-left corner and
+     * back on each touch, which is both the "not smooth" part and half of the
+     * reason clicks landed nowhere. Now that the scale factor is right the
+     * belief tracks well enough to steer from directly, and a corner run is
+     * reserved for having genuinely lost track. */
+    const bool far_jump = (g_ptr_x < 0);
+
+    /* Set a target; the pump walks toward it. Do NOT queue the whole journey
+     * here.
+     *
+     * KEYBOARD_AUX_Event drops a packet outright when the keyboard buffer is
+     * near full ("if ((keyb.used+4) < KEYBUFSIZE)"), and the guest drains
+     * that buffer at its own PS/2 sample rate -- around 100Hz, not as fast as
+     * a drain loop can push. A burst of sixteen packets in one pump therefore
+     * delivers the first couple and silently discards the rest, which is why
+     * the pointer moved a long way in one axis and barely at all in the
+     * other: the surviving packets were arbitrary. */
+    g_ptr_target_x = tx;
+    g_ptr_target_y = ty;
+    /* Start a corner run only if one is not already under way.
+     *
+     * far_jump is "we have no belief yet", which stays true for the whole
+     * duration of the run that establishes it. Every position update in the
+     * meantime -- and a finger on the glass produces a stream of them --
+     * therefore re-entered this branch and reset the counter, so the run
+     * restarted forever and the pointer simply travelled up and left without
+     * ever arriving. Guarding on g_ptr_rehome lets the run finish, after
+     * which g_ptr_x is 0 and far_jump is false for the rest of the session. */
+    if (far_jump && !g_ptr_rehome) {
+        g_ptr_rehome = true;
+        g_ptr_home_left = 0;
     }
-    last_x = x;
-    last_y = y;
 }
+
 
 extern "C" void dosbox_core_mouse_button(int32_t button, int32_t pressed)
 {

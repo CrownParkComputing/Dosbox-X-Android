@@ -71,8 +71,8 @@ class ImportedFile {
 /// entry per utility in every game's directory.
 const List<String> kGameFileExtensions = [
   'iso', 'cue', 'bin', // CD images
-  'img', 'ima', 'dsk', // floppy images
-  'vhd', // hard-disk images
+  'img', 'ima', 'dsk', // floppy images (or small hard disks)
+  'vhd', 'hdd', 'hdi', // hard-disk images, incl. Windows 9x installs
   'zip', '7z', 'gz', 'tar', 'tgz', 'rar', // archives
 ];
 

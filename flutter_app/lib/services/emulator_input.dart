@@ -23,6 +23,17 @@ abstract class EmulatorInput {
 
   void keyEvent(int sdlScancode, bool pressed);
   void mouseMotion(int dx, int dy);
+
+  /// Put the pointer at a fraction of the emulated screen, (0,0) top-left.
+  void mousePosition(double x, double y);
+
+  /// Put a disc in the drive of the running machine. Empty path ejects.
+  void cdInsert(String isoPath);
+
+  /// Change an emulator setting on the running machine. Fire-and-forget:
+  /// nothing comes back, so a rejected value looks the same as an accepted
+  /// one. See EngineConfig.
+  void configSet(String section, String property, String value);
   void mouseButton(int button, bool pressed);
   void joystick(int port, int mask, {double axisX = 0, double axisY = 0});
 }
@@ -39,6 +50,16 @@ class _CoreInput implements EmulatorInput {
 
   @override
   void mouseMotion(int dx, int dy) => core.mouseMotion(dx, dy);
+
+  @override
+  void mousePosition(double x, double y) => core.mousePosition(x, y);
+
+  @override
+  void cdInsert(String isoPath) => core.cdInsert(isoPath);
+
+  @override
+  void configSet(String section, String property, String value) =>
+      core.configSet(section, property, value);
 
   @override
   void mouseButton(int button, bool pressed) =>
@@ -60,6 +81,23 @@ class _ProcessInput implements EmulatorInput {
   @override
   void mouseMotion(int dx, int dy) =>
       EmulatorProcess.sendInput('mouseMotion', a: dx, b: dy);
+
+  @override
+  void mousePosition(double x, double y) =>
+      EmulatorProcess.sendInput('mousePosition', x: x, y: y);
+
+  @override
+  void cdInsert(String isoPath) =>
+      EmulatorProcess.sendInput('cdInsert', text: isoPath);
+
+  @override
+  void configSet(String section, String property, String value) =>
+      EmulatorProcess.sendInput(
+        'configSet',
+        text: section,
+        text2: property,
+        text3: value,
+      );
 
   @override
   void mouseButton(int button, bool pressed) =>

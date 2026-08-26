@@ -81,6 +81,14 @@ class GameSettings {
   /// few actively misbehave when they detect an idle joystick.
   final bool joystick;
 
+  /// A CD image to put in the drive, chosen by the user rather than found
+  /// next to the title. Empty for "whatever the folder holds".
+  ///
+  /// A Windows guest gets its CD-ROM at boot and cannot be handed a new disc
+  /// afterwards (see docs/CDROM_SWAP.md), so which disc is in the drive is a
+  /// per-title setting rather than a running-session action.
+  final String cdImage;
+
   /// Extra raw dosbox-x.conf text appended verbatim, for the user's own
   /// overrides.
   final String advanced;
@@ -89,6 +97,7 @@ class GameSettings {
     this.preset = CpuPreset.auto,
     this.voodoo = false,
     this.joystick = true,
+    this.cdImage = '',
     this.advanced = '',
   });
 
@@ -96,12 +105,14 @@ class GameSettings {
     CpuPreset? preset,
     bool? voodoo,
     bool? joystick,
+    String? cdImage,
     String? advanced,
   }) {
     return GameSettings(
       preset: preset ?? this.preset,
       voodoo: voodoo ?? this.voodoo,
       joystick: joystick ?? this.joystick,
+      cdImage: cdImage ?? this.cdImage,
       advanced: advanced ?? this.advanced,
     );
   }
@@ -110,6 +121,7 @@ class GameSettings {
         'preset': preset.name,
         'voodoo': voodoo,
         'joystick': joystick,
+        'cdImage': cdImage,
         'advanced': advanced,
       };
 
@@ -121,6 +133,7 @@ class GameSettings {
       ),
       voodoo: json['voodoo'] as bool? ?? false,
       joystick: json['joystick'] as bool? ?? true,
+      cdImage: json['cdImage'] as String? ?? '',
       advanced: json['advanced'] as String? ?? '',
     );
   }

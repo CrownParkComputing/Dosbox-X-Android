@@ -12,6 +12,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import '../data/emulator_ui_state.dart';
+import '../data/touch_pointer_gestures.dart';
 import 'package:flutter/services.dart';
 
 import '../ffi/retrodosbox_core.dart';
@@ -49,6 +50,11 @@ class EmulatorScreen extends StatefulWidget {
   /// buttons that toggle them live on its status row.
   final EmulatorUiState ui;
 
+  /// The picture is a pointer surface for this session whatever the toolbar
+  /// says. Set for a bootable disk image, where a guest OS's own pointer is
+  /// the only interface there is.
+  final bool absolutePointer;
+
   const EmulatorScreen({
     super.key,
     required this.core,
@@ -58,6 +64,7 @@ class EmulatorScreen extends StatefulWidget {
     this.onExit,
     this.onPause,
     required this.ui,
+    this.absolutePointer = false,
   });
 
   @override
@@ -78,6 +85,17 @@ class _EmulatorScreenState extends State<EmulatorScreen> {
   // status row rather than in here. See EmulatorUiState.
   bool get _showKeyboard => widget.ui.keyboardVisible;
   bool get _mouseMode => widget.ui.mouseMode;
+
+  /// Whether the picture should act as a pointer surface regardless of the
+  /// toolbar toggle.
+  ///
+  /// A booted guest OS has no other way in. Making touch conditional on a
+  /// button the user has to find first means a Windows desktop that ignores
+  /// every tap, which is indistinguishable from a broken emulator -- and if
+  /// anything upstream fails to set that toggle, the machine is simply
+  /// unusable. DOS titles keep the toggle, because there the picture may need
+  /// to be a joystick instead.
+  bool get _touchIsPointer => _mouseMode || widget.absolutePointer;
   final bool _showStatus = true;
 
   /// Accumulated joystick bits from every source (on-screen stick, action
@@ -258,21 +276,76 @@ class _EmulatorScreenState extends State<EmulatorScreen> {
   }
 
   Widget _picture() {
-    final view = Center(child: FramebufferView(core: widget.core));
-    if (!_mouseMode) return view;
-    // Mouse mode turns the whole picture into a trackpad. Relative deltas
-    // rather than absolute positioning, because DOS mouse drivers track
-    // movement, and absolute jumps make cursors in games fly to a corner.
-    return GestureDetector(
-      behavior: HitTestBehavior.opaque,
-      onPanUpdate: (d) =>
-          widget.input.mouseMotion(d.delta.dx.round(), d.delta.dy.round()),
-      onTapDown: (_) => widget.input.mouseButton(0, true),
-      onTapUp: (_) => widget.input.mouseButton(0, false),
-      onLongPressStart: (_) => widget.input.mouseButton(1, true),
-      onLongPressEnd: (_) => widget.input.mouseButton(1, false),
-      child: view,
+    // The touchscreen IS the mouse: the pointer goes where the finger is,
+    // rather than the finger nudging it from wherever it happened to be.
+    //
+    // This used to be a trackpad -- a GestureDetector whose onPanUpdate fed
+    // relative deltas. That is the right model for a laptop and the wrong one
+    // for a handheld: on a Windows desktop you look at the thing you want and
+    // touch it, and a relative pointer means hunting a cursor that starts
+    // somewhere else entirely. It also went through Flutter's gesture arena,
+    // which swallowed the first movement of every touch to the drag threshold
+    // and cancelled a tap the moment it became a drag -- leaving the left
+    // button held down for the rest of the session.
+    //
+    // Placement is FramebufferView's job because only it knows where the
+    // picture is; this only has to say what a touch means.
+    final view = Center(
+      child: FramebufferView(
+        core: widget.core,
+        onTouchDown: _touchIsPointer ? _onTouchDown : null,
+        onTouchMove: _touchIsPointer ? _onTouchMove : null,
+        onTouchUp: _touchIsPointer ? _onTouchUp : null,
+      ),
     );
+    return view;
+  }
+
+  /// Touch means one of three things; TouchPointerGestures decides which.
+  ///
+  /// Movement is RELATIVE -- the pointer follows the finger rather than
+  /// jumping to it -- and a tap is a click on the way UP. See
+  /// TouchPointerGestures for why both of those are the way they are.
+  final _gestures = TouchPointerGestures();
+
+  /// Movement units per emulated pixel.
+  ///
+  /// DOSBox-X builds a PS/2 packet as (accumulated * (1 << resolution)) / 16.
+  /// Windows programs resolution 3, so 16/8 = 2 units make one pixel. Sending
+  /// the pixel count raw made the pointer eight times too fast.
+  static const int _unitsPerPixel = 2;
+
+  void _apply(TouchAction action, Offset deltaEmulatedPixels) {
+    switch (action) {
+      case TouchAction.none:
+        break;
+      case TouchAction.leftClick:
+        _click(0);
+      case TouchAction.rightClick:
+        _click(1);
+      case TouchAction.move:
+        final dx = (deltaEmulatedPixels.dx * _unitsPerPixel).round();
+        final dy = (deltaEmulatedPixels.dy * _unitsPerPixel).round();
+        // Sub-pixel travel rounds to nothing, and a packet saying "no
+        // movement" is just noise on a wire the guest drains slowly.
+        if (dx == 0 && dy == 0) return;
+        widget.input.mouseMotion(dx, dy);
+    }
+  }
+
+  void _onTouchDown(Offset n, int pointers) =>
+      _apply(_gestures.onDown(pointers), Offset.zero);
+
+  void _onTouchMove(Offset deltaEmulatedPixels) =>
+      _apply(_gestures.onMove(deltaEmulatedPixels), deltaEmulatedPixels);
+
+  void _onTouchUp(int pointers) =>
+      _apply(_gestures.onUp(pointers), Offset.zero);
+
+  /// Press and release together, where the pointer already is.
+  void _click(int button) {
+    widget.input.mouseButton(button, true);
+    widget.input.mouseButton(button, false);
   }
 
   Widget _statusOverlay() {

@@ -196,20 +196,89 @@ rm -f "$PIC/config.h" "$PIC/config.status" "$PIC/src/Makefile"
 # -Werror would make unrelated upstream warnings fail the build, so we keep
 # -Wno-error. Some warnings show up under -std=gnu++17 that do not under
 # -std=gnu++14, so we are explicit.
+# The tree is SHARED with the host build (linux/build-core-pic.sh), and a
+# reconfigure does not touch the objects a previous target left behind. make
+# only rebuilds what is older than its source, so host x86-64 objects survive
+# the switch to the NDK intact and the link fails late with a wall of
+#   ld.lld: error: dos/libdos.a(drive_fat.o) is incompatible with aarch64linux
+# This is the mirror of the check linux/build-core-pic.sh already does in the
+# other direction. Look at what is actually on disk rather than at whether
+# this run reconfigured: a build interrupted midway leaves a mixed tree that
+# neither run would think to clean.
+case "$ANDROID_ABI" in
+    arm64-v8a)   FILE_CPU="ARM aarch64" ;;
+    armeabi-v7a) FILE_CPU="ARM," ;;
+    x86_64)      FILE_CPU="x86-64" ;;
+    x86)         FILE_CPU="Intel 80386" ;;
+    *)           FILE_CPU="" ;;
+esac
+if [ -n "$FILE_CPU" ]; then
+    SAMPLE_O=$(find "$PIC/src" -name '*.o' -print -quit 2>/dev/null)
+    if [ -n "$SAMPLE_O" ] && ! file "$SAMPLE_O" | grep -q "$FILE_CPU"; then
+        echo "==> stale objects for another target ($(file -b "$SAMPLE_O" | cut -d, -f2 | xargs)); make clean"
+        make -C "$PIC" clean >/dev/null 2>&1 || true
+    fi
+fi
+
 echo "==> building the engine for $ANDROID_ABI (this takes a while)"
 LDADD_RAW="$(make -C "$PIC/src" -s \
     --eval='__print_ldadd:; @echo $(dosbox_x_LDADD)' __print_ldadd 2>/dev/null)"
 [ -n "$LDADD_RAW" ] || { echo "error: could not read dosbox_x_LDADD" >&2; exit 1; }
 ENGINE_TARGETS="dosbox.o"
+ENGINE_ARCHIVES=""
 for target in $LDADD_RAW; do
     case "$target" in
-        *.a) ENGINE_TARGETS="$ENGINE_TARGETS $target" ;;
+        *.a)
+            ENGINE_TARGETS="$ENGINE_TARGETS $target"
+            # LDADD names several archives twice (link order), and building
+            # one twice is only wasted time, but the loop below is serial.
+            case " $ENGINE_ARCHIVES " in
+                *" $target "*) ;;
+                *) ENGINE_ARCHIVES="$ENGINE_ARCHIVES $target" ;;
+            esac
+            ;;
     esac
 done
-make -C "$PIC/src" -j"$(nproc)" $ENGINE_TARGETS \
-    WARN_CFLAGS="-Wno-error" \
-    WARN_CXXFLAGS="-Wno-error" \
-    >/dev/null 2>&1
+: > "$TMP/engine-build.log"
+# Errors are kept; only the (very noisy) per-file compile lines and warnings
+# are dropped. Silencing stderr too meant a failed engine build exited the
+# script under `set -e` with no output at all, and the only symptom was a
+# libdosboxcore.so that had quietly not been rebuilt.
+# Every archive in LDADD lives in a SUBDIRS directory, and `make -C src
+# dos/libdos.a` has no rule for one -- automake builds those through a
+# recursive make, not from src/. This step used to be skipped entirely and
+# nobody noticed, because the archives were always already on disk from a
+# previous host build; the first `make clean` in this tree turned that into
+#   make: *** No rule to make target 'debug/libdebug.a'.  Stop.
+#
+# Each archive is built in its own directory rather than via all-recursive:
+# automake's all-recursive finishes by building the CURRENT directory too,
+# which means linking the dosbox-x executable -- and patch 0003 exposes
+# SDL_main instead of main on Android, so that link can only ever fail with
+#   ld.lld: error: undefined symbol: main
+for archive in $ENGINE_ARCHIVES; do
+    dir="$(dirname "$archive")"
+    base="$(basename "$archive")"
+    if ! make -C "$PIC/src/$dir" -j"$(nproc)" "$base" \
+            WARN_CFLAGS="-Wno-error" \
+            WARN_CXXFLAGS="-Wno-error" \
+            >> "$TMP/engine-build.log" 2>&1; then
+        echo "error: building src/$archive failed. Last errors:" >&2
+        grep -E "error:|Error [0-9]" "$TMP/engine-build.log" | tail -20 >&2
+        echo "(full log: $TMP/engine-build.log)" >&2
+        exit 1
+    fi
+done
+
+if ! make -C "$PIC/src" -j"$(nproc)" $ENGINE_TARGETS \
+        WARN_CFLAGS="-Wno-error" \
+        WARN_CXXFLAGS="-Wno-error" \
+        >> "$TMP/engine-build.log" 2>&1; then
+    echo "error: the engine build failed. Last errors:" >&2
+    grep -E "error:|Error [0-9]" "$TMP/engine-build.log" | tail -20 >&2
+    echo "(full log: $TMP/engine-build.log)" >&2
+    exit 1
+fi
 
 # ---------------------------------------------------------------- link
 # Pull the engine's own archive list and link flags. Same whole-archive

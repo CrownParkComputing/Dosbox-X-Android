@@ -28,6 +28,17 @@ class EmulatorControlStrip extends StatelessWidget {
   /// Terminates the session with no resume path. Null hides the button.
   final VoidCallback? onExit;
 
+  /// Click the left/right mouse button where the pointer already is.
+  ///
+  /// Separate from moving it, and that separation is the whole point. Touch
+  /// used to both move the pointer AND press the button, so there was no way
+  /// to move without clicking: every attempt to reposition dragged a
+  /// selection box across the desktop, and two repositions in a row read as a
+  /// double-click. Pointing and clicking are two different intentions and now
+  /// have two different controls.
+  final VoidCallback? onLeftClick;
+  final VoidCallback? onRightClick;
+
   /// Called before any button acts, so the shell can restart the countdown
   /// that hides this strip. Without it, using the toolbar would be the one
   /// interaction that did not keep the toolbar on screen -- pressing one
@@ -40,6 +51,8 @@ class EmulatorControlStrip extends StatelessWidget {
     this.onPause,
     this.onExit,
     this.onInteract,
+    this.onLeftClick,
+    this.onRightClick,
   });
 
   /// Wraps a button's action so any press counts as interaction.
@@ -70,9 +83,23 @@ class EmulatorControlStrip extends StatelessWidget {
           _StripButton(
             icon: Icons.mouse,
             active: ui.mouseMode,
-            tooltip: 'Trackpad mouse',
+            tooltip: 'Touch moves the pointer',
             onTap: _act(ui.toggleMouseMode),
           ),
+          if (onLeftClick != null)
+            _StripButton(
+              icon: Icons.ads_click,
+              active: false,
+              tooltip: 'Left click where the pointer is',
+              onTap: _act(onLeftClick!),
+            ),
+          if (onRightClick != null)
+            _StripButton(
+              icon: Icons.menu_open,
+              active: false,
+              tooltip: 'Right click where the pointer is',
+              onTap: _act(onRightClick!),
+            ),
           if (onPause != null)
             _StripButton(
               icon: Icons.pause,

@@ -61,6 +61,9 @@ class DosboxCoreService : Service() {
                         "x" to b.getDouble("x"),
                         "y" to b.getDouble("y"),
                         "down" to b.getBoolean("down"),
+                        "text" to b.getString("text"),
+                        "text2" to b.getString("text2"),
+                        "text3" to b.getString("text3"),
                     ),
                 )
             }

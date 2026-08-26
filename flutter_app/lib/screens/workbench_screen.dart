@@ -25,6 +25,7 @@ import '../services/game_importer.dart';
 import '../services/media_folder.dart';
 import '../services/zip_runner.dart';
 import '../services/emulator_input.dart';
+import '../services/engine_config.dart';
 import '../services/gamepad_service.dart';
 import '../services/library_scanner.dart';
 import '../theme/retrodosbox_theme.dart';
@@ -33,6 +34,7 @@ import '../widgets/emulator_control_strip.dart';
 import '../widgets/sidebar.dart';
 import '../widgets/sidebar_style.dart';
 import 'about_screen.dart';
+import 'why_not_windows_screen.dart';
 import 'compliance_screen.dart';
 import 'retrodosbox_config_screen.dart';
 import 'emulator_screen.dart';
@@ -393,6 +395,22 @@ class _WorkbenchScreenState extends State<WorkbenchScreen>
               ),
               onTap: () => Navigator.of(sheetContext).pop(_AddGameChoice.zip),
             ),
+            ListTile(
+              leading: const Icon(
+                Icons.storage,
+                color: RetroDosboxColors.textMuted2,
+              ),
+              title: const Text(
+                'Pick a disk image',
+                style: TextStyle(color: Colors.white, fontSize: 14),
+              ),
+              subtitle: const Text(
+                'A .vhd/.img hard disk -- e.g. a Windows 95/98 install',
+                style: RetroDosboxTextStyles.statusLine,
+              ),
+              onTap: () =>
+                  Navigator.of(sheetContext).pop(_AddGameChoice.diskImage),
+            ),
           ],
         ),
       ),
@@ -432,9 +450,17 @@ class _WorkbenchScreenState extends State<WorkbenchScreen>
         dialogTitle: 'Pick a game folder',
       );
     } else {
+      // A hard-disk image is picked by extension like a zip, but it is not
+      // unpacked: the file IS the disk, and GameImporter copies it into the
+      // games folder as a title in its own right. The extension list has to
+      // stay in step with LibraryScanner's, or the user picks a file that
+      // then fails to appear in the library.
+      final extensions = choice == _AddGameChoice.diskImage
+          ? const ['vhd', 'hdd', 'hdi', 'img', 'ima', 'dsk']
+          : const ['zip'];
       final result = await FilePicker.platform.pickFiles(
         type: FileType.custom,
-        allowedExtensions: ['zip'],
+        allowedExtensions: extensions,
       );
       if (result != null && result.files.isNotEmpty) {
         sourcePath = result.files.first.path;
@@ -465,9 +491,28 @@ class _WorkbenchScreenState extends State<WorkbenchScreen>
       );
       return;
     }
+    // An installed Windows is declined here, with the reason, rather than
+    // booted to a machine that reaches a desktop and then cannot run
+    // anything. See WhyNotWindowsScreen for the whole argument; the short
+    // version is that the only fast CPU core on ARM is the one DOSBox-X
+    // documents as incompatible with Windows 95 and later, so a Windows guest
+    // is stuck on the interpreter and every 3D title is a black screen with
+    // healthy audio.
+    if (RetroDosboxConfBuilder.looksLikeInstalledWindows(entry)) {
+      await WhyNotWindowsScreen.show(context);
+      return;
+    }
+
     final settings = _complianceMode
         ? const GameSettings(preset: CpuPreset.era80s)
         : await GameSettingsStore.instance.load(entry.slug);
+
+    // A booted disk image starts with the picture acting as a pointer
+    // surface: a guest that owns the whole machine has no on-screen chrome of
+    // ours to reach for. DOS titles keep the old default of off, because
+    // trackpad mode takes over the whole picture and would make a joystick
+    // game unplayable.
+    _emulatorUi.applyMouseDefault(entry.kind == GameKind.bootImage);
 
     // Archives get extracted into a per-title cache before conf building,
     // because the conf has to mount a real directory as C: and the zip is
@@ -816,6 +861,17 @@ class _WorkbenchScreenState extends State<WorkbenchScreen>
 
   /// Shows the in-game chrome and restarts its countdown.
   ///
+  /// Press and release a mouse button where the pointer already is.
+  ///
+  /// The release is queued immediately after the press rather than waiting
+  /// for a second tap: a button left held is the selection-box bug this
+  /// separation exists to kill, and a strip button the user has to press
+  /// twice to complete a click is not a click.
+  void _clickMouse(int button) {
+    _input.mouseButton(button, true);
+    _input.mouseButton(button, false);
+  }
+
   /// Called on every touch anywhere in the session, through a Listener that
   /// does not consume the event -- so the same tap that brings the toolbar
   /// back is still the tap the game receives. Anything else would make
@@ -1024,6 +1080,8 @@ class _WorkbenchScreenState extends State<WorkbenchScreen>
             const Spacer(),
             EmulatorControlStrip(
               ui: _emulatorUi,
+              onLeftClick: () => _clickMouse(0),
+              onRightClick: () => _clickMouse(1),
               onPause: _onSessionPause,
               onExit: _onSessionExit,
               onInteract: floating ? _pokeChrome : null,
@@ -1306,6 +1364,10 @@ class _WorkbenchScreenState extends State<WorkbenchScreen>
           return EmulatorScreen(
             key: _emulatorKey,
             ui: _emulatorUi,
+            // A booted guest OS is driven by its own pointer and nothing
+            // else, so the picture is a touch pointer for the whole session
+            // rather than waiting for the toolbar's mouse button.
+            absolutePointer: session.kind == GameKind.bootImage,
             core: widget.core,
             input: _input,
             title: session.title,
@@ -1337,7 +1399,9 @@ class _WorkbenchScreenState extends State<WorkbenchScreen>
           controllerConnected: _controllerConnected,
         );
       case WorkbenchTab.engine:
-        return RetroDosboxConfigScreen(core: widget.core);
+        return RetroDosboxConfigScreen(
+          config: EngineConfig.forSession(core: widget.core, input: _input),
+        );
       case WorkbenchTab.paths:
         if (_complianceMode) {
           return const Center(
@@ -1397,12 +1461,82 @@ class _GameDetailsSheet extends StatefulWidget {
 class _GameDetailsSheetState extends State<_GameDetailsSheet> {
   GameSettings _settings = const GameSettings();
 
+  /// Discs the engine can actually open, i.e. everything under the games
+  /// folder. Empty until the walk finishes, which is why the picker says so
+  /// rather than showing an empty list that looks like "none exist".
+  List<String>? _discs;
+
+  /// The CD shelf, for labelling discs by their place on it.
+  String? _cdsRoot;
+
   @override
   void initState() {
     super.initState();
     GameSettingsStore.instance.load(widget.entry.slug).then((s) {
       if (mounted) setState(() => _settings = s);
     });
+    GamesFolder.resolveCds().then((cds) async {
+      final found = await LibraryScanner.findDiscImages(cds);
+      if (mounted) {
+        setState(() {
+          _cdsRoot = cds;
+          _discs = found;
+        });
+      }
+    });
+  }
+
+  /// Offers every disc under the games folder, plus "no disc".
+  Future<void> _pickDisc() async {
+    final discs = _discs ?? const <String>[];
+    final chosen = await showModalBottomSheet<String>(
+      context: context,
+      backgroundColor: RetroDosboxColors.rootBackground,
+      isScrollControlled: true,
+      builder: (sheetContext) => SafeArea(
+        child: ListView(
+          shrinkWrap: true,
+          children: [
+            const Padding(
+              padding: EdgeInsets.fromLTRB(16, 16, 16, 8),
+              child: Text(
+                'Disc in the drive',
+                style: TextStyle(color: Colors.white, fontSize: 15),
+              ),
+            ),
+            if (discs.isEmpty)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+                child: Text(
+                  'No discs yet. Put .iso files in:\n${_cdsRoot ?? ''}',
+                  style: RetroDosboxTextStyles.statusLine,
+                ),
+              ),
+            ListTile(
+              dense: true,
+              leading: const Icon(Icons.eject, size: 18),
+              title: const Text(
+                'No disc',
+                style: TextStyle(fontSize: 13, color: Colors.white),
+              ),
+              onTap: () => Navigator.of(sheetContext).pop(''),
+            ),
+            for (final disc in discs)
+              ListTile(
+                dense: true,
+                leading: const Icon(Icons.album, size: 18),
+                title: Text(
+                  GamesFolder.discLabel(disc, _cdsRoot ?? ''),
+                  style: const TextStyle(fontSize: 13, color: Colors.white),
+                ),
+                onTap: () => Navigator.of(sheetContext).pop(disc),
+              ),
+          ],
+        ),
+      ),
+    );
+    if (chosen == null) return;
+    await _update(_settings.copyWith(cdImage: chosen));
   }
 
   Future<void> _update(GameSettings next) async {
@@ -1459,6 +1593,34 @@ class _GameDetailsSheetState extends State<_GameDetailsSheet> {
                     ),
                 ],
               ),
+            ),
+            // The disc in the drive.
+            ListTile(
+              dense: true,
+              contentPadding: EdgeInsets.zero,
+              leading: const Icon(
+                Icons.album,
+                size: 20,
+                color: RetroDosboxColors.textMuted2,
+              ),
+              title: const Text(
+                'Disc in the drive',
+                style: TextStyle(fontSize: 13, color: Colors.white),
+              ),
+              subtitle: Text(
+                _settings.cdImage.isEmpty
+                    ? (entry.discs.isEmpty
+                          ? 'No disc'
+                          : 'Whatever is beside the game '
+                                '(${entry.discs.length})')
+                    : GamesFolder.discLabel(
+                        _settings.cdImage,
+                        _cdsRoot ?? '',
+                      ),
+                style: RetroDosboxTextStyles.statusLine,
+              ),
+              trailing: const Icon(Icons.chevron_right, size: 18),
+              onTap: _pickDisc,
             ),
             SwitchListTile(
               value: _settings.voodoo,
@@ -1519,4 +1681,4 @@ class _GameDetailsSheetState extends State<_GameDetailsSheet> {
   }
 }
 
-enum _AddGameChoice { folder, zip }
+enum _AddGameChoice { folder, zip, diskImage }

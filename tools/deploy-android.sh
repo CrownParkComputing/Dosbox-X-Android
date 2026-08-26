@@ -162,7 +162,17 @@ fi
 # app replaces the legacy Java app in place, keeping its identity and data.
 # The MainActivity class lives in the Kotlin namespace, which is NOT the
 # package id, so the launch component spells both out.
+#
+# A DEBUG build carries .test on the end (applicationIdSuffix in
+# build.gradle.kts) so it installs beside the store app instead of demanding
+# the store app be uninstalled first -- which would take the user's game
+# library with it. The launch below has to name the same suffixed package, or
+# it starts the store app and the deploy silently "succeeds" while testing
+# the wrong build.
 PKG="com.dosboxx.app"
+if [ "$RELEASE" = 0 ]; then
+    PKG="com.dosboxx.app.test"
+fi
 MAIN_ACTIVITY="com.crownpark.retrodosbox.MainActivity"
 if [ "$DO_INSTALL" = 1 ]; then
     if [ -f "$APK" ]; then

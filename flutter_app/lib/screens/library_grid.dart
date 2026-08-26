@@ -2,6 +2,7 @@
 import 'package:flutter/material.dart';
 
 import '../data/game_entry.dart';
+import '../services/retrodosbox_conf_builder.dart';
 import '../theme/retrodosbox_theme.dart';
 import '../widgets/media_card.dart';
 
@@ -44,7 +45,6 @@ class _LibraryGridState extends State<LibraryGrid> {
   String _query = '';
 
   /// null means "All".
-  GameKind? _kindFilter;
 
   /// null means "All letters". Otherwise the first letter the title must
   /// start with (case-insensitive). Shown above the grid as A-Z tiles so the
@@ -56,7 +56,6 @@ class _LibraryGridState extends State<LibraryGrid> {
     final q = _query.trim().toLowerCase();
     final letter = _letterFilter;
     return widget.entries.where((e) {
-      if (_kindFilter != null && e.kind != _kindFilter) return false;
       if (letter != null) {
         final first = e.title.isEmpty ? '' : e.title[0].toLowerCase();
         // '#' is the catch-all bucket: digits (0-9) and any other
@@ -110,11 +109,6 @@ class _LibraryGridState extends State<LibraryGrid> {
 
   /// Only the kinds actually present, so the filter row never offers a tab
   /// that leads to an empty list.
-  List<GameKind> get _presentKinds {
-    final kinds = <GameKind>{for (final e in widget.entries) e.kind};
-    return GameKind.values.where(kinds.contains).toList(growable: false);
-  }
-
   @override
   Widget build(BuildContext context) {
     final filtered = _filtered;
@@ -124,7 +118,6 @@ class _LibraryGridState extends State<LibraryGrid> {
         _searchRow(),
         const SizedBox(height: 8),
         if (_presentLetters.length > 1) _letterRow(),
-        if (_presentKinds.length > 1) _kindRow(),
         _statusLine(filtered.length),
         const SizedBox(height: 4),
         Expanded(
@@ -184,26 +177,6 @@ class _LibraryGridState extends State<LibraryGrid> {
     );
   }
 
-  Widget _kindRow() {
-    final kinds = <GameKind?>[null, ..._presentKinds];
-    return SingleChildScrollView(
-      scrollDirection: Axis.horizontal,
-      child: Row(
-        children: [
-          for (final kind in kinds)
-            Padding(
-              padding: const EdgeInsets.only(right: 6, bottom: 8),
-              child: _KindChip(
-                label: kind?.label ?? 'All',
-                selected: _kindFilter == kind,
-                onTap: () => setState(() => _kindFilter = kind),
-              ),
-            ),
-        ],
-      ),
-    );
-  }
-
   Widget _letterRow() {
     final letters = _presentLetters;
     return SizedBox(
@@ -257,7 +230,7 @@ class _LibraryGridState extends State<LibraryGrid> {
     // Two genuinely different situations that must not look the same: an
     // empty library (set up your games folder) versus a filter that excludes
     // everything (clear the filter).
-    final filtering = _query.trim().isNotEmpty || _kindFilter != null;
+    final filtering = _query.trim().isNotEmpty;
     return Center(
       child: Padding(
         padding: const EdgeInsets.all(24),
@@ -345,7 +318,12 @@ class _LibraryGridState extends State<LibraryGrid> {
       case GameKind.floppyImage:
         return 'Boots FreeDOS demo';
       case GameKind.bootImage:
-        return 'Boots from image';
+        // An installed Windows says so up front. It will not be booted here
+        // (see WhyNotWindowsScreen), and a title that silently hangs is a far
+        // worse answer than one that explains itself before it is tapped.
+        return RetroDosboxConfBuilder.looksLikeInstalledWindows(entry)
+            ? 'Windows image - not supported'
+            : 'Boots MS-DOS';
       case GameKind.archive:
         // Archives are launched in place via ZipRunner; the user does not
         // need to import them first. The subtitle used to be "Needs
@@ -353,44 +331,6 @@ class _LibraryGridState extends State<LibraryGrid> {
         // were unlaunchable, and is now misleading.
         return 'Plays from zip';
     }
-  }
-}
-
-class _KindChip extends StatelessWidget {
-  final String label;
-  final bool selected;
-  final VoidCallback onTap;
-
-  const _KindChip({
-    required this.label,
-    required this.selected,
-    required this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(4),
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
-        decoration: BoxDecoration(
-          color: selected ? RetroDosboxColors.selectedFill : RetroDosboxColors.cardFill,
-          borderRadius: BorderRadius.circular(4),
-          border: Border.all(
-            color:
-                selected ? RetroDosboxColors.selectedStroke : RetroDosboxColors.cardStroke,
-          ),
-        ),
-        child: Text(
-          label,
-          style: TextStyle(
-            fontSize: 12,
-            color: selected ? Colors.white : RetroDosboxColors.textMuted,
-          ),
-        ),
-      ),
-    );
   }
 }
 

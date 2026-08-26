@@ -1,4 +1,6 @@
 // Where the games live, and (on Android) whether we are allowed to read them.
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 
 import '../services/app_prefs.dart';
@@ -50,6 +52,96 @@ class _PathsSettingsScreenState extends State<PathsSettingsScreen> {
     });
   }
 
+  /// Offers the app's own folder on each storage volume, before falling back
+  /// to picking an arbitrary directory.
+  ///
+  /// On a handheld whose internal partition is full and whose card has
+  /// hundreds of gigabytes free, this is the setting that matters, and a
+  /// generic folder picker does not surface it: the useful destination is a
+  /// path under Android/data that nobody would think to navigate to.
+  Future<void> _chooseVolume() async {
+    final roots = await GamesFolder.availableRoots();
+    if (!mounted) return;
+    if (roots.length < 2) {
+      await _pickGamesFolder();
+      return;
+    }
+
+    final free = <String, int?>{};
+    for (final r in roots) {
+      free[r] = await GamesFolder.freeSpaceBytes(r);
+    }
+    if (!mounted) return;
+
+    final chosen = await showModalBottomSheet<String>(
+      context: context,
+      backgroundColor: RetroDosboxColors.rootBackground,
+      isScrollControlled: true,
+      builder: (sheetContext) => SafeArea(
+        child: ListView(
+          shrinkWrap: true,
+          children: [
+            const Padding(
+              padding: EdgeInsets.fromLTRB(16, 16, 16, 8),
+              child: Text(
+                'Where to keep games',
+                style: TextStyle(color: Colors.white, fontSize: 15),
+              ),
+            ),
+            for (var i = 0; i < roots.length; i++)
+              ListTile(
+                dense: true,
+                leading: Icon(i == 0 ? Icons.phone_android : Icons.sd_card,
+                    size: 20),
+                title: Text(
+                  i == 0 ? 'Internal storage' : 'SD card',
+                  style: const TextStyle(fontSize: 13, color: Colors.white),
+                ),
+                subtitle: Text(
+                  '${_humanBytes(free[roots[i]])} free\n${roots[i]}',
+                  style: RetroDosboxTextStyles.statusLine,
+                ),
+                isThreeLine: true,
+                onTap: () => Navigator.of(sheetContext).pop(roots[i]),
+              ),
+            ListTile(
+              dense: true,
+              leading: const Icon(Icons.folder_open, size: 20),
+              title: const Text(
+                'Somewhere else...',
+                style: TextStyle(fontSize: 13, color: Colors.white),
+              ),
+              onTap: () => Navigator.of(sheetContext).pop(''),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (chosen == null || !mounted) return;
+    if (chosen.isEmpty) {
+      await _pickGamesFolder();
+      return;
+    }
+    await Directory(chosen).create(recursive: true);
+    await AppPrefs.setGamesFolderPath(chosen);
+    if (!mounted) return;
+    setState(() => _gamesFolder = chosen);
+    widget.onGamesFolderChanged();
+  }
+
+  static String _humanBytes(int? bytes) {
+    if (bytes == null) return 'Unknown space';
+    const units = <String>['B', 'KB', 'MB', 'GB', 'TB'];
+    var value = bytes.toDouble();
+    var unit = 0;
+    while (value >= 1024 && unit < units.length - 1) {
+      value /= 1024;
+      unit++;
+    }
+    return '${value.toStringAsFixed(value >= 10 || unit == 0 ? 0 : 1)}'
+        '${units[unit]}';
+  }
+
   Future<void> _pickGamesFolder() async {
     final result =
         await StorageAccess.instance.pickFolder(dialogTitle: 'Games folder');
@@ -85,7 +177,7 @@ class _PathsSettingsScreenState extends State<PathsSettingsScreen> {
               'one game; loose CD and disk images are titles in their own '
               'right.',
           action: TextButton(
-            onPressed: _pickGamesFolder,
+            onPressed: _chooseVolume,
             child: Text(_gamesFolder == null ? 'Choose' : 'Change'),
           ),
         ),

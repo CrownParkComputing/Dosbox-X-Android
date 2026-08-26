@@ -12,9 +12,11 @@
 // The conf file is the ONLY channel by which a title is launched: mounts,
 // machine type, cycles and the [autoexec] that runs the program all live in
 // it, which is why the bridge's start() takes nothing but a path to one.
+import 'dart:io';
 import 'package:path/path.dart' as p;
 
 import '../data/game_entry.dart';
+import 'disk_image.dart';
 import 'zip_runner.dart';
 
 class RetroDosboxConfBuilder {
@@ -53,11 +55,21 @@ class RetroDosboxConfBuilder {
             : entry.preferredLauncher);
     final programName = program == null ? null : p.basename(program);
 
+    /// The discs actually in the machine: the one the user chose first, then
+    /// whatever was found beside the title. Chosen first because it is the
+    /// deliberate one, and for a Windows guest the first disc gets the IDE
+    /// slot the guest's own driver looks at.
+    final discs = <String>[
+      if (settings.cdImage.trim().isNotEmpty) settings.cdImage.trim(),
+      for (final d in entry.discs)
+        if (d != settings.cdImage.trim()) d,
+    ];
+
     final autoexec = switch (entry.kind) {
-      GameKind.dosFolder => _dosFolderAutoexec(entry, program),
+      GameKind.dosFolder => _dosFolderAutoexec(entry, discs, program),
       GameKind.discImage => _discImageAutoexec(entry),
       GameKind.floppyImage => _floppyImageAutoexec(entry),
-      GameKind.bootImage => _bootImageAutoexec(entry),
+      GameKind.bootImage => _bootImageAutoexec(entry, discs),
       GameKind.archive => _archiveAutoexec(archiveSetup, program),
     };
 
@@ -134,6 +146,20 @@ class RetroDosboxConfBuilder {
     sb.writeln('[dosbox]');
     sb.writeln('machine=$machine');
     sb.writeln('memsize=32');
+    // Do not flock() the disk image.
+    //
+    // fopen_lock() opens the image "rb+" and then takes an exclusive flock;
+    // if the lock fails it CLOSES THE FILE and reports failure, so a disk
+    // image that is present, readable and byte-perfect comes back as "Could
+    // not open the specified VHD file". FUSE-backed storage does not support
+    // flock, which is exactly what an SD card is on Android -- so moving a
+    // library to the card made every bootable image unopenable while the same
+    // file worked from internal storage.
+    //
+    // What the lock buys is a guard against mounting one image read/write in
+    // two places at once. This app launches one machine at a time from its
+    // own folder, so there is no second mounter to guard against.
+    sb.writeln('locking disk image mount=false');
     // A capture directory per title, because the save slots hang off it.
     //
     // DOSBox-X writes a save state to <capture>/../save/<slot>.sav, so with
@@ -146,6 +172,9 @@ class RetroDosboxConfBuilder {
 
     sb.writeln('[cpu]');
     sb.writeln('core=$cpuCore');
+    // pentium_mmx for a Windows 9x guest: Windows 98 SE and a good deal of
+    // late-90s software probe CPUID for MMX and take a different (and in
+    // places the only tested) code path when they find it.
     sb.writeln('cputype=pentium');
     sb.writeln('cycles=$cycles');
     sb.writeln();
@@ -219,7 +248,11 @@ class RetroDosboxConfBuilder {
   // --- autoexec construction ----------------------------------------------
 
   /// Mount lines for an installed DOS game in a folder.
-  static List<String> _dosFolderAutoexec(GameEntry entry, String? program) {
+  static List<String> _dosFolderAutoexec(
+    GameEntry entry,
+    List<String> discs,
+    String? program,
+  ) {
     final lines = <String>[];
 
     // IndyCar Racing 2 asks DOS/4GW for its own path (DOS4G_GET_APPPATH) and
@@ -231,7 +264,7 @@ class RetroDosboxConfBuilder {
     final root = subdirMount ? p.dirname(entry.path) : entry.path;
 
     lines.add('mount c ${_quote(root)}');
-    lines.addAll(_discMountLines(entry.discs));
+    lines.addAll(_discMountLines(discs));
     lines.add('c:');
 
     if (program != null) {
@@ -268,16 +301,28 @@ class RetroDosboxConfBuilder {
     return lines;
   }
 
-  static List<String> _bootImageAutoexec(GameEntry entry) {
+  static List<String> _bootImageAutoexec(
+    GameEntry entry,
+    List<String> discs,
+  ) {
     // boot -l c hands the machine to the image's own boot sector, so no
     // mounting of C: and no autoexec beyond this line: everything after the
     // boot is the guest OS's business.
-    final lines = <String>['imgmount c ${_quote(entry.path)} -t hdd -fs none'];
+    //
+    // The drive is named by BIOS NUMBER, not by letter. `-fs none` attaches a
+    // raw BIOS disk rather than mounting a filesystem, and imgmount then
+    // rejects a letter outright -- "Must specify drive number (0 to 5)" --
+    // leaving the user at a DOSBox prompt with "BOOT: Failed to open disk
+    // image" underneath it. 2 is hda, the first hard disk, which `boot -l c`
+    // below then names by the letter the guest will see. The floppy path
+    // already had this right; this one did not.
+    final lines = <String>[
+      'imgmount 2 ${_quote(entry.path)} -t hdd -fs none',
+    ];
     var letter = 'd'.codeUnitAt(0);
-    for (final disc in entry.discs) {
+    for (final disc in discs) {
       lines.add(
-        'imgmount ${String.fromCharCode(letter)} '
-        '${_quote(disc)} -t iso',
+        'imgmount ${String.fromCharCode(letter)} ${_quote(disc)} -t iso',
       );
       if (letter < 'z'.codeUnitAt(0)) letter++;
     }
@@ -410,8 +455,22 @@ class RetroDosboxConfBuilder {
   /// The dynamic core is much faster but recompiles blocks, which some very
   /// old software defeats by writing to its own code. The 80s preset does not
   /// need the speed anyway.
-  static String _cpuCoreFor(GameSettings settings) =>
-      settings.preset == CpuPreset.era80s ? 'normal' : 'dynamic';
+  static String _cpuCoreFor(GameSettings settings) {
+    // Never the dynamic core on iOS. It recompiles x86 blocks into native
+    // code at runtime, and Apple does not permit an app to make memory both
+    // writable and executable -- the same wall that keeps every App Store
+    // emulator interpreter-only. Asking for it there is not slow, it is a
+    // core that cannot honour the request. The interpreter is the honest
+    // ceiling on that platform.
+    if (Platform.isIOS) return 'normal';
+
+    // The dynamic core is much faster but recompiles blocks, which some very
+    // old software defeats by writing to its own code. The 80s preset does not
+    // need the speed anyway.
+    if (settings.preset == CpuPreset.era80s) return 'normal';
+
+    return 'dynamic';
+  }
 
   /// The `cycles` value, which is the single most important compatibility knob
   /// DOSBox has.
@@ -502,6 +561,25 @@ class RetroDosboxConfBuilder {
   /// executable name announcing itself as a 3dfx build.
   static bool _defaultVoodoo(String? programName) =>
       _isVoodooProgram(programName);
+
+  /// The smallest image that looks like an installed operating system
+  /// rather than a DOS boot disk.
+  ///
+  /// A period DOS boot disk is tens of megabytes; the smallest usable
+  /// Windows 98 SE install is several hundred. 300MB sits in the empty space
+  /// between the two.
+  static const int _installedOsMinBytes = 300 * 1024 * 1024;
+
+  /// Whether this image looks like an installed Windows rather than DOS.
+  ///
+  /// Nothing in the generated conf depends on this -- the machine is the same
+  /// either way. It exists so the library can SAY so, because a Windows image
+  /// that boots to a hang is a far worse answer than one the app declines up
+  /// front and explains. See WhyNotWindowsScreen.
+  static bool looksLikeInstalledWindows(GameEntry entry) {
+    if (entry.kind != GameKind.bootImage) return false;
+    return DiskImage.virtualSize(entry.path) >= _installedOsMinBytes;
+  }
 
   /// Quotes a path for the DOS command line.
   ///

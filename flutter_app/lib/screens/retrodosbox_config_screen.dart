@@ -12,16 +12,25 @@
 // is correct by construction for whatever core it is linked against, at the
 // cost of the UI being generic -- which is why the per-property help text is
 // shown rather than hidden behind a tap.
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../ffi/retrodosbox_core.dart';
+import '../services/engine_config.dart';
 import '../theme/retrodosbox_theme.dart';
 
 class RetroDosboxConfigScreen extends StatefulWidget {
-  final RetroDosboxCore core;
+  /// Where the engine's configuration lives.
+  ///
+  /// Not the core object: on Android the engine is in another process and the
+  /// launcher's core is an idle handle that reports no sections at all, which
+  /// is why this screen used to say "No running session" over a running game.
+  /// See EngineConfig.
+  final EngineConfig config;
 
-  const RetroDosboxConfigScreen({super.key, required this.core});
+  const RetroDosboxConfigScreen({super.key, required this.config});
 
   @override
   State<RetroDosboxConfigScreen> createState() => _DosConfigScreenState();
@@ -63,8 +72,9 @@ class _DosConfigScreenState extends State<RetroDosboxConfigScreen> {
     super.dispose();
   }
 
-  void _reloadSections() {
-    final sections = widget.core.configSections();
+  Future<void> _reloadSections() async {
+    final sections = await widget.config.sections();
+    if (!mounted) return;
     setState(() {
       _sections = sections;
       // Keep the current selection across a refresh when it still exists,
@@ -74,14 +84,15 @@ class _DosConfigScreenState extends State<RetroDosboxConfigScreen> {
         _section = sections.isEmpty ? null : sections.first;
       }
     });
-    _reloadProperties();
+    await _reloadProperties();
   }
 
-  void _reloadProperties() {
+  Future<void> _reloadProperties() async {
     final section = _section;
     final props = section == null
         ? const <RetroDosboxConfigProperty>[]
-        : widget.core.configSectionProperties(section);
+        : await widget.config.properties(section);
+    if (!mounted) return;
     _disposeControllers();
     setState(() => _properties = props);
   }
@@ -108,17 +119,18 @@ class _DosConfigScreenState extends State<RetroDosboxConfigScreen> {
       _rejected.clear();
       _saveMessage = null;
     });
-    _reloadProperties();
+    unawaited(_reloadProperties());
   }
 
   /// Applies one property and re-reads the section, so what is on screen is
   /// always the engine's opinion of the value rather than the one typed --
   /// DOSBox-X normalises some values (case, units, clamped ranges) even when
   /// it accepts them.
-  void _apply(RetroDosboxConfigProperty property, String value) {
+  Future<void> _apply(RetroDosboxConfigProperty property, String value) async {
     final section = _section;
     if (section == null) return;
-    final ok = widget.core.configSet(section, property.name, value);
+    final ok = await widget.config.set(section, property.name, value);
+    if (!mounted) return;
     setState(() {
       if (ok) {
         _rejected.remove(property.name);
@@ -126,17 +138,24 @@ class _DosConfigScreenState extends State<RetroDosboxConfigScreen> {
         _rejected.add(property.name);
       }
     });
-    _reloadProperties();
+    await _reloadProperties();
   }
 
-  void _save() {
-    final ok = widget.core.configSave();
+  Future<void> _save() async {
+    final ok = await widget.config.save();
+    if (!mounted) return;
     setState(() {
       _saveFailed = !ok;
       _saveMessage = ok
           ? 'Configuration written to the active .conf file.'
-          : 'The engine could not write the config file. Settings you have '
-              'changed are still live for this session.';
+          : widget.config.canSave
+              ? 'The engine could not write the config file. Settings you '
+                  'have changed are still live for this session.'
+              // The engine is in another process and nothing comes back from
+              // it, so claiming a successful write would be a guess.
+              : 'Saving to the .conf file is not available while the engine '
+                  'runs in its own process. Your changes are live for this '
+                  'session; set them per title to make them stick.';
     });
   }
 
@@ -166,7 +185,7 @@ class _DosConfigScreenState extends State<RetroDosboxConfigScreen> {
       return Switch(
         value: on,
         activeThumbColor: RetroDosboxColors.accentAmber,
-        onChanged: (v) => _apply(property, v ? 'true' : 'false'),
+        onChanged: (v) => unawaited(_apply(property, v ? 'true' : 'false')),
       );
     }
 
@@ -194,7 +213,7 @@ class _DosConfigScreenState extends State<RetroDosboxConfigScreen> {
         ],
         onChanged: (v) {
           if (v == null) return;
-          _apply(property, v);
+          unawaited(_apply(property, v));
         },
       );
     }
@@ -232,7 +251,7 @@ class _DosConfigScreenState extends State<RetroDosboxConfigScreen> {
         // Committed on submit rather than on every keystroke: pushing a
         // half-typed number into the running engine would apply nonsense
         // values (and be rejected) on the way to the intended one.
-        onSubmitted: (v) => _apply(property, v),
+        onSubmitted: (v) => unawaited(_apply(property, v)),
       ),
     );
   }
@@ -291,7 +310,7 @@ class _DosConfigScreenState extends State<RetroDosboxConfigScreen> {
             Align(
               alignment: Alignment.centerLeft,
               child: TextButton(
-                onPressed: () => _apply(property, property.defaultValue),
+                onPressed: () => unawaited(_apply(property, property.defaultValue)),
                 style: TextButton.styleFrom(
                   padding: const EdgeInsets.symmetric(horizontal: 4),
                   minimumSize: Size.zero,
@@ -363,7 +382,7 @@ class _DosConfigScreenState extends State<RetroDosboxConfigScreen> {
                   foregroundColor: RetroDosboxColors.accentTeal,
                   side: const BorderSide(color: RetroDosboxColors.accentTeal),
                 ),
-                onPressed: _reloadSections,
+                onPressed: () => unawaited(_reloadSections()),
               ),
             ],
           ),

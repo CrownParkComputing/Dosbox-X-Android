@@ -42,9 +42,24 @@
  * thread-safe. It runs on its own pthread, started by dosbox_core_start().
  * Every function here that mutates emulator state is therefore either
  *   (a) an atomic flag the mainloop reads, or
- *   (b) a mailbox request the mainloop drains at a frame boundary,
+ *   (b) a mailbox request the mainloop drains at a safe point,
  * never a direct call into the core. Functions documented as SYNCHRONOUS
  * block the caller on a condvar until the mainloop reports back.
+ *
+ * There are TWO drain points, and the second one is not redundant. The
+ * obvious one is the frame boundary (the patched OUTPUT_GAMELINK_Transfer).
+ * The other is the patched GFX_Events(), which Normal_Loop calls every tick
+ * whether or not anything was drawn.
+ *
+ * The frame boundary alone is not enough because DOSBox-X publishes a frame
+ * only when the picture changes. A DOS program effectively always changes
+ * something, so this was invisible for years -- but a booted guest OS
+ * (Windows 95/98) sitting on an idle desktop changes nothing at all. With
+ * only the frame hook the queue then stopped being drained entirely: no
+ * keys, no mouse, no pause, no save-state, no quit. And because input is
+ * precisely what would have changed the picture, the machine could never be
+ * woken again. dosbox_core_stop() timed out against a mainloop still
+ * executing guest code, and the process crashed on the way out.
  */
 #ifndef DOSBOX_MULTIPLATFORM_DOSBOX_BRIDGE_H
 #define DOSBOX_MULTIPLATFORM_DOSBOX_BRIDGE_H
@@ -117,6 +132,29 @@ int32_t dosbox_core_start(const char *conf_path);
  * process restart, which is all the Android app this replaces had anyway).
  */
 int32_t dosbox_core_stop(void);
+
+/* ------------------------------------------------------------------------ */
+/* Removable media                                                          */
+/* ------------------------------------------------------------------------ */
+
+/* Put a CD image in the drive of a RUNNING machine, replacing whatever is in
+ * it. Pass NULL or "" to open the door with nothing new in it.
+ *
+ * Works while a guest OS is running, which mounting at boot cannot: after
+ * `boot -l c` there is no DOSBox-X shell left to issue another IMGMOUNT to.
+ * This reaches the emulated drive directly and then tells the guest the
+ * medium changed, so Windows' auto-insert notification fires exactly as it
+ * would for a real disc -- after the configured insertion delay, not
+ * instantly.
+ *
+ * The drive is the one the Windows profile mounts CDs on: secondary master,
+ * `-ide 2m`. A title launched without any CD has no such drive and the call
+ * reports failure rather than inventing one mid-session, because a drive
+ * appearing out of nowhere is not something a 1998 OS copes with.
+ *
+ * ASYNCHRONOUS: returns once the request is queued, not once the disc is in.
+ * Returns DOSBOX_ERR_NOT_RUNNING if no session is running. */
+int32_t dosbox_core_cd_insert(const char *iso_path);
 
 /* 1 if the mainloop is running, 0 otherwise. */
 int32_t dosbox_core_is_running(void);

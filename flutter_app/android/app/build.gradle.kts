@@ -177,6 +177,23 @@ android {
     }
 
     buildTypes {
+        debug {
+            // Debug builds install BESIDE the Play Store app, never over it.
+            //
+            // The store build of com.dosboxx.app is signed with the upload
+            // key and carries the user's game library. A debug APK is signed
+            // with the debug key, so `adb install` refuses it outright
+            // ("signatures do not match newer version") and the only way to
+            // force it through is to uninstall the store app -- which takes
+            // the library with it. The suffix sidesteps the whole question,
+            // and matches what the legacy Java app already did.
+            //
+            // The .test app gets its own external files directory, so it
+            // starts with an empty library. That is the point: it is a test
+            // install, not a second copy of the user's setup.
+            applicationIdSuffix = ".test"
+            versionNameSuffix = "-test"
+        }
         release {
             // R8 runs on release. Without proguard-rules.pro it strips the
             // SDL Java methods that libSDL2.so resolves by name at

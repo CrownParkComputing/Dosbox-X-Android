@@ -85,4 +85,12 @@ class GameSettingsStore {
       if (!_cache.containsKey(slug)) await load(slug);
     }
   }
+
+  /// Settings for [slug] without waiting, for callers that cannot be async.
+  ///
+  /// Returns the defaults when [preload] has not reached this title yet,
+  /// which is the right answer for a badge: it is what the title would launch
+  /// with at that moment anyway, and the grid rebuilds once the scan (and the
+  /// preload that follows it) completes.
+  GameSettings cached(String slug) => _cache[slug] ?? const GameSettings();
 }

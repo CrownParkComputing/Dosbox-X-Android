@@ -16,9 +16,17 @@ SRC="${DOSBOX_X_SRC:-$HOME/dosbox-x-src}"
 DEST="${DOSBOX_X_PIC:-$HOME/dosbox-x-pic}"
 JOBS="${JOBS:-$(nproc)}"
 
-[ -d "$SRC/.git" ] || { echo "error: $SRC is not a git checkout" >&2; exit 1; }
-
+# The source tree is only needed to CREATE the clone. Once $DEST exists this
+# script's remaining job -- detecting an Android-configured tree, reconfiguring
+# it for the host, and rebuilding -- needs nothing from $SRC, and demanding it
+# anyway turns a missing source checkout into "the host core cannot be built at
+# all". $SRC has in fact gone missing on this machine; the clone at $DEST is
+# now the only copy.
 if [ ! -d "$DEST" ]; then
+    [ -d "$SRC/.git" ] || {
+        echo "error: no tree at $DEST, and $SRC is not a git checkout to clone from" >&2
+        exit 1
+    }
     echo "==> cloning $SRC -> $DEST"
     git clone -l "$SRC" "$DEST"
 fi

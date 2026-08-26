@@ -15,6 +15,8 @@
 // window: the engine renders offscreen, publishes into the mapping, and the
 // launcher draws it in its own panel, under its own controls. See
 // dosbox_core_set_shared_frame.
+import 'dart:async';
+
 import 'dart:ffi';
 
 import 'package:ffi/ffi.dart';
@@ -22,6 +24,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
 
 import 'ffi/retrodosbox_native_paths.dart';
+import 'services/engine_config.dart';
 
 import 'ffi/retrodosbox_bindings.dart';
 import 'ffi/retrodosbox_core.dart';
@@ -100,6 +103,19 @@ void _input(Map<String, Object?> event) {
       core.keyEvent(a, down);
     case 'mouseMotion':
       core.mouseMotion(a, b);
+    case 'cdInsert':
+      core.cdInsert(event['text'] as String? ?? '');
+    case 'configSet':
+      core.configSet(
+        event['text'] as String? ?? '',
+        event['text2'] as String? ?? '',
+        event['text3'] as String? ?? '',
+      );
+    case 'mousePosition':
+      core.mousePosition(
+        (event['x'] as num?)?.toDouble() ?? 0,
+        (event['y'] as num?)?.toDouble() ?? 0,
+      );
     case 'mouseButton':
       core.mouseButton(a, down);
     case 'joystick':
@@ -177,5 +193,30 @@ Future<bool> _start({
   debugPrint('dosbox-core: start -> $started');
   if (started != RetroDosboxResult.ok) return false;
   _core = core;
+
+  // Publish what this engine knows about itself, so the launcher's settings
+  // screen has something to render. It cannot ask us -- the channel only runs
+  // one way -- so we tell it, once, where it knows to look. See EngineConfig.
+  //
+  // Deferred rather than immediate: start() is asynchronous and the config
+  // system is not fully populated until the machine has actually come up.
+  // Asking too early yields an empty section list, which the launcher would
+  // cache as "this engine has no settings".
+  unawaited(_publishConfigWhenReady(core));
   return true;
+}
+
+/// Waits for the machine to be up, then writes the config dump.
+///
+/// Polling rather than a callback because the bridge offers no "started"
+/// signal beyond is_running, and bounded because a machine that never comes
+/// up must not leave a task waiting on it for the life of the process.
+Future<void> _publishConfigWhenReady(RetroDosboxCore core) async {
+  for (var i = 0; i < 100; i++) {
+    await Future<void>.delayed(const Duration(milliseconds: 100));
+    if (!core.isRunning) continue;
+    if (core.configSections().isEmpty) continue;
+    await publishEngineConfig(core);
+    return;
+  }
 }

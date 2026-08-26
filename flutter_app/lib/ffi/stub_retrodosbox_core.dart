@@ -104,6 +104,17 @@ class StubRetroDosboxCore implements RetroDosboxCore {
     return RetroDosboxResult.ok;
   }
 
+  /// Discs inserted this session, so a test can assert what reached the
+  /// drive without a real emulator behind it.
+  final List<String> insertedDiscs = <String>[];
+
+  @override
+  int cdInsert(String isoPath) {
+    if (!_running) return RetroDosboxResult.notRunning;
+    insertedDiscs.add(isoPath);
+    return RetroDosboxResult.ok;
+  }
+
   @override
   int saveState(int slot) {
     if (!_running) return RetroDosboxResult.notRunning;

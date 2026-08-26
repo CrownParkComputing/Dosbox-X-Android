@@ -78,6 +78,14 @@ abstract class RetroDosboxCore {
   /// Types [line] into the DOS shell and presses Enter.
   int sendCommand(String line);
 
+  /// Put a CD image in the drive of the RUNNING machine, replacing whatever
+  /// is there. An empty path opens the door with nothing new in it.
+  ///
+  /// Unlike mounting at boot this works under a guest OS, which has no
+  /// DOSBox-X shell left to take an IMGMOUNT. Asynchronous: the guest sees
+  /// the new disc after its insertion delay, as it would a real one.
+  int cdInsert(String isoPath);
+
   // --- Save states ---------------------------------------------------------
 
   /// DOSBox-X's save states are slot-based, not path-based (class SaveState
@@ -192,6 +200,18 @@ class RetroDosboxConfigProperty {
     required this.help,
     required this.values,
   });
+
+  /// A copy with a new value, for reflecting a change the caller just made
+  /// without re-reading the whole config.
+  RetroDosboxConfigProperty copyWith({String? value}) =>
+      RetroDosboxConfigProperty(
+        name: name,
+        type: type,
+        value: value ?? this.value,
+        defaultValue: defaultValue,
+        help: help,
+        values: values,
+      );
 
   factory RetroDosboxConfigProperty.fromJson(Map<String, dynamic> json) {
     return RetroDosboxConfigProperty(

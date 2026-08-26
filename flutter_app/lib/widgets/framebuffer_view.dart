@@ -26,14 +26,48 @@ import '../services/video_settings.dart';
 ///    rather than assuming 4:3. DOS modes are frequently non-square-pixel
 ///    (320x200 displayed as 4:3) and frequently not (320x240 displayed
 ///    square), and there is no single correct constant.
+/// Where a finger landed on the picture, as a fraction of the picture in
+/// each axis: (0,0) is the top-left of the emulated screen and (1,1) the
+/// bottom-right, whatever the picture has been scaled, letterboxed, rotated
+/// or bezelled to.
+/// A finger sliding. Reports how far it moved, already converted into
+/// EMULATED pixels -- only this widget knows the scale between the picture on
+/// screen and the guest's own resolution.
+typedef FramebufferTouchMove = void Function(Offset deltaEmulatedPixels);
+
+/// A finger landing, with how many are now down on the picture.
+///
+/// The count is what separates a one-finger tap from a two-finger one, and it
+/// has to come from here: the raw Listener is the only thing that sees every
+/// pointer, and Flutter's multi-tap gesture recognisers would put the whole
+/// arena back in the path this deliberately avoids.
+typedef FramebufferTouchDown = void Function(Offset normalized, int pointers);
+
 class FramebufferView extends StatefulWidget {
   final RetroDosboxCore core;
   final Duration pollInterval;
+
+  /// Touch on the picture itself, reported in picture-relative coordinates.
+  ///
+  /// These live HERE rather than in a GestureDetector wrapped around this
+  /// widget because only this widget knows where the picture actually ended
+  /// up. It is centred, letterboxed to one of four aspect modes, optionally
+  /// bezelled and optionally rotated, and the emulated screen occupies a
+  /// different rectangle in each case. A caller outside would have to
+  /// reproduce all of that to turn a finger into a pixel, and would be wrong
+  /// the moment any of it changed. Attached directly to the painter, the
+  /// local coordinate space IS the emulated screen.
+  final FramebufferTouchDown? onTouchDown;
+  final FramebufferTouchMove? onTouchMove;
+  final void Function(int pointers)? onTouchUp;
 
   const FramebufferView({
     super.key,
     required this.core,
     this.pollInterval = const Duration(milliseconds: 16), // ~60fps
+    this.onTouchDown,
+    this.onTouchMove,
+    this.onTouchUp,
   });
 
   @override
@@ -41,6 +75,14 @@ class FramebufferView extends StatefulWidget {
 }
 
 class _FramebufferViewState extends State<FramebufferView> {
+  /// Fingers currently down on the picture, by pointer id. A set rather than
+  /// a counter so a cancelled or lost pointer cannot leave the tally wrong.
+  final Set<int> _pointers = <int>{};
+
+  /// Where the finger was last seen, for turning absolute touch positions
+  /// into the relative movement a PS/2 mouse actually reports.
+  Offset? _lastLocal;
+
   ui.Image? _image;
   Timer? _timer;
   bool _decoding = false;
@@ -134,14 +176,16 @@ class _FramebufferViewState extends State<FramebufferView> {
           size: Size(_lastW.toDouble(), _lastH.toDouble()),
         );
 
+        final touchable = _touchLayer(painter);
+
         Widget picture;
         switch (settings.aspect) {
           case AspectMode.stretch:
-            picture = SizedBox.expand(child: painter);
+            picture = SizedBox.expand(child: touchable);
           case AspectMode.square:
             picture = AspectRatio(
               aspectRatio: _lastH == 0 ? 4 / 3 : _lastW / _lastH,
-              child: painter,
+              child: touchable,
             );
           case AspectMode.integer:
             picture = LayoutBuilder(builder: (context, constraints) {
@@ -150,12 +194,12 @@ class _FramebufferViewState extends State<FramebufferView> {
                 child: SizedBox(
                   width: _lastW * scale,
                   height: _lastH * scale,
-                  child: painter,
+                  child: touchable,
                 ),
               );
             });
           case AspectMode.authentic:
-            picture = AspectRatio(aspectRatio: _lastAspect, child: painter);
+            picture = AspectRatio(aspectRatio: _lastAspect, child: touchable);
         }
 
         if (settings.bezel) picture = _Bezel(child: picture);
@@ -167,6 +211,81 @@ class _FramebufferViewState extends State<FramebufferView> {
         }
         return picture;
       },
+    );
+  }
+
+  /// Wraps the picture in a raw pointer listener when anyone is interested.
+  ///
+  /// Listener rather than GestureDetector, deliberately. A touchscreen
+  /// pointer is not a gesture to be recognised and arbitrated: every touch is
+  /// meaningful the instant it lands, and it must not be withheld while
+  /// Flutter decides whether it might become a tap, a drag or a scroll. The
+  /// gesture-arena version of this lost the very first movement of every
+  /// touch to the drag threshold and cancelled taps that turned into drags.
+  Widget _touchLayer(Widget painter) {
+    if (widget.onTouchDown == null &&
+        widget.onTouchMove == null &&
+        widget.onTouchUp == null) {
+      return painter;
+    }
+    // The LayoutBuilder is what makes the arithmetic below correct: its
+    // constraints are the picture's own box, and PointerEvent.localPosition
+    // is relative to the Listener inside it. Measuring the FramebufferView
+    // instead would divide by the letterboxed outer area and put the pointer
+    // in the wrong place in every aspect mode but stretch.
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final size = constraints.biggest;
+        return Listener(
+          behavior: HitTestBehavior.opaque,
+          onPointerDown: (e) {
+            _pointers.add(e.pointer);
+            _lastLocal = e.localPosition;
+            widget.onTouchDown
+                ?.call(_normalise(e.localPosition, size), _pointers.length);
+          },
+          onPointerMove: (e) {
+            final previous = _lastLocal;
+            _lastLocal = e.localPosition;
+            if (previous == null || size.width <= 0 || size.height <= 0) {
+              return;
+            }
+            // Picture pixels -> emulated pixels. A 640x480 guest drawn at
+            // 1440 wide moves the pointer 640/1440 of a pixel per pixel of
+            // finger, which is what makes the pointer track the finger at
+            // whatever scale the picture happens to be drawn.
+            final d = e.localPosition - previous;
+            widget.onTouchMove?.call(Offset(
+              d.dx * _lastW / size.width,
+              d.dy * _lastH / size.height,
+            ));
+          },
+          onPointerUp: (e) {
+            _pointers.remove(e.pointer);
+            if (_pointers.isEmpty) _lastLocal = null;
+            widget.onTouchUp?.call(_pointers.length);
+          },
+          onPointerCancel: (e) {
+            _pointers.remove(e.pointer);
+            if (_pointers.isEmpty) _lastLocal = null;
+            widget.onTouchUp?.call(_pointers.length);
+          },
+          child: painter,
+        );
+      },
+    );
+  }
+
+  /// Local pixels -> fraction of the picture, clamped so a finger that slides
+  /// off the edge holds the pointer against that edge instead of asking for a
+  /// position outside the screen.
+  static Offset _normalise(Offset local, Size size) {
+    if (!size.isFinite || size.width <= 0 || size.height <= 0) {
+      return Offset.zero;
+    }
+    return Offset(
+      (local.dx / size.width).clamp(0.0, 1.0),
+      (local.dy / size.height).clamp(0.0, 1.0),
     );
   }
 

@@ -84,6 +84,9 @@ class EmulatorProcess {
     double x = 0,
     double y = 0,
     bool down = false,
+    String text = '',
+    String text2 = '',
+    String text3 = '',
   }) {
     if (!isSupported) return;
     _channel.invokeMethod<bool>('emulatorInput', <String, Object>{
@@ -93,6 +96,11 @@ class EmulatorProcess {
       'x': x,
       'y': y,
       'down': down,
+      // Carries a path for disc changes. Everything else on this channel is
+      // numeric; a String is the one thing a mouse or a key never needs.
+      'text': text,
+      'text2': text2,
+      'text3': text3,
     }).catchError((Object _) => false);
   }
 

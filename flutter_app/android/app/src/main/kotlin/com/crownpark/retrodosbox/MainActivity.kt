@@ -51,12 +51,34 @@ class MainActivity : FlutterActivity(), GamepadsCompatibleActivity {
     private var emulatorBound = false
 
     private val emulatorConnection = object : ServiceConnection {
+        override fun onBindingDied(name: ComponentName?) {
+            // Distinct from onServiceDisconnected and NOT implied by it:
+            // Android calls this one when the binding itself is beyond
+            // recovery, and leaving emulatorBound set here strands the next
+            // session exactly the same way.
+            onEmulatorBindingLost()
+        }
+
+        override fun onNullBinding(name: ComponentName?) {
+            onEmulatorBindingLost()
+        }
+
         override fun onServiceConnected(name: ComponentName?, binder: IBinder?) {
             emulatorInbox = binder?.let { Messenger(it) }
         }
 
         override fun onServiceDisconnected(name: ComponentName?) {
-            emulatorInbox = null
+            // Dropping the whole binding, not just the messenger.
+            //
+            // Ending a session ends the engine process by design, so this
+            // fires after every game. The messenger going null is expected;
+            // what is not survivable is emulatorBound STAYING true, because
+            // bindEmulator() early-returns on it and would then never bind
+            // again. The next session starts with a null inbox, and
+            // sendEmulatorInput drops every event on the floor without a
+            // sound -- a game that renders, plays sound, and ignores the
+            // player. Only the first session after a cold start worked.
+            unbindEmulator()
         }
     }
 
@@ -323,10 +345,13 @@ class MainActivity : FlutterActivity(), GamepadsCompatibleActivity {
         )
     }
 
+    /** Also invoked when the binding dies outright rather than disconnecting. */
+    private fun onEmulatorBindingLost() = unbindEmulator()
+
     private fun unbindEmulator() {
+        emulatorInbox = null
         if (!emulatorBound) return
         emulatorBound = false
-        emulatorInbox = null
         try {
             unbindService(emulatorConnection)
         } catch (_: IllegalArgumentException) {
@@ -345,6 +370,10 @@ class MainActivity : FlutterActivity(), GamepadsCompatibleActivity {
             putDouble("x", call.argument<Double>("x") ?: 0.0)
             putDouble("y", call.argument<Double>("y") ?: 0.0)
             putBoolean("down", call.argument<Boolean>("down") ?: false)
+            // A disc path. Numeric for everything else on this channel.
+            putString("text", call.argument<String>("text") ?: "")
+            putString("text2", call.argument<String>("text2") ?: "")
+            putString("text3", call.argument<String>("text3") ?: "")
         }
         return try {
             inbox.send(message)

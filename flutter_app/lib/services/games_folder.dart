@@ -20,6 +20,16 @@ class GamesFolder {
   /// on the desktop.
   static const String folderName = 'Retro-DosBox';
 
+  /// Where CD images live, inside the games folder.
+  ///
+  /// A folder of their own rather than loose among the games, for two
+  /// reasons. The library scan skips it, so a shelf of ISOs does not turn
+  /// into a shelf of bogus "titles" -- a disc is something you put IN a
+  /// machine, not something you launch. And the disc pickers have one place
+  /// to browse, so "which discs do I have" has an answer that does not
+  /// depend on which game folder someone happened to drop them in.
+  static const String cdFolderName = 'CDs';
+
   /// The user's chosen folder, or the default, created if it does not exist.
   ///
   /// Never returns null: an empty library is a normal state, but "no folder at
@@ -32,6 +42,65 @@ class GamesFolder {
     final path = await defaultPath();
     await Directory(path).create(recursive: true);
     return path;
+  }
+
+  /// Every storage volume this app can put its games folder on, most
+  /// spacious last-resort-free first.
+  ///
+  /// These are the app's OWN directories on each volume
+  /// (`Android/data/<pkg>/files`), which is the one place on a removable card
+  /// that needs no permission at all -- not the SAF document tree, whose
+  /// paths the engine process frequently cannot open, and not the public
+  /// root, which needs all-files access this app deliberately does not ask
+  /// for. On a handheld with a full internal partition and a large card,
+  /// this is the difference between a library that fits and one that does
+  /// not.
+  ///
+  /// The first entry is the primary (internal) volume, matching
+  /// [defaultPath]. Empty on platforms with only one place to put things.
+  static Future<List<String>> availableRoots() async {
+    if (!Platform.isAndroid) return const <String>[];
+    final dirs = await getExternalStorageDirectories();
+    if (dirs == null || dirs.length < 2) return const <String>[];
+    return dirs.map((d) => p.join(d.path, folderName)).toList(growable: false);
+  }
+
+  /// Free space on the volume holding [path], in bytes, or null when it
+  /// cannot be determined. Shown beside each choice, because "which of these
+  /// two identical-looking paths do I want" is only answerable by size.
+  static Future<int?> freeSpaceBytes(String path) async {
+    try {
+      final out = await Process.run('df', <String>['-k', path]);
+      if (out.exitCode != 0) return null;
+      final lines = (out.stdout as String).trim().split('\n');
+      if (lines.length < 2) return null;
+      final cols = lines.last.split(RegExp(r'\s+'));
+      // df -k: Filesystem 1K-blocks Used Available ...
+      if (cols.length < 4) return null;
+      final kb = int.tryParse(cols[3]);
+      return kb == null ? null : kb * 1024;
+    } on ProcessException {
+      return null;
+    }
+  }
+
+  /// The CD folder, created if it does not exist.
+  ///
+  /// Created rather than merely resolved: an empty folder sitting there is
+  /// how the user discovers where discs are meant to go. A path named in a
+  /// message they have to create by hand is a path most people never create.
+  static Future<String> resolveCds() async {
+    final path = p.join(await resolve(), cdFolderName);
+    await Directory(path).create(recursive: true);
+    return path;
+  }
+
+  /// How a disc should read in a picker: its path relative to the CD shelf,
+  /// so a shelf organised into subfolders still tells you which is which.
+  /// Falls back to the bare filename for a disc from anywhere else.
+  static String discLabel(String discPath, String cdsRoot) {
+    final rel = p.relative(discPath, from: cdsRoot);
+    return rel.startsWith('..') ? p.basename(discPath) : rel;
   }
 
   /// The default location, without creating it.

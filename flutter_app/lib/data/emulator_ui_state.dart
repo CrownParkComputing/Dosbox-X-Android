@@ -23,6 +23,12 @@ class EmulatorUiState extends ChangeNotifier {
   /// because a controller was plugged in.
   bool _padChosen = false;
 
+  /// The same, for trackpad mouse. A Windows guest turns it on by default --
+  /// a desktop is unusable without a pointer, and there is nothing else a
+  /// touch could sensibly mean there -- but a player who turns it off has
+  /// said what they want, and relaunching the panel must not argue.
+  bool _mouseChosen = false;
+
   bool get keyboardVisible => _keyboardVisible;
   bool get mouseMode => _mouseMode;
   bool get padVisible => _padVisible;
@@ -53,8 +59,25 @@ class EmulatorUiState extends ChangeNotifier {
     padVisible = value;
   }
 
+  /// Whether this title wants the picture to be a trackpad from the start.
+  ///
+  /// True for a booted Windows guest and false for everything else. The
+  /// default is off for DOS on purpose (see [reset]): trackpad mode swallows
+  /// the whole picture and makes a joystick game unplayable. None of that
+  /// reasoning survives contact with a Windows desktop, where the pointer is
+  /// the entire interface and a mouse the player has to go and find is a
+  /// machine that looks broken.
+  void applyMouseDefault(bool value) {
+    if (_mouseChosen) return;
+    mouseMode = value;
+  }
+
   void toggleKeyboard() => keyboardVisible = !_keyboardVisible;
-  void toggleMouseMode() => mouseMode = !_mouseMode;
+
+  void toggleMouseMode() {
+    _mouseChosen = true;
+    mouseMode = !_mouseMode;
+  }
 
   void togglePad() {
     _padChosen = true;
@@ -67,6 +90,7 @@ class EmulatorUiState extends ChangeNotifier {
   /// and turned off.
   void reset() {
     _padChosen = false;
+    _mouseChosen = false;
     if (!_keyboardVisible && !_mouseMode && !_padVisible) return;
     _keyboardVisible = false;
     _mouseMode = false;

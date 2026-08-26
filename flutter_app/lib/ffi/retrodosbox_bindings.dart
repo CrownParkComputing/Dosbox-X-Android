@@ -109,6 +109,7 @@ class RetroDosboxCoreBindings implements RetroDosboxCore {
   late final _VoidInt32x2Dart _mouseButton;
   late final _JoystickDart _joystick;
   late final _Int32StrDart _sendCommand;
+  late final _Int32StrDart _cdInsert;
   late final _Int32Int32Dart _saveState;
   late final _Int32Int32Dart _loadState;
   late final _Int32Int32Dart _stateIsEmpty;
@@ -171,6 +172,9 @@ class RetroDosboxCoreBindings implements RetroDosboxCore {
         .asFunction();
     _sendCommand = _lib
         .lookup<NativeFunction<_Int32StrNative>>('dosbox_core_send_command')
+        .asFunction();
+    _cdInsert = _lib
+        .lookup<NativeFunction<_Int32StrNative>>('dosbox_core_cd_insert')
         .asFunction();
     _saveState = _lib
         .lookup<NativeFunction<_Int32Int32Native>>('dosbox_core_save_state')
@@ -320,6 +324,9 @@ class RetroDosboxCoreBindings implements RetroDosboxCore {
 
   @override
   int sendCommand(String line) => _withUtf8(line, _sendCommand);
+
+  @override
+  int cdInsert(String isoPath) => _withUtf8(isoPath, _cdInsert);
 
   @override
   int saveState(int slot) => _saveState(slot);

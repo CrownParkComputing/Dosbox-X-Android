@@ -15,6 +15,7 @@ import 'package:package_info_plus/package_info_plus.dart';
 import '../services/app_prefs.dart';
 import '../services/platform_info.dart';
 import '../theme/retrodosbox_theme.dart';
+import 'why_not_windows_screen.dart';
 
 class AboutScreen extends StatelessWidget {
   final VoidCallback? onOpenCompliance;
@@ -48,6 +49,14 @@ class AboutScreen extends StatelessWidget {
             onPressed: onOpenCompliance,
             icon: const Icon(Icons.verified_outlined, size: 18),
             label: const Text('Store Compliance & Legal Use'),
+          ),
+        ),
+        Padding(
+          padding: const EdgeInsets.only(bottom: 12),
+          child: OutlinedButton.icon(
+            onPressed: () => WhyNotWindowsScreen.show(context),
+            icon: const Icon(Icons.help_outline, size: 18),
+            label: const Text('Why not Windows 95/98?'),
           ),
         ),
         _Card(

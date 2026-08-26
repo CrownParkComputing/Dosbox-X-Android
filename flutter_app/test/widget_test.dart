@@ -264,12 +264,16 @@ void main() {
         ),
         settings: const GameSettings(),
       );
-      expect(conf, contains('imgmount c "/games/win98.img" -t hdd -fs none'));
+      // BIOS drive number, not letter: `-fs none` attaches a raw disk and
+      // imgmount rejects a letter there outright. 2 is hda. This test used to
+      // assert `imgmount c`, which DOSBox-X has never accepted -- see
+      // win9x_conf_test.dart and the host boot test that caught it.
+      expect(conf, contains('imgmount 2 "/games/win98.img" -t hdd -fs none'));
       expect(conf, contains('boot -l c'));
       // No plain `mount c` -- the image IS the disk, so there is no host
       // directory to mount. Anchored to the line start because a substring
-      // check would match the `imgmount c` above.
-      expect(conf, isNot(matches(RegExp(r'^mount c ', multiLine: true))));
+      // check would match an `imgmount c` if one ever came back.
+      expect(conf, isNot(matches(RegExp(r'^i?mount c ', multiLine: true))));
     });
 
     test('falls back to a prompt with a listing when nothing is runnable', () {
