@@ -8,9 +8,9 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 
 import '../data/game_entry.dart';
+import 'emulator_session_screen.dart';
 import '../ffi/retrodosbox_core.dart';
 import '../ffi/retrodosbox_native_paths.dart';
 import '../services/app_prefs.dart';
@@ -30,14 +30,12 @@ import '../services/gamepad_service.dart';
 import '../services/library_scanner.dart';
 import '../theme/retrodosbox_theme.dart';
 import '../data/emulator_ui_state.dart';
-import '../widgets/emulator_control_strip.dart';
 import '../widgets/sidebar.dart';
 import '../widgets/sidebar_style.dart';
 import 'about_screen.dart';
 import 'why_not_windows_screen.dart';
 import 'compliance_screen.dart';
 import 'retrodosbox_config_screen.dart';
-import 'emulator_screen.dart';
 import 'input_settings_screen.dart';
 import 'library_grid.dart';
 import 'paths_settings_screen.dart';
@@ -111,26 +109,6 @@ class _WorkbenchScreenState extends State<WorkbenchScreen>
   ArchiveRunSetup? _pendingArchiveSetup;
 
   final GamepadService _gamepads = GamepadService();
-
-  /// Identity for the running emulator view, so it SURVIVES being moved.
-  ///
-  /// Fullscreen draws it inside a Stack and windowed draws it inside a
-  /// Column: different positions in the tree, which without a stable key
-  /// Flutter treats as a destroy and a create rather than a move. The engine
-  /// is in another process and would keep running, but the view's own state
-  /// -- held joystick bits, loaded input preferences, keyboard focus -- would
-  /// silently reset every time the rail was toggled.
-  final GlobalKey _emulatorKey = GlobalKey();
-
-  /// Whether the in-game chrome is on screen. It hides itself a few seconds
-  /// after the last touch, because a DOS game is 4:3 on a widescreen handheld
-  /// and every pixel of chrome is a pixel of picture.
-  bool _chromeVisible = true;
-  Timer? _chromeTimer;
-
-  /// Whether the system bars are currently hidden. Tracked so the mode is set
-  /// once on each transition rather than on every rebuild.
-  bool _immersive = false;
 
   /// Where input goes: the core here on desktop, the :dosbox process on
   /// Android. See EmulatorInput.
@@ -228,12 +206,6 @@ class _WorkbenchScreenState extends State<WorkbenchScreen>
     _gamepadSub?.cancel();
     _gamepads.connected.removeListener(_onControllerChanged);
     _gamepads.dispose();
-    _chromeTimer?.cancel();
-    // The library is not a fullscreen game, and leaving the bars hidden would
-    // outlive this screen.
-    if (_immersive) {
-      SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
-    }
     super.dispose();
   }
 
@@ -618,15 +590,6 @@ class _WorkbenchScreenState extends State<WorkbenchScreen>
           _session = entry;
           _pendingArchiveSetup = archiveSetup;
           _launchError = null;
-          // The panel has to actually show the machine. Without this the
-          // workbench stays on the library: the engine runs, frames cross the
-          // process boundary and are read here - the counter proved it - and
-          // none of it is on screen, because the emulator view is never built.
-          _tab = WorkbenchTab.running;
-          // A launched title goes fullscreen. Not persisted: this is how the
-          // session is presented, not a change to how the user likes their
-          // library, and it is put back when the session ends.
-          _sidebarHidden = true;
         });
         // AFTER the session is set, not before.
         //
@@ -636,6 +599,9 @@ class _WorkbenchScreenState extends State<WorkbenchScreen>
         // iteration zero. No attach, and no timeout either, which is why the
         // panel stayed black in silence.
         unawaited(_attachWhenReady(shared));
+        // The session gets its own screen -- the family pattern shared with
+        // the Amiga, Saturn and C64 front ends.
+        unawaited(_openSession());
         return;
       }
       if (!mounted) return;
@@ -668,9 +634,43 @@ class _WorkbenchScreenState extends State<WorkbenchScreen>
       _session = entry;
       _pendingArchiveSetup = archiveSetup;
       _launchError = null;
-      _tab = WorkbenchTab.running;
-      _sidebarHidden = true;
     });
+    unawaited(_openSession());
+  }
+
+  /// Pauses or resumes the engine itself, on whichever side of the process
+  /// boundary it lives -- the session screen's pause menu drives this.
+  Future<void> _setEnginePaused(bool paused) async {
+    if (EmulatorProcess.isSupported) {
+      await EmulatorProcess.setPaused(paused);
+    } else {
+      widget.core.setPaused(paused);
+    }
+  }
+
+  /// Hands the session its own screen. Every way into a game funnels
+  /// through here, so pausing and closing land back on the workbench in
+  /// exactly one place; the engine-side work stays in [_onSessionPause] and
+  /// [_onSessionExit], which the session screen calls before it pops.
+  Future<void> _openSession() async {
+    final session = _session;
+    if (session == null || !mounted) return;
+    await Navigator.of(context).push<SessionExit>(
+      MaterialPageRoute<SessionExit>(
+        fullscreenDialog: true,
+        builder: (BuildContext context) => EmulatorSessionScreen(
+          core: widget.core,
+          input: _input,
+          ui: _emulatorUi,
+          entry: session,
+          controllerConnected: _controllerConnected,
+          setEnginePaused: _setEnginePaused,
+          onSaveAndExit: _onSessionPause,
+          onClose: _onSessionExit,
+        ),
+      ),
+    );
+    if (mounted) setState(() {});
   }
 
   /// Closes the running session and returns to the library.
@@ -711,9 +711,7 @@ class _WorkbenchScreenState extends State<WorkbenchScreen>
         _session = null;
         _pendingArchiveSetup = null;
         _pausedSession = null;
-        _tab = WorkbenchTab.games;
       });
-      unawaited(_restoreSidebarPreference());
       return;
     }
 
@@ -725,9 +723,7 @@ class _WorkbenchScreenState extends State<WorkbenchScreen>
       _session = null;
       _pendingArchiveSetup = null;
       _pausedSession = null;
-      _tab = WorkbenchTab.games;
     });
-    unawaited(_restoreSidebarPreference());
   }
 
   /// Pauses the running session and returns to the library.
@@ -760,9 +756,7 @@ class _WorkbenchScreenState extends State<WorkbenchScreen>
     setState(() {
       _session = null;
       _pausedSession = session;
-      _tab = WorkbenchTab.games;
     });
-    unawaited(_restoreSidebarPreference());
   }
 
   /// Resumes the paused session and jumps back to the emulator screen.
@@ -784,21 +778,8 @@ class _WorkbenchScreenState extends State<WorkbenchScreen>
     setState(() {
       _session = paused;
       _pausedSession = null;
-      _tab = WorkbenchTab.running;
-      _sidebarHidden = true;
     });
-  }
-
-  /// Puts the rail back the way the user keeps it.
-  ///
-  /// A session hides it to go fullscreen without touching the stored
-  /// preference, so leaving one has to read that preference back rather than
-  /// assume: someone who keeps the rail hidden in the library should not have
-  /// it forced open by having played a game.
-  Future<void> _restoreSidebarPreference() async {
-    final hidden = await AppPrefs.getSidebarHidden();
-    if (!mounted) return;
-    setState(() => _sidebarHidden = hidden);
+    unawaited(_openSession());
   }
 
   /// Enters or leaves the store-review environment.
@@ -859,73 +840,12 @@ class _WorkbenchScreenState extends State<WorkbenchScreen>
     ];
   }
 
-  /// Shows the in-game chrome and restarts its countdown.
-  ///
-  /// Press and release a mouse button where the pointer already is.
-  ///
-  /// The release is queued immediately after the press rather than waiting
-  /// for a second tap: a button left held is the selection-box bug this
-  /// separation exists to kill, and a strip button the user has to press
-  /// twice to complete a click is not a click.
-  void _clickMouse(int button) {
-    _input.mouseButton(button, true);
-    _input.mouseButton(button, false);
-  }
-
-  /// Called on every touch anywhere in the session, through a Listener that
-  /// does not consume the event -- so the same tap that brings the toolbar
-  /// back is still the tap the game receives. Anything else would make
-  /// revealing the controls cost you a shot.
-  void _pokeChrome() {
-    _chromeTimer?.cancel();
-    if (!_chromeVisible) setState(() => _chromeVisible = true);
-    _chromeTimer = Timer(const Duration(seconds: 3), () {
-      if (mounted) setState(() => _chromeVisible = false);
-    });
-  }
-
-  /// Hides the system bars while a machine is on screen, and gives them back
-  /// when it is not.
-  ///
-  /// Sticky rather than plain immersive: a swipe from the edge of a handheld
-  /// is easy to do by accident mid-game, and sticky brings the bars back
-  /// transiently instead of leaving them up over the picture.
-  void _syncImmersive(bool wanted) {
-    if (wanted == _immersive) return;
-    _immersive = wanted;
-    SystemChrome.setEnabledSystemUIMode(
-      wanted ? SystemUiMode.immersiveSticky : SystemUiMode.edgeToEdge,
-    );
-    if (wanted) {
-      // Visible on arrival, then gone: the player needs to see the controls
-      // exist before they can learn a tap brings them back.
-      _pokeChrome();
-    } else {
-      _chromeTimer?.cancel();
-      _chromeVisible = true;
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
     final screenWidth = MediaQuery.sizeOf(context).width;
 
-    // A running machine takes the whole screen: no rail, no status row, no
-    // panel border. Those are library furniture, and a 4:3 picture on a wide
-    // handheld has no height to lend them.
-    //
-    // It is the EXISTING hide-the-rail switch that says so, rather than a
-    // second one of its own. Launching a title hides the rail, which is what
-    // makes a session fullscreen; the toolbar's menu button brings it back,
-    // and with it the status row and the panel, while the game keeps running
-    // inside. One flag, one meaning, and the button in the toolbar behaves
-    // exactly like the one on the status row it replaces.
-    final fullscreen =
-        _session != null && _tab == WorkbenchTab.running && _sidebarHidden;
-    WidgetsBinding.instance.addPostFrameCallback(
-      (_) => _syncImmersive(fullscreen),
-    );
-    if (fullscreen) return _fullscreenSession();
+    // The session has its own screen now (EmulatorSessionScreen); the
+    // workbench is only ever the launcher.
     final visibleTabs = _visibleTabs;
     return Container(
       color: RetroDosboxColors.rootBackground,
@@ -1015,33 +935,22 @@ class _WorkbenchScreenState extends State<WorkbenchScreen>
   }
 
   /// The bottom strip, outside both the sidebar and the content panel: the
-  /// sidebar show/hide toggle plus the name of the running title. It always
-  /// renders, even with no session and even with the sidebar hidden -- the
-  /// toggle is the only way back once the rail is gone, so it cannot live
-  /// inside the rail it controls.
+  /// sidebar show/hide toggle plus the name of the running or paused title.
+  /// Sessions run on their own screen now, so this is launcher chrome only.
   ///
-  /// When the user has paused a session the running title is gone from the
-  /// emulator screen but still alive in [_pausedSession]; the status bar
-  /// surfaces that, with a tap target to resume rather than just text.
-  ///
-  /// [floating] is the fullscreen case, where this row is drawn over the foot
-  /// of the picture instead of below it. Everything about it is the same
-  /// except that touching it has to restart the countdown that hides it --
-  /// otherwise the row would fade out from under the thumb reaching for it.
-  Widget _statusBar({bool floating = false}) {
+  /// When the user has paused a session it is still alive in
+  /// [_pausedSession]; the status bar surfaces that, with a tap target to
+  /// resume rather than just text.
+  Widget _statusBar() {
     final session = _session;
     final paused = _pausedSession;
     final shown = session ?? paused;
-    // A little taller while a machine is running - the buttons are still
-    // finger sized - but only a little: every pixel this row takes is a pixel
-    // the picture does not get. Same treatment as the Amiga strip.
     return SizedBox(
-      height: session != null ? 36 : 28,
+      height: 28,
       child: Row(
         children: [
           IconButton(
             onPressed: () {
-              if (floating) _pokeChrome();
               setState(() => _sidebarHidden = !_sidebarHidden);
               AppPrefs.setSidebarHidden(_sidebarHidden);
             },
@@ -1074,88 +983,7 @@ class _WorkbenchScreenState extends State<WorkbenchScreen>
                 ),
               ),
             ),
-          // Right-hand end of the row, and only while a machine is actually
-          // running: the strip is the in-game chrome, not a permanent fixture.
-          if (session != null) ...[
-            const Spacer(),
-            EmulatorControlStrip(
-              ui: _emulatorUi,
-              onLeftClick: () => _clickMouse(0),
-              onRightClick: () => _clickMouse(1),
-              onPause: _onSessionPause,
-              onExit: _onSessionExit,
-              onInteract: floating ? _pokeChrome : null,
-            ),
-          ],
         ],
-      ),
-    );
-  }
-
-  /// The running machine, edge to edge, with the toolbar floating over it.
-  ///
-  /// The toolbar overlays the picture here, which everywhere else in this app
-  /// it deliberately does not: on the library screens it sits on the status
-  /// row below the panel. Fullscreen leaves no row to sit on, so it keeps the
-  /// same place it has everywhere else -- along the bottom, from the right --
-  /// and earns it by getting out of the way: three seconds after the last
-  /// touch it is gone.
-  ///
-  /// Bottom rather than top. The top-right is where DOS titles put their own
-  /// status panels, and it is also not where this app's toolbar lives on any
-  /// other screen, or where the Amiga and C64 front ends put theirs.
-  Widget _fullscreenSession() {
-    return Listener(
-      // Translucent, and onPointerDown rather than a tap: this has to observe
-      // the touch without eating it, so the game still gets it.
-      behavior: HitTestBehavior.translucent,
-      onPointerDown: (_) => _pokeChrome(),
-      child: ColoredBox(
-        color: Colors.black,
-        child: Stack(
-          children: [
-            Positioned.fill(child: _tabContent()),
-            // The status row itself, floated over the foot of the picture --
-            // not a second copy of half of it. It already carries the rail
-            // toggle and the running title, so reusing it is what keeps the
-            // fullscreen chrome and the windowed chrome the same chrome: one
-            // toggle icon with one behaviour, and the title where it always
-            // is.
-            Positioned(
-              left: 0,
-              right: 0,
-              bottom: 0,
-              child: AnimatedOpacity(
-                opacity: _chromeVisible ? 1 : 0,
-                duration: const Duration(milliseconds: 220),
-                // Faded-out chrome must not still be catching taps meant for
-                // the game underneath it.
-                child: IgnorePointer(
-                  ignoring: !_chromeVisible,
-                  child: DecoratedBox(
-                    // Legible over whatever the game happens to be drawing
-                    // there, and fading upwards so it does not read as a bar
-                    // bolted across the picture.
-                    decoration: const BoxDecoration(
-                      gradient: LinearGradient(
-                        begin: Alignment.bottomCenter,
-                        end: Alignment.topCenter,
-                        colors: [Colors.black87, Colors.transparent],
-                      ),
-                    ),
-                    child: SafeArea(
-                      top: false,
-                      child: Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 8),
-                        child: _statusBar(floating: true),
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-            ),
-          ],
-        ),
       ),
     );
   }
@@ -1361,19 +1189,14 @@ class _WorkbenchScreenState extends State<WorkbenchScreen>
       case WorkbenchTab.running:
         final session = _session;
         if (session != null) {
-          return EmulatorScreen(
-            key: _emulatorKey,
-            ui: _emulatorUi,
-            // A booted guest OS is driven by its own pointer and nothing
-            // else, so the picture is a touch pointer for the whole session
-            // rather than waiting for the toolbar's mouse button.
-            absolutePointer: session.kind == GameKind.bootImage,
-            core: widget.core,
-            input: _input,
-            title: session.title,
-            controllerConnected: _controllerConnected,
-            onExit: () => unawaited(_onSessionExit()),
-            onPause: () => unawaited(_onSessionPause()),
+          // The machine is alive on its own screen; this tab only exists
+          // as a way back to it.
+          return Center(
+            child: TextButton.icon(
+              onPressed: () => unawaited(_openSession()),
+              icon: const Icon(Icons.play_arrow),
+              label: Text('Return to ${session.title}'),
+            ),
           );
         }
         final paused = _pausedSession;
