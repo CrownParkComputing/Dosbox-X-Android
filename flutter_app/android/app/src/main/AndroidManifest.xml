@@ -1,24 +1,15 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <!-- A DOS collection is folders of .exe/.com/.bat plus .iso/.img/.zip.
-         None of those are media types, so READ_MEDIA_* does not cover them and
-         all-files access is the only permission that allows reading a games
-         folder the user chose. Requested at runtime via the
-         com.crownpark.retrodosbox/storage_permissions channel, not granted here. -->
-    <!--
-      MANAGE_EXTERNAL_STORAGE ("All files access") is deliberately NOT
-      requested. Play treats it as a sensitive permission: undeclared it
-      blocks the release outright, declared it means a review aimed at file
-      managers, backup and antivirus apps. This app replaces a published one,
-      which is not a thing to gate on that review.
-
-      dosbox-x mounts a directory, so games have to live somewhere the app can
-      genuinely read - its own external folder, Android/data/<pkg>/files,
-      which needs no permission and is reachable over USB. A collection
-      elsewhere is brought in through the system folder picker. See
-      MediaFolderAccess.kt.
-    -->
+         None of those are media types, so READ_MEDIA_* does not cover them
+         and all-files access is the only permission that allows reading a
+         games folder the user chose IN PLACE -- which is how the whole
+         Retro-* family now works (Retro-Amiga shipped this way and passed
+         Play's sensitive-permission review with the "Core functionality"
+         declaration). The SAF folder grant (MediaFolderAccess.kt) remains
+         as the no-permission fallback for anyone who declines. -->
     <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE"
         android:maxSdkVersion="32"/>
+    <uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE"/>
     <uses-permission android:name="android.permission.VIBRATE"/>
 
     <!-- org.libsdl.app.HIDDeviceManager registers Bluetooth scan receivers and

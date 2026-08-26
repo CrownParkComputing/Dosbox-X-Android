@@ -29,6 +29,11 @@ void main() {
         ),
       ),
     );
+    // The wizard now opens on the family's welcome page (the Amiga
+    // pattern); these tests are about the boot screen behind it, so take
+    // the returning-user shortcut through.
+    await tester.tap(find.text('I have done this before'));
+    await tester.pump();
   }
 
   testWidgets('offers both startup modes without scanning first', (

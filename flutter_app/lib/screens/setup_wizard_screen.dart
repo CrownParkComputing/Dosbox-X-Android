@@ -7,6 +7,8 @@
 // Regular Mode for the user's own lawfully obtained software.
 import 'dart:async';
 
+import '../services/permissions_service.dart';
+import 'getting_started.dart';
 import 'package:flutter/material.dart';
 
 import '../services/app_prefs.dart';
@@ -17,6 +19,9 @@ Future<String> _prepareComplianceDemo() async {
   final demo = await DemoProgramService.prepare();
   return demo.entry.slug;
 }
+
+/// The family's phased shape, from Retro-Amiga.
+enum _Phase { welcome, primer, console }
 
 class SetupWizardScreen extends StatefulWidget {
   final VoidCallback onComplete;
@@ -46,6 +51,10 @@ class _SetupWizardScreenState extends State<SetupWizardScreen> {
   List<String> _pending = <String>[];
   bool _awaitingChoice = false;
   bool _busy = false;
+
+  /// The family's phased shape, from Retro-Amiga: introduce, teach, then the
+  /// DOS boot screen asks the one question.
+  _Phase _phase = _Phase.welcome;
 
   @override
   void initState() {
@@ -153,6 +162,10 @@ class _SetupWizardScreenState extends State<SetupWizardScreen> {
     if (_busy) return;
     setState(() => _busy = true);
     try {
+      // Regular mode means reading the user's own games in place, so ask
+      // for the access first. Declining is allowed: the SAF folder grant
+      // remains as the no-permission fallback.
+      await PermissionsService.ensure();
       await _finish(complianceMode: false);
     } finally {
       if (mounted) setState(() => _busy = false);
@@ -161,6 +174,86 @@ class _SetupWizardScreenState extends State<SetupWizardScreen> {
 
   @override
   Widget build(BuildContext context) {
+    return Container(
+      color: Colors.black,
+      child: SafeArea(
+        child: switch (_phase) {
+          _Phase.welcome => _welcomeView(),
+          _Phase.primer => _primerView(),
+          _Phase.console => _consoleView(),
+        },
+      ),
+    );
+  }
+
+  Widget _welcomeView() {
+    return Center(
+      child: SingleChildScrollView(
+        padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Center(
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(22),
+                child: Image.asset(
+                  'assets/images/app_icon.png',
+                  height: 104,
+                  width: 104,
+                  fit: BoxFit.cover,
+                  filterQuality: FilterQuality.medium,
+                  errorBuilder: (c, e, st) =>
+                      const Icon(Icons.computer, size: 72),
+                ),
+              ),
+            ),
+            const SizedBox(height: 20),
+            Text(
+              'Retro-DOSBox',
+              textAlign: TextAlign.center,
+              style: Theme.of(context).textTheme.headlineMedium,
+            ),
+            const SizedBox(height: 12),
+            const Text(
+              'A DOS PC, running on this device. FreeDOS is built in, so it '
+              'boots right now — and your own games are read where they '
+              'already are.',
+              textAlign: TextAlign.center,
+              style: TextStyle(color: Colors.white54, height: 1.5),
+            ),
+            const SizedBox(height: 32),
+            FilledButton(
+              onPressed: () => setState(() => _phase = _Phase.primer),
+              child: const Padding(
+                padding: EdgeInsets.symmetric(vertical: 14),
+                child: Text('Get started'),
+              ),
+            ),
+            const SizedBox(height: 8),
+            TextButton(
+              onPressed: () => setState(() => _phase = _Phase.console),
+              child: const Text('I have done this before'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _primerView() {
+    return GettingStartedGuide(
+      steps: [
+        GettingStartedSteps.whatYouNeed(),
+        GettingStartedSteps.whereFilesGo(),
+      ],
+      closeLabel: 'C:\\> BOOT',
+      onClose: () => setState(() => _phase = _Phase.console),
+      onBack: () => setState(() => _phase = _Phase.welcome),
+    );
+  }
+
+  Widget _consoleView() {
     return Container(
       color: Colors.black,
       padding: const EdgeInsets.all(20),

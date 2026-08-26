@@ -1,38 +1,54 @@
-// Shared-storage permission handling.
+// Shared-storage permission handling: all-files access, the Retro-Amiga way.
 //
-// There is none any more, and this file exists to say so in one place rather
-// than leave every caller to work it out.
-//
-// The app used to ask for MANAGE_EXTERNAL_STORAGE ("All files access"): a DOS
-// collection is folders of .exe/.com/.bat plus .iso/.img/.zip, none of which
-// are media types, so READ_MEDIA_* never covered them. Play treats that
-// permission as sensitive - undeclared it blocks the release, declared it
-// means a review aimed at file managers, backup and antivirus apps - and this
-// app is replacing a published one.
-//
-// dosbox-x mounts a directory, so the games live in the app's own external
-// folder, which needs no permission and is reachable over USB. A collection
-// elsewhere is copied in through the system folder picker. Nothing needs
-// granting, so isRelevant is false and the screens that offered a trip to
-// Settings stop offering it: that toggle would now grant a permission this
-// app does not declare, which does nothing at all.
+// A DOS collection is folders of .exe/.com/.bat plus .iso/.img/.zip -- none
+// of them media types, so READ_MEDIA_* never applies and all-files access is
+// the only permission that lets the app read a games folder the user chose
+// IN PLACE. The whole Retro-* family now asks for it (Retro-Amiga shipped
+// this way and passed Play's sensitive-permission review); the SAF folder
+// grant remains as the fallback for anyone who declines.
+import 'dart:io';
+
+import 'package:flutter/services.dart';
 
 class PermissionsService {
   PermissionsService._();
 
-  /// Whether this platform needs (and can be granted) shared-storage access
-  /// at all. Linux has ordinary filesystem access; iOS imports files into
-  /// the sandbox instead.
-  static bool get isRelevant => false;
+  static const MethodChannel _channel =
+      MethodChannel('com.crownpark.retrodosbox/storage_permissions');
+
+  /// Only Android gates raw-path reads this way.
+  static bool get isRelevant => Platform.isAndroid;
 
   /// True if the app can currently read arbitrary files out of shared
   /// storage. Always true where the concept doesn't apply.
-  static Future<bool> hasStorageAccess() async => true;
+  static Future<bool> hasStorageAccess() async {
+    if (!isRelevant) return true;
+    try {
+      return await _channel.invokeMethod<bool>('hasSharedStorageAccess') ??
+          false;
+    } catch (_) {
+      return false;
+    }
+  }
 
   /// Asks for shared-storage access. On Android 11+ this opens the system
-  /// "All files access" settings page for this app; the returned value is
-  /// the state as of when the call returns, so callers should re-check
-  /// after the user comes back.
-  /// Nothing to request: the host no longer implements this.
-  static Future<bool> requestStorageAccess() async => true;
+  /// "All files access" settings page for this app and waits for the user
+  /// to come back. Returns whether access was granted.
+  static Future<bool> requestStorageAccess() async {
+    if (!isRelevant) return true;
+    try {
+      return await _channel
+              .invokeMethod<bool>('requestSharedStorageAccess')
+              .timeout(const Duration(seconds: 90)) ??
+          false;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  /// Check, ask if needed, re-check. The one call sites use.
+  static Future<bool> ensure() async {
+    if (await hasStorageAccess()) return true;
+    return requestStorageAccess();
+  }
 }

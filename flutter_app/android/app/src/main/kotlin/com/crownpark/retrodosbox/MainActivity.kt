@@ -36,6 +36,27 @@ import org.flame_engine.gamepads_android.GamepadsCompatibleActivity
  * Activity's own input dispatch, which is what it expects.
  */
 class MainActivity : FlutterActivity(), GamepadsCompatibleActivity {
+
+    /* All-files access, the Retro-Amiga way. The request opens the system's
+     * All-files-access page; the parked result is completed from onResume
+     * when the user comes back. The SAF folder grant below remains as the
+     * no-permission fallback. */
+    private var pendingStorageAccess: io.flutter.plugin.common.MethodChannel.Result? = null
+    private var waitingForStorageSettings = false
+
+    private fun hasSharedStorageAccess(): Boolean =
+        Build.VERSION.SDK_INT < Build.VERSION_CODES.R ||
+            android.os.Environment.isExternalStorageManager()
+
+    override fun onResume() {
+        super.onResume()
+        if (waitingForStorageSettings) {
+            waitingForStorageSettings = false
+            val pending = pendingStorageAccess
+            pendingStorageAccess = null
+            pending?.success(hasSharedStorageAccess())
+        }
+    }
     /**
      * The emulator process's input inbox, while a session is bound.
      *
@@ -166,6 +187,31 @@ class MainActivity : FlutterActivity(), GamepadsCompatibleActivity {
             STORAGE_CHANNEL
         ).setMethodCallHandler { call, result ->
             when (call.method) {
+                "hasSharedStorageAccess" ->
+                    result.success(hasSharedStorageAccess())
+
+                "requestSharedStorageAccess" -> {
+                    if (hasSharedStorageAccess()) {
+                        result.success(true)
+                    } else if (pendingStorageAccess != null) {
+                        result.error("busy", "storage access settings are already open", null)
+                    } else {
+                        pendingStorageAccess = result
+                        waitingForStorageSettings = true
+                        val intent = Intent(
+                            android.provider.Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION,
+                            Uri.parse("package:$packageName"),
+                        )
+                        try {
+                            startActivity(intent)
+                        } catch (error: Exception) {
+                            startActivity(
+                                Intent(android.provider.Settings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION),
+                            )
+                        }
+                    }
+                }
+
                 "mediaFolderUri" ->
                     result.success(MediaFolderAccess.grantedTree(this)?.toString())
 

@@ -82,6 +82,7 @@ flutter:
   # extracted out of the APK to real files on first launch -- see
   # RetroDosboxNativePaths.extractResourceDir.
   assets:
+    - assets/images/
     - assets/retrodosbox/
     # Original, MIT-licensed DOS homebrew used by the offline review path.
     # Source and licence ship beside the executable so its provenance is
