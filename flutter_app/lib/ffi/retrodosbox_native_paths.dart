@@ -96,6 +96,11 @@ class RetroDosboxNativePaths {
   static String? get coreLibraryPath {
     if (Platform.isAndroid || Platform.isMacOS) return null;
     if (Platform.isIOS) return _iosFrameworkLibrary('libdosboxcore');
+    if (Platform.isLinux) {
+      final exeDir = File(Platform.resolvedExecutable).parent.path;
+      final bundled = p.join(exeDir, 'lib', 'libdosboxcore.so');
+      if (File(bundled).existsSync()) return bundled;
+    }
     final root = _findRepoRoot();
     if (root == null) return null;
     final path = p.join(root.path, 'native', 'dosbox_core', 'linux', 'build',

@@ -9,6 +9,13 @@ set(BINARY_NAME "retro_dosbox")
 # https://wiki.gnome.org/HowDoI/ChooseApplicationID
 set(APPLICATION_ID "com.crownpark.retrodosbox")
 
+# The native core is built separately, then copied into the relocatable
+# Flutter bundle. Dart resolves it from <bundle>/lib before falling back to a
+# development checkout.
+set(DOSBOX_CORE_LIBRARY
+  "${CMAKE_CURRENT_SOURCE_DIR}/../../native/dosbox_core/linux/build/libdosboxcore.so"
+  CACHE FILEPATH "Path to the DOSBox-X shared core")
+
 # Explicitly opt in to modern CMake behaviors to avoid warnings with recent
 # versions of CMake.
 cmake_policy(SET CMP0063 NEW)
@@ -93,6 +100,14 @@ set(INSTALL_BUNDLE_LIB_DIR "${CMAKE_INSTALL_PREFIX}/lib")
 
 install(TARGETS ${BINARY_NAME} RUNTIME DESTINATION "${CMAKE_INSTALL_PREFIX}"
   COMPONENT Runtime)
+
+if(EXISTS "${DOSBOX_CORE_LIBRARY}")
+  install(FILES "${DOSBOX_CORE_LIBRARY}"
+    DESTINATION "${INSTALL_BUNDLE_LIB_DIR}" COMPONENT Runtime)
+else()
+  message(FATAL_ERROR
+    "DOSBox core not found at ${DOSBOX_CORE_LIBRARY}; build native/dosbox_core/linux first")
+endif()
 
 install(FILES "${FLUTTER_ICU_DATA_FILE}" DESTINATION "${INSTALL_BUNDLE_DATA_DIR}"
   COMPONENT Runtime)
