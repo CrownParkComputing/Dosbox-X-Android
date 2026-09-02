@@ -1,7 +1,0 @@
-<?xml version="1.0" encoding="utf-8"?>
-<!-- Splash background for API 21+. The v21 dir is for vector-drawable
-     resources; the bitmap @drawable/launch_splash resolves the same way as
-     in the non-v21 layer. -->
-<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
-    <item android:drawable="@drawable/launch_splash" />
-</layer-list>

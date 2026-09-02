@@ -1,0 +1,77 @@
+name: frontend
+
+# Deliberately not a full Android build. Cross-compiling SDL3 and DOSBox-X for
+# every push costs twenty minutes and fails for reasons that have nothing to do
+# with the change being tested; the core has its own CI in the submodule's
+# repository. What is checked here is what this repository actually owns.
+
+on:
+  push:
+    branches: [main, sdl3-rewrite]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  compile:
+    name: frontend compiles
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Install SDL3
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends \
+            build-essential cmake ninja-build git \
+            libasound2-dev libpulse-dev libx11-dev libxext-dev \
+            libxrandr-dev libxcursor-dev libxi-dev libxfixes-dev \
+            libwayland-dev libxkbcommon-dev
+          git clone --depth 1 --branch release-3.2.20 \
+            https://github.com/libsdl-org/SDL.git /tmp/SDL
+          cmake -S /tmp/SDL -B /tmp/SDL/build -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release -DSDL_STATIC=OFF
+          cmake --build /tmp/SDL/build -j"$(nproc)"
+          sudo cmake --install /tmp/SDL/build
+
+      - name: Compile every frontend translation unit
+        run: |
+          set -e
+          # -fsyntax-only, not a link: the frontend links against the core,
+          # which is not built here. What this catches is the thing that
+          # actually breaks -- a header change on one side of the ABI that the
+          # other has not followed.
+          for src in frontend/*.cpp; do
+            echo "== $src"
+            g++ -fsyntax-only -std=c++17 -Wall \
+                -I core/include -I frontend -I frontend/imgui \
+                $(pkg-config --cflags sdl3) "$src"
+          done
+
+      - name: The bundled demo is reproducible from its source
+        run: |
+          # demo/make_demo.py is claimed to BE the source of DEMO.COM. If that
+          # claim ever stops being true the binary becomes something nobody can
+          # audit or change, so it is checked rather than asserted.
+          python3 demo/make_demo.py /tmp/DEMO.COM
+          cmp /tmp/DEMO.COM demo/DEMO.COM
+          cmp /tmp/DEMO.COM android/app/src/main/assets/demo/DEMO.COM
+
+  gradle:
+    name: android project configures
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Configure
+        working-directory: android
+        run: |
+          # The native libraries and SDL3.jar are build output and absent here,
+          # so this stops at configuration: enough to catch a broken Gradle
+          # script, manifest or Kotlin source set without building the core.
+          mkdir -p app/libs && : > app/libs/SDL3.jar
+          gradle tasks --stacktrace >/dev/null

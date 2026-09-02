@@ -1,42 +1,58 @@
 # Third-Party Notices
 
-DOSBox-X Multiplatform is distributed under the GNU General Public License version 2.
+Retro-DOS is distributed under the GNU General Public License version 2.
 See [LICENSE](LICENSE).
 
 ## DOSBox-X
 
-This app includes a build of DOSBox-X, linked through the plain-C bridge in
-`native/dosbox_core/`.
+The emulator core. This project uses a fork ported to SDL3, kept as the `core`
+submodule so that upstream changes remain mergeable.
 
 - Project: https://dosbox-x.com/
-- Source: https://github.com/joncampbell123/dosbox-x
+- Upstream source: https://github.com/joncampbell123/dosbox-x
+- Fork used here: https://github.com/CrownParkComputing/dosbox-x-sdl3
 - License: GNU General Public License version 2
 
-DOSBox-X itself is based on DOSBox and contains additional third-party
-components and credits.
+DOSBox-X is itself based on DOSBox and carries further third-party components
+and credits; see `core/COPYING` and the acknowledgements in that tree.
 
-## Bundled Native Libraries
+## SDL3
 
-The platform packages include native shared libraries built from the DOSBox-X
-core via the `native/dosbox_core/` bridge:
+Window, input, audio and rendering, on both the frontend and the core.
 
-- `libdosboxcore.so`: the bridge plus the DOSBox-X core, GPLv2 as part of this project
-- `libSDL2.so`: SDL 2.0, zlib license
-- `libpng16.so`: libpng license
+- Project: https://libsdl.org/
+- License: zlib
 
-## Source Availability
+## Dear ImGui
 
-The complete corresponding source for this app, including the Flutter front
-end, the native bridge, and the build scripts, is published at:
+The frontend's user interface. Vendored in `frontend/imgui/`.
 
-https://github.com/CrownParkComputing/DosboxMultiplatform
+- Project: https://github.com/ocornut/imgui
+- License: MIT
 
-If you receive a binary copy of this app, you may copy, modify, and redistribute
-it under the GPLv2. The GPL permits charging for copies, but recipients keep the
-GPL rights to source code and redistribution.
+## Bundled native libraries
 
-## External Content
+The Android package contains:
 
-This repository and app do not include Microsoft Windows disk images, game ROMs,
-game ISOs, game files, BIOS files, or other third-party copyrighted content.
-Users are responsible for supplying only content they have the right to use.
+- `libretrodos.so` — the DOSBox-X core and this project's frontend, GPLv2
+- `libSDL3.so` — SDL3, zlib licence
+- `libc++_shared.so` — the NDK C++ runtime
+
+## Bundled content
+
+The app ships a FreeDOS boot floppy and a small demonstration program so it is
+usable with no games installed. FreeDOS is included verbatim under the GPL, and
+the demonstration program was written for this project. Provenance, licences
+and the source that regenerates the demo are in [demo/NOTICE.md](demo/NOTICE.md).
+
+FreeDOS is a trademark of Jim Hall. This project is not affiliated with,
+endorsed by, or sponsored by the FreeDOS project.
+
+## Source availability
+
+Because GPL binaries are redistributed, the corresponding source must be
+available to anyone who receives them. It is:
+
+- This application: https://github.com/CrownParkComputing/Retro-Dosbox
+- The emulator core: https://github.com/CrownParkComputing/dosbox-x-sdl3
+- FreeDOS: https://www.freedos.org/download/

@@ -1,8 +1,0 @@
-<?xml version="1.0" encoding="utf-8"?>
-<!-- Splash background: the bitmap is a 9:16 amber-on-black splash image with
-     a CRT scanline pattern, generated alongside the launcher icons. The
-     fallback `<item android:drawable="@android:color/white" />` line is gone
-     so the launcher splash never shows plain white. -->
-<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
-    <item android:drawable="@drawable/launch_splash" />
-</layer-list>

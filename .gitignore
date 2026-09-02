@@ -1,66 +1,47 @@
-# Flutter / Dart
-flutter_app/build/
-flutter_app/.dart_tool/
-flutter_app/.flutter-plugins
-flutter_app/.flutter-plugins-dependencies
-flutter_app/ios/Flutter/Generated.xcconfig
-flutter_app/ios/Flutter/flutter_export_environment.sh
-flutter_app/ios/Pods/
-flutter_app/linux/flutter/ephemeral/
-flutter_app/android/.gradle/
-flutter_app/android/local.properties
-# The jniLibs .so files are TRACKED, deliberately.
+# Build output.
 #
-# They used to be ignored as build output, which meant the only working copy
-# of the emulator was on whichever machine last built it: CI checked out a
-# tree with no core in it and produced an app that installs, starts, and
-# cannot run a single game. Nothing in the release pipeline noticed, because
-# a missing core is not a build error.
+# The native libraries used to be TRACKED here, on the reasoning that CI
+# checked out a tree with no core in it and produced an app that installs,
+# starts, and cannot run a single game -- with nothing in the pipeline
+# noticing, because a missing core is not a build error.
 #
-# They are affordable now because they are stripped -- llvm-strip
-# --strip-unneeded takes the pair from 190M to 36M, keeping every dynamic
-# symbol that matters: the 27 dosbox_core_* bridge entries, SDL_main, and
-# SDL2's 52 JNI natives. See docs/NATIVE_BUILD.md.
-**/*.iml
+# That reasoning no longer holds. The core is a submodule of this repository,
+# so any checkout can build it, android/build-core.sh installs its output
+# straight into the directory Gradle packages, and it refuses to run at all
+# when the submodule has not been initialised. Committing 40 MB of binaries per
+# ABI to work around a problem that no longer exists is not a trade worth
+# making.
+android/app/src/main/jniLibs/
+android/app/libs/
+android/build/
+android/.gradle/
+android/local.properties
+**/build/
+*.iml
+.gradle/
 
-# Native core: large cross-compiled artifacts, rebuilt per machine.
-# See docs/NATIVE_BUILD.md.
-native/dosbox_core/*/build/
-native/dosbox_core/**/*.o
-native/dosbox_core/**/*.a
-native/dosbox_core/**/*.so
-
-# DOS games and disc images are never committed.
-*.iso
-*.cue
-*.bin
-*.img
-*.ima
-*.vhd
-
-# ...except the FreeDOS boot floppy, which is an app ASSET rather than
-# somebody's game: it is what lets the emulator boot a real DOS with nothing
-# supplied by the user, and it has to be in the repo for the cloud build to
-# bundle it. Unmodified, freely redistributable, provenance and licence in
-# assets/freedos/README.txt.
-!flutter_app/assets/freedos/FD13BOOT.img
-
-.DS_Store
-
-# Build output APKs are never committed.
+# Build outputs are never committed.
 dist/
 *.apk
 *.aab
 
-# Build-time shim dir (regenerated per machine).
-native/dosbox_core/**/.tmp/
-
-# Keystore files (release signing config). The upload keystore is registered
-# with Play Console under the com.dosboxx.app listing; never commit it.
+# Keystores. The upload keystore is registered with Play Console; never commit
+# it.
 *.jks
 *.keystore
 
-# The Mac-native iOS core build tree (build-ios-macos.sh): SDL2, libpng and a
-# full DOSBox-X checkout with its objects. Multi-GB and reproducible from the
-# script; the built framework in flutter_app/ios/Frameworks IS committed.
-native/dosbox_core/ios/build-macos/
+# DOS games and disc images are never committed.
+*.iso
+*.cue
+*.ima
+*.vhd
+
+# ...except the bundled demo content, which is an app ASSET rather than
+# somebody's game: FreeDOS is what lets the emulator boot a real DOS with
+# nothing supplied by the user, and it has to be in the repository for a cloud
+# build to bundle it. Unmodified and freely redistributable; provenance and
+# licence in demo/NOTICE.md.
+!android/app/src/main/assets/demo/FREEDOS.IMG
+!android/app/src/main/assets/demo/DEMO.COM
+
+.DS_Store
