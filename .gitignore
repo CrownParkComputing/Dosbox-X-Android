@@ -49,3 +49,6 @@ dist/
 # Signing config for a developer machine; never committed.
 key.properties
 android/key.properties
+
+# iOS build output (SDL3, the configured engine tree, the static libs).
+ios/build/
