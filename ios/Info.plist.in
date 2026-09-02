@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>CFBundleDevelopmentRegion</key><string>en</string>
+	<key>CFBundleExecutable</key><string>$(EXECUTABLE_NAME)</string>
+	<key>CFBundleIdentifier</key><string>$(PRODUCT_BUNDLE_IDENTIFIER)</string>
+	<key>CFBundleInfoDictionaryVersion</key><string>6.0</string>
+	<key>CFBundleName</key><string>$(PRODUCT_NAME)</string>
+	<key>CFBundleDisplayName</key><string>@RETRODOS_DISPLAY_NAME@</string>
+	<key>CFBundlePackageType</key><string>APPL</string>
+	<key>CFBundleShortVersionString</key><string>@RETRODOS_VERSION@</string>
+	<key>CFBundleVersion</key><string>@RETRODOS_BUILD@</string>
+	<key>LSRequiresIPhoneOS</key><true/>
+	<key>MinimumOSVersion</key><string>@CMAKE_OSX_DEPLOYMENT_TARGET@</string>
+
+	<!-- The library IS the user's own files. Both keys, so a game folder can be
+	     dropped into the app's folder in Files and opened where it lies. -->
+	<key>UIFileSharingEnabled</key><true/>
+	<key>LSSupportsOpeningDocumentsInPlace</key><true/>
+
+	<!-- SDL links CoreBluetooth for game controllers. A bundle that LINKS a
+	     protected API needs the purpose string whether or not it calls it, and
+	     Apple reports the lack only AFTER a delivery that reported success. -->
+	<key>NSBluetoothAlwaysUsageDescription</key>
+	<string>Retro-DOS uses Bluetooth only to connect game controllers. It collects no data and never scans for anything else.</string>
+
+	<key>ITSAppUsesNonExemptEncryption</key><false/>
+
+	<!-- Landscape first: DOS is 320x200. Portrait stays available so the Files
+	     importer and the library are usable one-handed. -->
+	<key>UISupportedInterfaceOrientations</key>
+	<array>
+		<string>UIInterfaceOrientationLandscapeLeft</string>
+		<string>UIInterfaceOrientationLandscapeRight</string>
+		<string>UIInterfaceOrientationPortrait</string>
+	</array>
+	<key>UISupportedInterfaceOrientations~ipad</key>
+	<array>
+		<string>UIInterfaceOrientationLandscapeLeft</string>
+		<string>UIInterfaceOrientationLandscapeRight</string>
+		<string>UIInterfaceOrientationPortrait</string>
+		<string>UIInterfaceOrientationPortraitUpsideDown</string>
+	</array>
+	<key>UIRequiresFullScreen</key><true/>
+	<key>UIStatusBarHidden</key><true/>
+	<key>UIViewControllerBasedStatusBarAppearance</key><false/>
+	<key>UILaunchScreen</key><dict/>
+</dict>
+</plist>
