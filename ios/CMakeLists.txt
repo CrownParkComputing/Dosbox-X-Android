@@ -23,8 +23,11 @@ if(NOT CMAKE_OSX_DEPLOYMENT_TARGET)
   set(CMAKE_OSX_DEPLOYMENT_TARGET "15.0")
 endif()
 
-set(PLATFORM_DIR "${CMAKE_CURRENT_SOURCE_DIR}/build/$<IF:$<CONFIG:Debug>,iphoneos,iphoneos>/out")
-set(LIBDIR "${CMAKE_CURRENT_SOURCE_DIR}/build/iphoneos/out")
+# Which slice ios/build-core.sh produced. The simulator and the device need
+# separate libraries; there is no fat static lib here on purpose, because the
+# two are configured trees with different SDKs, not two arches of one build.
+set(RETRODOS_LIB_PLATFORM "iphoneos" CACHE STRING "iphoneos or iphonesimulator")
+set(LIBDIR "${CMAKE_CURRENT_SOURCE_DIR}/build/${RETRODOS_LIB_PLATFORM}/out")
 foreach(lib libretrodos.a libSDL3.a)
   if(NOT EXISTS "${LIBDIR}/${lib}")
     message(FATAL_ERROR "${LIBDIR}/${lib} is missing -- run ios/build-core.sh first.")
@@ -51,9 +54,21 @@ file(WRITE "${CMAKE_CURRENT_BINARY_DIR}/app_main.cpp"
      "// Intentionally empty: main() comes from libretrodos.a (the frontend),\n"
      "// which SDL renames to SDL_main and calls from its own UIKit entry.\n")
 
+set(ASSETS "${CMAKE_CURRENT_SOURCE_DIR}/Assets.xcassets")
+if(NOT EXISTS "${ASSETS}/AppIcon.appiconset/Icon-App-1024x1024@1x.png")
+  message(FATAL_ERROR "app icons missing -- run tool/make_icons.py")
+endif()
+
 add_executable(RetroDos MACOSX_BUNDLE
   "${CMAKE_CURRENT_BINARY_DIR}/app_main.cpp"
+  "${ASSETS}"
   ${DEMO_FILES})
+
+# The catalog is compiled by actool into Assets.car, and the icon NAME is what
+# puts CFBundleIcons in the built Info.plist. A delivery without that key is
+# accepted and then rejected in processing, by email, long after CI went green.
+set_source_files_properties("${ASSETS}" PROPERTIES
+  MACOSX_PACKAGE_LOCATION Resources)
 
 set_source_files_properties(${DEMO_FILES} PROPERTIES
   MACOSX_PACKAGE_LOCATION "Resources/demo")
@@ -64,7 +79,8 @@ set_target_properties(RetroDos PROPERTIES
   XCODE_ATTRIBUTE_DEVELOPMENT_TEAM "${RETRODOS_TEAM_ID}"
   XCODE_ATTRIBUTE_TARGETED_DEVICE_FAMILY "1,2"          # iPhone and iPad
   XCODE_ATTRIBUTE_ENABLE_BITCODE "NO"
-  XCODE_ATTRIBUTE_CLANG_ENABLE_OBJC_ARC "YES")
+  XCODE_ATTRIBUTE_CLANG_ENABLE_OBJC_ARC "YES"
+  XCODE_ATTRIBUTE_ASSETCATALOG_COMPILER_APPICON_NAME "AppIcon")
 
 # -all_load, and it is not optional: nothing in the empty main references the
 # emulator, so without it the linker discards essentially all of it and the app

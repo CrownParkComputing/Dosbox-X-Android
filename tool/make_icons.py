@@ -21,8 +21,22 @@ from PIL import Image, ImageDraw, ImageFilter, ImageFont
 
 HERE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 LOGO = os.path.join(HERE, "assets", "brand", "retro_recomp_logo.png")
-FONT = "/usr/share/fonts/liberation/LiberationSans-Bold.ttf"
-MONO = "/usr/share/fonts/TTF/DejaVuSansMono-Bold.ttf"
+FONT_CANDIDATES = [
+    "/usr/share/fonts/liberation/LiberationSans-Bold.ttf",
+    "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf",
+    "/System/Library/Fonts/Supplemental/Arial Bold.ttf",
+]
+FONT = next((f for f in FONT_CANDIDATES if os.path.exists(f)), None)
+if FONT is None:
+    raise SystemExit("no bold sans found; looked for:\n  " + "\n  ".join(FONT_CANDIDATES))
+MONO_CANDIDATES = [
+    "/usr/share/fonts/TTF/DejaVuSansMono-Bold.ttf",
+    "/usr/share/fonts/truetype/dejavu/DejaVuSansMono-Bold.ttf",
+    "/System/Library/Fonts/Supplemental/Courier New Bold.ttf",
+]
+MONO = next((f for f in MONO_CANDIDATES if os.path.exists(f)), None)
+if MONO is None:
+    raise SystemExit("no bold mono found; looked for:\n  " + "\n  ".join(MONO_CANDIDATES))
 
 SIZE = 1024
 
@@ -252,7 +266,7 @@ def main():
             os.path.join(folder, "ic_launcher_background.png")
         )
 
-    ios = os.path.join(HERE, "ios", "Runner", "Assets.xcassets", "AppIcon.appiconset")
+    ios = os.path.join(HERE, "ios", "Assets.xcassets", "AppIcon.appiconset")
     sizes = {
         "Icon-App-20x20@1x.png": 20,
         "Icon-App-20x20@2x.png": 40,
