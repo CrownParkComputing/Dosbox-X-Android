@@ -45,3 +45,7 @@ dist/
 !android/app/src/main/assets/demo/DEMO.COM
 
 .DS_Store
+
+# Signing config for a developer machine; never committed.
+key.properties
+android/key.properties
