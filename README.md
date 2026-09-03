@@ -15,6 +15,7 @@ in the same process as the core.
     core/       DOSBox-X, ported to SDL3   (submodule: CrownParkComputing/dosbox-x-sdl3)
     frontend/   the launcher: library, settings, on-screen controls, RetroMedia
     android/    the Android application and its build script
+    ios/        the iOS application, its build script and its signing material
     demo/       bundled content, and the source that generates it
 
 The core is a **submodule rather than a copy**. It is a fork of DOSBox-X with
@@ -37,6 +38,34 @@ the previous library.
 
 If the submodule has not been initialised the script stops and says so, rather
 than failing later inside the compiler.
+
+### iOS
+
+    cd Retro-Dosbox
+    ./ios/build-core.sh                      # device; IOS_PLATFORM=iphonesimulator for the Simulator
+    cmake -S ios -B ios/build/app -G Xcode \
+          -DCMAKE_SYSTEM_NAME=iOS -DCMAKE_OSX_ARCHITECTURES=arm64
+    cmake --build ios/build/app --config Release
+
+Needs autoconf, automake, libtool and cmake — and **GNU** m4, because macOS
+ships the BSD one and autoconf refuses it.
+
+It is not the Android script with different flags. Android links a shared
+`libretrodos.so` and dlopens it; iOS links **statically** into the app, because
+Apple rejects a bare dylib at install and the frontend owns `main()` anyway.
+The engine also has to be told that iOS is not macOS — both report
+`*-*-darwin*`, and DOSBox-X's `configure.ac` says outright that it does not
+distinguish them — which is what `ios/apply-ios-configure.py` is for, and it
+must run before `autogen.sh`.
+
+No JIT. iOS does not permit memory that is both writable and executable, so the
+core is built `--disable-dynamic-core --disable-dynamic-x86 --disable-dynrec`
+and the generated conf asks for `core=auto`, never `core=dynamic` — naming a
+core that is not in the binary is how this failed before.
+
+Signing happens in CI, never on a workstation. `.github/workflows/ios.yml`
+decrypts `ios/signing/*.enc` with one repository secret, `SIGNING_PASSPHRASE`,
+then archives, signs and uploads. See `ios/signing/README.md`.
 
 ## How a game is run
 
