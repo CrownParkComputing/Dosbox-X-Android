@@ -251,7 +251,23 @@ std::string build_conf(const Settings &s, const std::string &title,
     c += "title=" + title + "\n";
 
     c += "[cpu]\n";
-    c += std::string("core=") + (s.core_dynamic ? "dynamic" : "normal") + "\n";
+    /* "auto", never "dynamic", when the user asks for the fast core.
+     *
+     * The dynamic core recompiles x86 blocks into native code at run time, and
+     * iOS does not permit memory that is both writable and executable -- the
+     * wall that keeps every App Store emulator interpreter-only. ios/
+     * build-core.sh therefore passes --disable-dynamic-core, --disable-dynamic-x86
+     * and --disable-dynrec, so naming "dynamic" there asks for a core that is
+     * not in the binary at all.
+     *
+     * "auto" asks DOSBox-X for the best core it actually has: the dynamic one
+     * where a dynamic core was built, the interpreter where none was. So this
+     * is unchanged on Android, which builds them, and correct on iOS, which
+     * cannot.
+     *
+     * This is not a new lesson. The Flutter build hit it and fixed it in
+     * fc3456b, kept as tag archive/flutter-app; the rewrite reintroduced it. */
+    c += std::string("core=") + (s.core_dynamic ? "auto" : "normal") + "\n";
     if (s.cycles_max) c += "cycles=max\n";
     else              c += "cycles=fixed " + std::to_string(s.cycles_fixed) + "\n";
 
