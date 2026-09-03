@@ -389,6 +389,25 @@ std::vector<std::string> candidate_roots()
         }
         closedir(d);
     }
+#elif defined(__APPLE__)
+    /* Documents, NOT the pref path.
+     *
+     * UIFileSharingEnabled and LSSupportsOpeningDocumentsInPlace expose the
+     * app's Documents directory in the Files app, and ONLY that one. The pref
+     * path is Library/Application Support, which the user cannot reach from
+     * Files at all -- so a library there could never have a game added to it.
+     *
+     * SDL_FOLDER_DOCUMENTS is that directory on iOS. The pref path stays as a
+     * fallback in case it cannot be resolved, because a library in an
+     * unreachable folder still beats no library at all. */
+    if (const char *docs = SDL_GetUserFolder(SDL_FOLDER_DOCUMENTS))
+        out.push_back(std::string(docs) + "dos");
+    if (out.empty()) {
+        if (char *pref = SDL_GetPrefPath("CrownParkComputing", "Retro-DOS")) {
+            out.push_back(std::string(pref) + "dos");
+            SDL_free(pref);
+        }
+    }
 #else
     if (char *pref = SDL_GetPrefPath("CrownParkComputing", "Retro-DOS")) {
         out.push_back(std::string(pref) + "dos");
@@ -396,6 +415,36 @@ std::vector<std::string> candidate_roots()
     }
 #endif
     return out;
+}
+
+/* TextDisabled that WRAPS.
+ *
+ * ImGui::TextDisabled does not wrap, so the dimmed explanatory blocks here
+ * were written with hard newlines sized for a landscape handheld -- and ran
+ * straight off the right edge on a phone held upright. Wrapping lets the same
+ * sentence fit any width. */
+void TextDimWrapped(const char *text)
+{
+    ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyle().Colors[ImGuiCol_TextDisabled]);
+    ImGui::TextWrapped("%s", text);
+    ImGui::PopStyleColor();
+}
+
+/* A path the user can ACT on.
+ *
+ * The container path is true and useless: on iOS it is sixty characters of
+ * UUID under /var/mobile/Containers, and no part of it can be typed into the
+ * Files app. What the user needs is the name they will actually see there.
+ * Everywhere else the real path is the useful answer, so it is left alone. */
+std::string root_label(const std::string &root)
+{
+#if defined(__APPLE__)
+    const std::string tail = root.substr(root.find_last_of('/') + 1);
+    return "Retro-DOS  >  " + (tail.empty() ? std::string("dos") : tail)
+         + "   (in the Files app)";
+#else
+    return root;
+#endif
 }
 
 /* What the user should see as "the library". Once a folder is granted, the
@@ -762,11 +811,23 @@ int main(int argc, char **argv)
          * for the size up front gives crisp glyphs. */
         int ww = 0, wh = 0;
         SDL_GetWindowSizeInPixels(win, &ww, &wh);
-        const float scale = std::max(1.0f, (float)wh / 540.0f);
+        /* The SHORT side, not the height.
+         *
+         * Both of these describe "how big is a comfortable glyph on a screen
+         * held at arm's length", and that is the short axis whichever way the
+         * device is turned. Keying off height alone assumes landscape: in
+         * portrait on a 1320x2868 phone it read 2868 and asked for a 110px
+         * font at scale 5.3, so about twenty characters fitted a line and
+         * every panel ran off the right edge.
+         *
+         * No effect on Android, which is locked to sensorLandscape in the
+         * manifest, so the short side IS the height there. */
+        const float shorter = (float)std::min(ww, wh);
+        const float scale = std::max(1.0f, shorter / 540.0f);
         ImGui::GetStyle().ScaleAllSizes(scale);
 
         ImFontConfig fc;
-        fc.SizePixels = std::max(20.0f, (float)wh / 26.0f);   /* ~41px at 1080p */
+        fc.SizePixels = std::max(20.0f, shorter / 26.0f);     /* ~41px at 1080p */
         ImGui::GetIO().Fonts->Clear();
         ImGui::GetIO().Fonts->AddFontDefault(&fc);
         ImGui::GetIO().Fonts->Build();
@@ -1352,11 +1413,36 @@ int main(int argc, char **argv)
             ImGui_ImplSDL3_NewFrame();
             ImGui::NewFrame();
 
-            const ImVec2 full((float)win_w, (float)win_h);
+            /* The usable rectangle, not the whole screen.
+             *
+             * On a device with a Dynamic Island or a home indicator, drawing
+             * from (0,0) puts the title under the cutout -- which is exactly
+             * what the first iOS build did.
+             *
+             * SDL reports the safe area in WINDOW coordinates while everything
+             * here is in PIXELS (SDL_GetWindowSizeInPixels), so it has to be
+             * multiplied by the pixel density or the inset is out by 3x on a
+             * Retina screen.
+             *
+             * Apple-only by instruction, not because the problem is: a notched
+             * Android phone draws under its cutout too, and this is one #if
+             * away from fixing that as well. */
+            ImVec2 origin(0.0f, 0.0f);
+            ImVec2 full((float)win_w, (float)win_h);
+#if defined(__APPLE__)
+            {
+                SDL_Rect safe;
+                if (SDL_GetWindowSafeArea(win, &safe) && safe.w > 0 && safe.h > 0) {
+                    const float d = SDL_GetWindowPixelDensity(win);
+                    origin = ImVec2((float)safe.x * d, (float)safe.y * d);
+                    full   = ImVec2((float)safe.w * d, (float)safe.h * d);
+                }
+            }
+#endif
 
             /* ---------------- Wizard ---------------- */
             if (view == View::Wizard) {
-                ImGui::SetNextWindowPos(ImVec2(0, 0));
+                ImGui::SetNextWindowPos(origin);
                 ImGui::SetNextWindowSize(full);
                 ImGui::Begin("##wizard", nullptr,
                              ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize |
@@ -1368,11 +1454,18 @@ int main(int argc, char **argv)
                 ImGui::TextWrapped("Choose where your DOS games live. Each game should "
                                    "be its own folder.");
                 ImGui::Spacing();
-                ImGui::TextDisabled(
-                    "These folders belong to the app, so they need no permission and\n"
-                    "work on removable storage. Android only grants access elsewhere\n"
-                    "as a document tree, which the emulator cannot mount directly --\n"
-                    "games kept outside have to be copied in first.");
+#if defined(__APPLE__)
+                TextDimWrapped("This folder is the app's own, and it is the one the "
+                               "Files app shows. Put each game in its own folder "
+                               "inside it and it appears in the library next time "
+                               "you look.");
+#else
+                TextDimWrapped("These folders belong to the app, so they need no "
+                               "permission and work on removable storage. Android "
+                               "only grants access elsewhere as a document tree, "
+                               "which the emulator cannot mount directly -- games "
+                               "kept outside have to be copied in first.");
+#endif
                 ImGui::Spacing();
 
                 for (size_t i = 0; i < roots.size(); ++i) {
@@ -1380,7 +1473,7 @@ int main(int argc, char **argv)
                     if (ImGui::RadioButton("##root", cfg.library_root == roots[i]))
                         cfg.library_root = roots[i];
                     ImGui::SameLine();
-                    ImGui::TextWrapped("%s%s", roots[i].c_str(),
+                    ImGui::TextWrapped("%s%s", root_label(roots[i]).c_str(),
                                        path_is_dir(roots[i]) ? "" : "   (will be created)");
                     ImGui::PopID();
                 }
@@ -1388,27 +1481,39 @@ int main(int argc, char **argv)
                 ImGui::Spacing();
                 ImGui::Separator();
                 ImGui::Spacing();
+#if defined(__APPLE__)
+                /* No folder picker here. iOS has no document-tree grant that the
+                 * emulator could mount, saf_pick_folder is a stub, and offering a
+                 * button that does nothing is worse than not offering one. Files
+                 * is how a game arrives, so say that instead. */
+                TextDimWrapped("To add a game: open the Files app, find Retro-DOS "
+                               "under On My iPhone or On My iPad, and put the "
+                               "game's folder inside it.");
+#else
                 ImGui::TextWrapped("Or choose any folder on the device:");
                 if (retrodos::saf_has_grant()) {
                     ImGui::TextWrapped("Using: %s", library_label(cfg.library_root).c_str());
-                    ImGui::TextDisabled("Each game is copied to the folder above the first\n"
-                                        "time you play it, then mounted from there.");
+                    TextDimWrapped("Each game is copied to the folder above the first "
+                                   "time you play it, then mounted from there.");
                 } else {
-                    ImGui::TextDisabled("Android grants only the exact folder you pick,\n"
-                                        "never all files. The emulator mounts real paths,\n"
-                                        "so the game you launch is copied in first.");
+                    TextDimWrapped("Android grants only the exact folder you pick, never "
+                                   "all files. The emulator mounts real paths, so the "
+                                   "game you launch is copied in first.");
                 }
                 if (ImGui::Button(retrodos::saf_has_grant() ? "Choose a different folder"
                                                             : "Choose folder...",
                                   ImVec2(0, 0)))
                     retrodos::saf_pick_folder();
+#endif
 
                 ImGui::Spacing();
+#if !defined(__APPLE__)
                 if (ImGui::Button("Rescan volumes", ImVec2(0, 0))) {
                     roots = candidate_roots();
                     for (const auto &r : roots) SDL_CreateDirectory(r.c_str());
                 }
                 ImGui::SameLine();
+#endif
                 if (ImGui::Button("Continue", ImVec2(0, 0))) {
                     SDL_CreateDirectory(cfg.library_root.c_str());
                     cfg.wizard_done = true;
@@ -1426,7 +1531,7 @@ int main(int argc, char **argv)
              * the only navigation -- and being always visible, it also shows
              * where you are. */
             else if (view == View::Shell) {
-                ImGui::SetNextWindowPos(ImVec2(0, 0));
+                ImGui::SetNextWindowPos(origin);
                 ImGui::SetNextWindowSize(full);
                 ImGui::Begin("##shell", nullptr,
                              ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize |
@@ -1921,7 +2026,7 @@ int main(int argc, char **argv)
 
             /* ---------------- In-game overlay ---------------- */
             if (view == View::Emulator && show_overlay) {
-                ImGui::SetNextWindowPos(ImVec2(full.x * 0.5f, full.y * 0.35f),
+                ImGui::SetNextWindowPos(ImVec2(origin.x + full.x * 0.5f, origin.y + full.y * 0.35f),
                                         ImGuiCond_Always, ImVec2(0.5f, 0.5f));
                 ImGui::Begin("Paused", nullptr,
                              ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove |
@@ -1982,7 +2087,7 @@ int main(int argc, char **argv)
              * looking at the game, and edits apply to the LIVE settings, so a
              * change can be tried without leaving. */
             if (view == View::Emulator && show_controls) {
-                ImGui::SetNextWindowPos(ImVec2(full.x * 0.5f, full.y * 0.5f),
+                ImGui::SetNextWindowPos(ImVec2(origin.x + full.x * 0.5f, origin.y + full.y * 0.5f),
                                         ImGuiCond_Always, ImVec2(0.5f, 0.5f));
                 ImGui::SetNextWindowSize(ImVec2(full.x * 0.92f, full.y * 0.86f));
                 ImGui::SetNextWindowBgAlpha(0.94f);
@@ -2021,7 +2126,7 @@ int main(int argc, char **argv)
              * games put the least. */
             if (view == View::Emulator && !show_overlay && !show_controls) {
                 const float pad = ImGui::GetStyle().WindowPadding.x;
-                ImGui::SetNextWindowPos(ImVec2(full.x - pad, pad),
+                ImGui::SetNextWindowPos(ImVec2(origin.x + full.x - pad, origin.y + pad),
                                         ImGuiCond_Always, ImVec2(1.0f, 0.0f));
                 ImGui::SetNextWindowBgAlpha(0.35f);
                 ImGui::Begin("##emubar", nullptr,
