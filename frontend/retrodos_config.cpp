@@ -237,6 +237,12 @@ std::string build_conf(const Settings &s, const std::string &title,
     c += "showmenu=false\n";
 
     c += "[dosbox]\n";
+    /* DOSBox-X's welcome banner points at UPSTREAM's issue tracker
+     * (github.com/joncampbell123/dosbox-x/issues). Sending our users there is
+     * wrong twice over: they cannot report a Retro-DOS bug to that project,
+     * and it is the first thing on screen in every store screenshot. The
+     * credit belongs in About, which names DOSBox-X and its licence. */
+    c += "startbanner=false\n";
     /* Not optional. With a non-TTY stdin DOSBox-X decides to prompt for a
      * working directory and blocks in a folder picker; on Android there is
      * neither stdin nor a dialog, so it hangs with no diagnostic at all. */
@@ -266,7 +272,16 @@ std::string build_conf(const Settings &s, const std::string &title,
     if (!extra_sections.empty()) c += extra_sections;
 
     c += "[autoexec]\n";
-    c += "mount C \"" + mount_dir + "\"\n";
+    /* @echo off, and MOUNT -q.
+     *
+     * Without them the first thing a player sees is our own plumbing: the
+     * shell echoes `mount C "..."` with the full container path, which on iOS
+     * is sixty characters of UUID under /var/mobile/Containers, and MOUNT then
+     * prints the same path back as "Drive C is mounted as local directory".
+     * Neither is anything the user chose or can act on. The game's own output
+     * is unaffected -- echo off only silences the commands WE issue. */
+    c += "@echo off\n";
+    c += "mount -q C \"" + mount_dir + "\"\n";
     c += "C:\n";
     if (!run_cmd.empty()) {
         /* A program name is quoted because DOS titles are full of spaces; a

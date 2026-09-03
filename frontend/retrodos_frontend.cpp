@@ -430,23 +430,6 @@ void TextDimWrapped(const char *text)
     ImGui::PopStyleColor();
 }
 
-/* A path the user can ACT on.
- *
- * The container path is true and useless: on iOS it is sixty characters of
- * UUID under /var/mobile/Containers, and no part of it can be typed into the
- * Files app. What the user needs is the name they will actually see there.
- * Everywhere else the real path is the useful answer, so it is left alone. */
-std::string root_label(const std::string &root)
-{
-#if defined(__APPLE__)
-    const std::string tail = root.substr(root.find_last_of('/') + 1);
-    return "Retro-DOS  >  " + (tail.empty() ? std::string("dos") : tail)
-         + "   (in the Files app)";
-#else
-    return root;
-#endif
-}
-
 /* What the user should see as "the library". Once a folder is granted, the
  * app-private path is only a staging area and showing it is actively
  * misleading -- it is not where their games are. */
@@ -470,6 +453,26 @@ std::string library_label(const std::string &root)
     }
     return out;
 }
+
+/* A path the user can ACT on.
+ *
+ * The container path is true and useless: on iOS it is sixty characters of
+ * UUID under /var/mobile/Containers, and no part of it can be typed into the
+ * Files app. What the user needs is the name they will actually see there.
+ * Everywhere else the real path is the useful answer, so it is left alone. */
+std::string root_label(const std::string &root)
+{
+#if defined(__APPLE__)
+    const std::string tail = root.substr(root.find_last_of('/') + 1);
+    return "Retro-DOS  >  " + (tail.empty() ? std::string("dos") : tail)
+         + "   (in the Files app)";
+#else
+    /* Android: defer to library_label, which decodes a granted SAF tree into
+     * something readable and returns the plain path when there is no grant. */
+    return library_label(root);
+#endif
+}
+
 
 /* ------------------------------------------------------------------ */
 /* Pad layout persistence                                              */
@@ -789,6 +792,17 @@ int main(int argc, char **argv)
     IMGUI_CHECKVERSION();
     ImGui::CreateContext();
     ImGui::GetIO().IniFilename = nullptr;   /* our own config owns durable state */
+
+    /* Navigable by keyboard and by pad, not only by touch.
+     *
+     * A DOS launcher on a handheld is used with a controller as often as with
+     * a finger, and an iPad with a keyboard case has no touchpad to fall back
+     * on. Both flags are additive: touch keeps working exactly as it did.
+     *
+     * It also makes the UI drivable without a human, which is what an
+     * automated store-screenshot run needs -- simctl cannot inject taps. */
+    ImGui::GetIO().ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
+    ImGui::GetIO().ConfigFlags |= ImGuiConfigFlags_NavEnableGamepad;
 
     /* Input trickling is left ON deliberately.
      *
@@ -1698,12 +1712,12 @@ int main(int argc, char **argv)
                     }
                     ImGui::Text("%zu of %zu", shown.size(), games.size());
                     ImGui::SameLine();
-                    ImGui::TextDisabled("  %s", library_label(cfg.library_root).c_str());
+                    ImGui::TextDisabled("  %s", root_label(cfg.library_root).c_str());
 
                     if (games.empty()) {
                         ImGui::Spacing();
                         ImGui::TextWrapped("No games found in:");
-                        ImGui::TextWrapped("%s", library_label(cfg.library_root).c_str());
+                        ImGui::TextWrapped("%s", root_label(cfg.library_root).c_str());
                         ImGui::Spacing();
                         ImGui::TextWrapped("Put each game in its own folder there and press "
                                            "Rescan, or try the Demo page.");
@@ -2013,7 +2027,7 @@ int main(int argc, char **argv)
                                        "dosbox.conf, its [autoexec] and sound settings are "
                                        "used as-is rather than guessed at.");
                     ImGui::Spacing();
-                    ImGui::TextWrapped("Library: %s", library_label(cfg.library_root).c_str());
+                    ImGui::TextWrapped("Library: %s", root_label(cfg.library_root).c_str());
                     ImGui::TextWrapped("Games installed: %zu", games.size());
                     if (account.signed_in)
                         ImGui::TextWrapped("RetroMedia: %s%s", account.email.c_str(),
