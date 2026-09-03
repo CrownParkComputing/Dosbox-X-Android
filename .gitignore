@@ -54,3 +54,7 @@ android/key.properties
 ios/build/
 
 __pycache__/
+
+# The signing passphrase is NEVER committed; only the encrypted blobs are.
+ios/signing/*.passphrase
+ios/signing/*.decrypted

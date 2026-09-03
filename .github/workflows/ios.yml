@@ -5,12 +5,12 @@ name: iOS
 # up in App Store Connect by hand and gives nothing back here that this does
 # not already do.
 #
-# Gated on the signing secrets, so a fork or a repo without them still builds
-# and just does not sign or upload:
-#   APPSTORE_CERT_BASE64      base64 of a .p12 holding the Apple Distribution cert
-#   APPSTORE_CERT_PASSWORD    its password
-#   APPSTORE_PROFILE_BASE64   base64 of Retro-Dosbox AppStore.mobileprovision
-#   ASC_KEY_ID / ASC_ISSUER_ID / ASC_KEY_P8_BASE64    for the upload
+# ONE secret: SIGNING_PASSPHRASE. The certificate, the provisioning profile,
+# the App Store Connect key and the passwords all live in ios/signing/*.enc,
+# encrypted with it. See ios/signing/README.md.
+#
+# Gated on that secret being set, so a fork without it still builds -- and a
+# broken tree therefore still fails loudly rather than waiting to be noticed.
 
 on:
   push:
@@ -22,7 +22,7 @@ jobs:
   ios:
     runs-on: macos-26
     env:
-      HAS_IOS_SIGNING: ${{ secrets.APPSTORE_CERT_BASE64 != '' }}
+      HAS_IOS_SIGNING: ${{ secrets.SIGNING_PASSPHRASE != '' }}
       BUNDLE_ID: com.crownparkcomputing.dosboxretro
       TEAM_ID: 88A3T9K9C5
       PROFILE_NAME: Retro-Dosbox AppStore
@@ -45,30 +45,41 @@ jobs:
       - name: Build the core and frontend
         run: ./ios/build-core.sh
 
-      - name: Import signing certificate
+      - name: Decrypt the signing material
         if: env.HAS_IOS_SIGNING == 'true'
         env:
-          CERT_BASE64: ${{ secrets.APPSTORE_CERT_BASE64 }}
-          CERT_PASSWORD: ${{ secrets.APPSTORE_CERT_PASSWORD }}
-          PROFILE_BASE64: ${{ secrets.APPSTORE_PROFILE_BASE64 }}
+          PASS: ${{ secrets.SIGNING_PASSPHRASE }}
         run: |
           set -euo pipefail
+          D="$RUNNER_TEMP/signing"; mkdir -p "$D"; chmod 700 "$D"
+          dec() { openssl enc -d -aes-256-cbc -pbkdf2 -iter 600000 \
+                    -in "ios/signing/$1" -out "$D/$2" -pass env:PASS; }
+          dec dist.p12.enc                dist.p12
+          dec profile.mobileprovision.enc profile.mobileprovision
+          dec asc_key.p8.enc              asc_key.p8
+          dec signing.env.enc             signing.env
+          echo "D=$D" >> "$GITHUB_ENV"
+
+      - name: Import signing certificate
+        if: env.HAS_IOS_SIGNING == 'true'
+        run: |
+          set -euo pipefail
+          # shellcheck disable=SC1091
+          . "$D/signing.env"
           KEYCHAIN=build.keychain
           security create-keychain -p actions "$KEYCHAIN"
           security default-keychain -s "$KEYCHAIN"
           security set-keychain-settings "$KEYCHAIN"      # no auto-lock mid-build
           security unlock-keychain -p actions "$KEYCHAIN"
-          echo "$CERT_BASE64" | base64 -d > cert.p12
-          security import cert.p12 -k "$KEYCHAIN" -P "$CERT_PASSWORD" -T /usr/bin/codesign
+          security import "$D/dist.p12" -k "$KEYCHAIN" -P "$CERT_PASSWORD" -T /usr/bin/codesign
           # codesign: in the partition list is the whole point. Without it the
-          # key imports, `security find-identity` calls it valid, and every
+          # key imports, `security find-identity` reports it valid, and every
           # signing attempt fails with errSecInternalComponent -- which reads
           # like a broken certificate and is nothing of the kind.
           security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k actions "$KEYCHAIN"
           mkdir -p ~/Library/MobileDevice/Provisioning\ Profiles
-          echo "$PROFILE_BASE64" | base64 -d \
-            > ~/Library/MobileDevice/Provisioning\ Profiles/build.mobileprovision
-          rm cert.p12
+          cp "$D/profile.mobileprovision" \
+            ~/Library/MobileDevice/Provisioning\ Profiles/build.mobileprovision
 
       # App Store Connect refuses a CFBundleVersion it has already seen, and
       # says so only AFTER the whole upload has transferred. A UTC timestamp is
@@ -157,15 +168,12 @@ jobs:
 
       - name: Upload to App Store Connect
         if: env.HAS_IOS_SIGNING == 'true'
-        env:
-          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
-          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
-          ASC_KEY_P8_BASE64: ${{ secrets.ASC_KEY_P8_BASE64 }}
         run: |
           set -euo pipefail
+          # shellcheck disable=SC1091
+          . "$D/signing.env"
           mkdir -p ~/.appstoreconnect/private_keys
-          echo "$ASC_KEY_P8_BASE64" | base64 -d \
-            > ~/.appstoreconnect/private_keys/AuthKey_${ASC_KEY_ID}.p8
+          cp "$D/asc_key.p8" ~/.appstoreconnect/private_keys/AuthKey_${ASC_KEY_ID}.p8
           xcrun altool --upload-app -f build/ipa/*.ipa -t ios \
             --apiKey "$ASC_KEY_ID" --apiIssuer "$ASC_ISSUER_ID"
 
