@@ -11,7 +11,7 @@
 cmake_minimum_required(VERSION 3.20)
 project(RetroDos LANGUAGES CXX)
 
-set(RETRODOS_VERSION "1.0.0" CACHE STRING "CFBundleShortVersionString")
+set(RETRODOS_VERSION "2.0" CACHE STRING "CFBundleShortVersionString")
 # App Store Connect refuses a CFBundleVersion it has already seen, and says so
 # only after the whole upload has transferred, so CI stamps a UTC timestamp.
 set(RETRODOS_BUILD "1" CACHE STRING "CFBundleVersion")
