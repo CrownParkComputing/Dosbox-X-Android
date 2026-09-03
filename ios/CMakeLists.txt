@@ -84,6 +84,12 @@ set_target_properties(RetroDos PROPERTIES
   XCODE_ATTRIBUTE_ENABLE_BITCODE "NO"
   XCODE_ATTRIBUTE_CLANG_ENABLE_OBJC_ARC "YES"
   XCODE_ATTRIBUTE_ASSETCATALOG_COMPILER_APPICON_NAME "AppIcon"
+  # Without these two, `xcodebuild archive` succeeds and produces an archive
+  # with an EMPTY Products/ and no ApplicationProperties -- not an app archive
+  # at all, so -exportArchive has nothing to export. CMake leaves SKIP_INSTALL
+  # at its default for Xcode targets, and an archive is an install.
+  XCODE_ATTRIBUTE_INSTALL_PATH "$(LOCAL_APPS_DIR)"
+  XCODE_ATTRIBUTE_SKIP_INSTALL "NO"
   # Signing is set on the TARGET, never on the xcodebuild command line: a
   # command-line PROVISIONING_PROFILE_SPECIFIER applies to every target in the
   # workspace, which is how a build starts failing with "does not support
