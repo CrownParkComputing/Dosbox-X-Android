@@ -141,9 +141,26 @@ jobs:
           }
           need CFBundleIcons.CFBundlePrimaryIcon.CFBundleIconName
           need ITSAppUsesNonExemptEncryption
-          # SDL links CoreBluetooth for game controllers, so the purpose string
-          # is required whether or not the app ever calls it.
-          need NSBluetoothAlwaysUsageDescription
+
+          # Purpose strings, derived from what the BINARY links rather than from
+          # a list somebody remembered to update. A bundle that links a
+          # protected API needs the string whether or not it calls it, and
+          # Apple reports the lack only after a delivery that reported success
+          # -- ITMS-90683, by email, hours later, with the job green. That is
+          # how the first 2.0 upload was lost.
+          bin=build/RetroDos.xcarchive/Products/Applications/RetroDos.app/RetroDos
+          check_api() {   # <objc class> <Info.plist key>
+            if nm -u "$bin" 2>/dev/null | grep -q "$1"; then
+              need "$2"
+              echo "  $1 is linked -> $2 present"
+            fi
+          }
+          check_api CBCentralManager NSBluetoothAlwaysUsageDescription
+          check_api AVCaptureDevice  NSCameraUsageDescription
+          check_api AVAudioSession   NSMicrophoneUsageDescription
+          check_api CLLocationManager NSLocationWhenInUseUsageDescription
+          check_api PHPhotoLibrary   NSPhotoLibraryUsageDescription
+          check_api CNContactStore   NSContactsUsageDescription
           echo "bundle looks deliverable"
 
       - name: Export the IPA
