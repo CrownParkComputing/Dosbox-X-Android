@@ -33,7 +33,24 @@ const Asset kAssets[] = {
  *  and only ever replaced by an app update, which replaces both sides. */
 bool extract(const char *name, const std::string &dest)
 {
-    const std::string src = std::string("demo/") + name;
+    /* An ABSOLUTE path off Android.
+     *
+     * A relative path resolves against the process working directory, and the
+     * emulator moves it: DOSBox-X's MOUNT chdir()s while validating the
+     * directory it is given (dos_programs.cpp). So "demo/DEMO.COM" resolved to
+     * the bundle on a fresh launch and to nothing at all once a game had been
+     * run -- the Demo page worked until you used it, then reported that the
+     * content could not be unpacked, with the files sitting in the bundle the
+     * whole time.
+     *
+     * Android keeps the relative form on purpose: there is no filesystem path
+     * for an APK asset, and a bare relative name is what SDL routes to the
+     * asset manager. SDL_GetBasePath() returns NULL there anyway. */
+    std::string src = std::string("demo/") + name;
+#if !defined(__ANDROID__)
+    if (const char *base = SDL_GetBasePath())
+        src = std::string(base) + src;
+#endif
 
     SDL_IOStream *in = SDL_IOFromFile(src.c_str(), "rb");
     if (!in) {
