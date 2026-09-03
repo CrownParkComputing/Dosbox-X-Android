@@ -27,20 +27,22 @@
 
 	<key>ITSAppUsesNonExemptEncryption</key><false/>
 
-	<!-- Landscape first: DOS is 320x200. Portrait stays available so the Files
-	     importer and the library are usable one-handed. -->
+	<!-- Landscape ONLY, matching android:screenOrientation="sensorLandscape".
+	     DOS is 320x200 and the shell is a two-pane layout -- a sidebar beside a
+	     content list. Portrait was allowed here at first on the theory that the
+	     library would be usable one-handed; it is not. The panes keep their
+	     widths, so the title collides with the toolbar and every row overlaps
+	     its own buttons. The emulator is landscape, the launcher is landscape,
+	     and the app should not pretend otherwise. -->
 	<key>UISupportedInterfaceOrientations</key>
 	<array>
 		<string>UIInterfaceOrientationLandscapeLeft</string>
 		<string>UIInterfaceOrientationLandscapeRight</string>
-		<string>UIInterfaceOrientationPortrait</string>
 	</array>
 	<key>UISupportedInterfaceOrientations~ipad</key>
 	<array>
 		<string>UIInterfaceOrientationLandscapeLeft</string>
 		<string>UIInterfaceOrientationLandscapeRight</string>
-		<string>UIInterfaceOrientationPortrait</string>
-		<string>UIInterfaceOrientationPortraitUpsideDown</string>
 	</array>
 	<key>UIRequiresFullScreen</key><true/>
 	<key>UIStatusBarHidden</key><true/>
