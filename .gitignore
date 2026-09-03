@@ -52,3 +52,5 @@ android/key.properties
 
 # iOS build output (SDL3, the configured engine tree, the static libs).
 ios/build/
+
+__pycache__/
