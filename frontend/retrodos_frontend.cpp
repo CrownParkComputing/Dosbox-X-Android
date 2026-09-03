@@ -717,19 +717,31 @@ void controls_widgets(Settings &s)
 void settings_widgets(Settings &s)
 {
     ImGui::TextUnformatted("CPU");
+#if defined(__APPLE__)
+    /* There is no dynamic core on iOS to offer. It recompiles x86 into native
+     * code at run time, which needs memory that is both writable and
+     * executable, and iOS does not permit that -- so the core is built without
+     * it and the interpreter is the only one there is. Offering a "faster"
+     * switch that cannot make anything faster is worse than offering nothing:
+     * a player toggling it and seeing no change will reasonably conclude the
+     * setting is broken. */
+    TextDimWrapped("Interpreter core -- iOS does not permit the just-in-time "
+                   "recompilation a faster core needs.");
+#else
     ImGui::Checkbox("Dynamic core (faster; turn off if a game misbehaves)", &s.core_dynamic);
+#endif
     ImGui::Checkbox("Cycles: max", &s.cycles_max);
     if (!s.cycles_max) {
         ImGui::SliderInt("Fixed cycles", &s.cycles_fixed, 300, 100000);
-        ImGui::TextDisabled("Early titles busy-wait for timing and run absurdly\n"
-                            "fast on 'max'. A fixed count is what fixes them.");
+        TextDimWrapped("Early titles busy-wait for timing and run absurdly fast "
+                       "on 'max'. A fixed count is what fixes them.");
     }
 
     ImGui::Spacing(); ImGui::Separator(); ImGui::Spacing();
     ImGui::TextUnformatted("Memory");
     ImGui::SliderInt("Memory (MB)", &s.memsize, 1, 64);
-    ImGui::TextDisabled("32 MB is the safe default: DOS/4GW 1.97 miscalculates with\n"
-                        "more, and several early-90s titles then refuse to start.");
+    TextDimWrapped("32 MB is the safe default: DOS/4GW 1.97 miscalculates with "
+                   "more, and several early-90s titles then refuse to start.");
 
     ImGui::Spacing(); ImGui::Separator(); ImGui::Spacing();
     ImGui::TextUnformatted("Sound");
@@ -1604,10 +1616,23 @@ int main(int argc, char **argv)
                                          full.y - margin * 2.0f),
                                   ImGuiChildFlags_Borders |
                                   ImGuiChildFlags_AlwaysUseWindowPadding,
-                                  page == Page::Library
-                                      ? 0
-                                      : ImGuiWindowFlags_NoScrollbar |
-                                        ImGuiWindowFlags_NoScrollWithMouse);
+                                  /* Every page scrolls.
+                                   *
+                                   * The rule used to be that only the Library
+                                   * did, because everything else was "built to
+                                   * fit" and a scrollbar would admit it did
+                                   * not. It does not: Machine's Display section
+                                   * was cut off by the Save row with no way to
+                                   * reach it, and About's source offer sat
+                                   * below the fold -- settings and a legal
+                                   * notice that exist but cannot be read.
+                                   *
+                                   * ImGui only draws a scrollbar when content
+                                   * actually overflows, so a page that does fit
+                                   * looks exactly as it did. This costs those
+                                   * pages nothing and stops the layout silently
+                                   * eating things on smaller screens. */
+                                  0);
 
                 const float cw = ImGui::GetContentRegionAvail().x;
 
@@ -2032,6 +2057,26 @@ int main(int argc, char **argv)
                     if (account.signed_in)
                         ImGui::TextWrapped("RetroMedia: %s%s", account.email.c_str(),
                                            account.is_admin ? " (administrator)" : "");
+
+                    /* Licences and where the source is.
+                     *
+                     * Not decoration. This app ships GPL binaries -- DOSBox-X
+                     * and the FreeDOS image -- and the GPL obliges whoever
+                     * distributes them to convey the licence and an offer of
+                     * the corresponding source to every recipient. A LICENSE
+                     * file in the repository does not reach someone who
+                     * installed from the App Store; this screen does.
+                     *
+                     * It is also what the review notes point at when they say
+                     * the credit lives in About. */
+                    ImGui::Spacing(); ImGui::Separator(); ImGui::Spacing();
+                    ImGui::TextUnformatted("Licences and source");
+                    TextDimWrapped("DOSBox-X and the bundled FreeDOS 1.3 image: GNU GPL v2. "
+                                   "SDL3: zlib. Dear ImGui: MIT. The demo program is ours, "
+                                   "under the same GPL.");
+                    TextDimWrapped("Complete source, including this app and its build recipe:");
+                    TextDimWrapped("github.com/CrownParkComputing/Retro-Dosbox");
+                    TextDimWrapped("github.com/joncampbell123/dosbox-x  -  freedos.org/download");
                 }
 
                 ImGui::EndChild();
