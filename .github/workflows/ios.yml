@@ -193,12 +193,3 @@ jobs:
           cp "$D/asc_key.p8" ~/.appstoreconnect/private_keys/AuthKey_${ASC_KEY_ID}.p8
           xcrun altool --upload-app -f build/ipa/*.ipa -t ios \
             --apiKey "$ASC_KEY_ID" --apiIssuer "$ASC_ISSUER_ID"
-
-      - uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: retrodos-ios
-          path: |
-            build/ipa/*.ipa
-            ios/build/app/Release-iphoneos/RetroDos.app
-          if-no-files-found: ignore
