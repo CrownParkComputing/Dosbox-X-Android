@@ -18,6 +18,9 @@ set(RETRODOS_BUILD "1" CACHE STRING "CFBundleVersion")
 set(RETRODOS_BUNDLE_ID "com.crownparkcomputing.dosboxretro" CACHE STRING "bundle id")
 set(RETRODOS_DISPLAY_NAME "Retro-DOS" CACHE STRING "CFBundleDisplayName")
 set(RETRODOS_TEAM_ID "88A3T9K9C5" CACHE STRING "DEVELOPMENT_TEAM")
+set(RETRODOS_CODE_SIGN_STYLE "Automatic" CACHE STRING "Automatic or Manual")
+set(RETRODOS_PROVISIONING_PROFILE "" CACHE STRING "profile name, Manual signing only")
+set(RETRODOS_CODE_SIGN_IDENTITY "" CACHE STRING "e.g. Apple Distribution")
 
 if(NOT CMAKE_OSX_DEPLOYMENT_TARGET)
   set(CMAKE_OSX_DEPLOYMENT_TARGET "15.0")
@@ -80,7 +83,14 @@ set_target_properties(RetroDos PROPERTIES
   XCODE_ATTRIBUTE_TARGETED_DEVICE_FAMILY "1,2"          # iPhone and iPad
   XCODE_ATTRIBUTE_ENABLE_BITCODE "NO"
   XCODE_ATTRIBUTE_CLANG_ENABLE_OBJC_ARC "YES"
-  XCODE_ATTRIBUTE_ASSETCATALOG_COMPILER_APPICON_NAME "AppIcon")
+  XCODE_ATTRIBUTE_ASSETCATALOG_COMPILER_APPICON_NAME "AppIcon"
+  # Signing is set on the TARGET, never on the xcodebuild command line: a
+  # command-line PROVISIONING_PROFILE_SPECIFIER applies to every target in the
+  # workspace, which is how a build starts failing with "does not support
+  # provisioning profiles" on something that is not the app.
+  XCODE_ATTRIBUTE_CODE_SIGN_STYLE "${RETRODOS_CODE_SIGN_STYLE}"
+  XCODE_ATTRIBUTE_PROVISIONING_PROFILE_SPECIFIER "${RETRODOS_PROVISIONING_PROFILE}"
+  XCODE_ATTRIBUTE_CODE_SIGN_IDENTITY "${RETRODOS_CODE_SIGN_IDENTITY}")
 
 # -all_load, and it is not optional: nothing in the empty main references the
 # emulator, so without it the linker discards essentially all of it and the app
