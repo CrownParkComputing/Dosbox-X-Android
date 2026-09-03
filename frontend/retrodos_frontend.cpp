@@ -1777,9 +1777,23 @@ int main(int argc, char **argv)
                                                       ImVec2(0, row_h)))
                                     launch(games[gi]);
                                 ImGui::SameLine(cw * 0.58f);
-                                ImGui::TextDisabled("%s", games[gi].run.empty()
-                                                    ? "(no runnable found)"
-                                                    : games[gi].run.c_str());
+                                {
+                                    /* Clipped to its column. The command is
+                                     * whatever the game needs -- "boot
+                                     * FREEDOS.IMG -l A" is longer than the
+                                     * column is wide -- and without this it
+                                     * drew straight through the Setup button
+                                     * beside it. */
+                                    const ImVec2 p0 = ImGui::GetCursorScreenPos();
+                                    const float colw = cw * 0.86f - cw * 0.58f
+                                                     - ImGui::GetStyle().ItemSpacing.x * 2.0f;
+                                    ImGui::PushClipRect(p0,
+                                        ImVec2(p0.x + colw, p0.y + row_h), true);
+                                    ImGui::TextDisabled("%s", games[gi].run.empty()
+                                                        ? "(no runnable found)"
+                                                        : games[gi].run.c_str());
+                                    ImGui::PopClipRect();
+                                }
                                 ImGui::SameLine(cw * 0.86f);
                                 if (ImGui::SmallButton("Setup")) {
                                     selected = gi; page = Page::Settings;
