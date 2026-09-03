@@ -1,0 +1,27 @@
+Bring MS-DOS era PC gaming to your device. This app is a full PC emulator built on DOSBox-X, ready to run your own legally owned DOS software.
+
+RUNS WITH NOTHING SUPPLIED
+Unlike a console or a home computer, a PC needs no ROM. DOSBox-X provides the DOS itself, so the emulator boots to a working C:\> prompt the moment you install it. A small demo program is included so there is something to run straight away.
+
+TWO WAYS TO RUN DOS
+Use the built-in DOS, which starts fastest and mounts your games folder as drive C:, or boot the bundled FreeDOS 1.3 for software that wants a genuine DOS kernel underneath it. Both are free software. Neither is MS-DOS.
+
+RUN YOUR GAMES
+Put each game in its own folder inside Retro-DOS in the Files app, and it appears in the library. EXE and COM programs, floppy images and ISO/CUE discs all work.
+
+AUTHENTIC SOUND AND PICTURE
+Sound Blaster, Gravis Ultrasound and PC speaker audio, EGA/VGA/SVGA graphics, and cycle control from an original 8088 up to a fast 486.
+
+BUILT FOR TOUCH AND FOR CONTROLLERS
+On-screen controls when you have no pad, and a real gamepad when you do -- both feed the same buttons. What each button sends is a per-game setting, because DOS never agreed on a control scheme, and it can be changed from the in-game menu while the game is running.
+
+FEATURES
+- DOSBox-X emulation, from 8088 to Pentium-era PCs
+- Built-in DOS or bundled FreeDOS 1.3
+- Game folders, floppy images, ISO and CUE disc images
+- Sound Blaster, Gravis Ultrasound and PC speaker audio
+- Gamepad, on-screen controls and per-game key mapping
+- Adjustable CPU cycles, fixed or maximum
+- Add games through the Files app
+
+This app ships with no games and no MS-DOS. Add your own legally owned DOS software to begin.
